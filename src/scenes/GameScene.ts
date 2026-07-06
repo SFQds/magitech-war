@@ -229,8 +229,26 @@ export class GameScene extends Phaser.Scene {
 
   /** 输入回调 */
   private setupInputCallbacks(): void {
+    // 单击：选中单个单位
+    this.inputCtrl.onSingleClick((tile) => {
+      const clickedUnit = this.units.find(u =>
+        u.owner === 0 && u.isAlive &&
+        Math.round(u.tileX) === tile.x && Math.round(u.tileY) === tile.y
+      );
+      if (clickedUnit) {
+        this.inputCtrl.setSelection([clickedUnit.id]);
+      } else {
+        this.inputCtrl.clearSelection();
+      }
+      this.updateSelectionHighlight();
+      EventBus.emit(GameEvent.SELECTION_CHANGED, {
+        unitIds: this.inputCtrl.getSelection(),
+        playerIndex: 0,
+      });
+    });
+
+    // 框选
     this.inputCtrl.onSelection((box) => {
-      // 框选检测：暂时简化
       this.inputCtrl.clearSelection();
       for (const unit of this.units) {
         if (unit.owner !== 0 || !unit.isAlive) continue;
@@ -240,20 +258,35 @@ export class GameScene extends Phaser.Scene {
           this.inputCtrl.addToSelection([unit.id]);
         }
       }
+      this.updateSelectionHighlight();
       EventBus.emit(GameEvent.SELECTION_CHANGED, {
         unitIds: this.inputCtrl.getSelection(),
         playerIndex: 0,
       });
     });
 
+    // 右键移动
     this.inputCtrl.onRightClick((tile) => {
       const selection = this.inputCtrl.getSelection();
+      if (selection.length === 0) return;
+
       for (const unit of this.units) {
-        if (selection.includes(unit.id)) {
+        if (selection.includes(unit.id) && unit.isAlive) {
           MovementSystem.navigate(unit, tile, this.world.map);
         }
       }
     });
+  }
+
+  /** 更新选中高亮 */
+  private updateSelectionHighlight(): void {
+    const selected = new Set(this.inputCtrl.getSelection());
+    for (const [id, sprite] of this.unitSprites) {
+      if (sprite instanceof Phaser.GameObjects.Rectangle) {
+        const isSelected = selected.has(id);
+        sprite.setStrokeStyle(isSelected ? 2 : 0, 0xffff00);
+      }
+    }
   }
 
   update(_time: number, delta: number): void {
