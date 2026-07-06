@@ -1,0 +1,117 @@
+/**
+ * 游戏地图 — 瓦片网格系统
+ *
+ * 管理地形数据、可通过性、水晶矿脉位置
+ * 默认 64×64 tiles，每个 tile 32×32 px
+ */
+
+import type { TerrainType } from '../types/data';
+
+/** 地图配置 */
+export interface MapConfig {
+  name: string;
+  width: number;        // tiles
+  height: number;
+  tileSize: number;     // px
+}
+
+/** 地形可通过性映射 */
+const PASSABLE: Record<TerrainType, boolean> = {
+  grass: true,
+  sand: true,
+  water: false,
+  mountain: false,
+  forest: true,         // 可通过但遮挡视野
+};
+
+/** 地形遮挡视野 */
+const BLOCKS_SIGHT: Record<TerrainType, boolean> = {
+  grass: false,
+  sand: false,
+  water: false,
+  mountain: true,
+  forest: true,
+};
+
+export class GameMap {
+  readonly config: MapConfig;
+  private tiles: TerrainType[][];  // [y][x]
+  private passableGrid: boolean[][];
+  private sightBlocker: boolean[][];
+
+  constructor(config: MapConfig) {
+    this.config = config;
+    this.tiles = [];
+    this.passableGrid = [];
+    this.sightBlocker = [];
+
+    // 默认全草地
+    for (let y = 0; y < config.height; y++) {
+      this.tiles[y] = new Array(config.width).fill('grass');
+      this.passableGrid[y] = new Array(config.width).fill(true);
+      this.sightBlocker[y] = new Array(config.width).fill(false);
+    }
+  }
+
+  // ============ 地形查询 ============
+
+  /** 获取 tile 地形类型 */
+  getTile(x: number, y: number): TerrainType {
+    if (!this.inBounds(x, y)) return 'mountain';
+    return this.tiles[y][x];
+  }
+
+  /** 设置 tile 地形 */
+  setTile(x: number, y: number, terrain: TerrainType): void {
+    if (!this.inBounds(x, y)) return;
+    this.tiles[y][x] = terrain;
+    this.passableGrid[y][x] = PASSABLE[terrain];
+    this.sightBlocker[y][x] = BLOCKS_SIGHT[terrain];
+  }
+
+  /** 是否可通过（单位移动、建筑放置） */
+  isPassable(x: number, y: number): boolean {
+    if (!this.inBounds(x, y)) return false;
+    return this.passableGrid[y][x];
+  }
+
+  /** 是否遮挡视野 */
+  blocksSight(x: number, y: number): boolean {
+    if (!this.inBounds(x, y)) return true;
+    return this.sightBlocker[y][x];
+  }
+
+  /** 是否在地图范围内 */
+  inBounds(x: number, y: number): boolean {
+    return x >= 0 && x < this.config.width && y >= 0 && y < this.config.height;
+  }
+
+  // ============ 批量操作 ============
+
+  /** 从 MapData 加载地形 */
+  loadFromData(data: { tiles: TerrainType[][] }): void {
+    for (let y = 0; y < Math.min(data.tiles.length, this.config.height); y++) {
+      for (let x = 0; x < Math.min(data.tiles[y].length, this.config.width); x++) {
+        this.setTile(x, y, data.tiles[y][x]);
+      }
+    }
+  }
+
+  /** 将指定矩形区域标记为不可通过（用于建筑占位） */
+  markBlocked(x: number, y: number, w: number, h: number, blocked: boolean): void {
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        const tx = x + dx;
+        const ty = y + dy;
+        if (this.inBounds(tx, ty)) {
+          this.passableGrid[ty][tx] = !blocked;
+        }
+      }
+    }
+  }
+
+  /** 获取可通过性网格的只读副本（寻路使用） */
+  getPassableGrid(): ReadonlyArray<ReadonlyArray<boolean>> {
+    return this.passableGrid;
+  }
+}

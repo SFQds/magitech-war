@@ -1,0 +1,72 @@
+/**
+ * 游戏世界 — 唯一状态聚合点
+ *
+ * 所有实体、玩家状态、地图均存储于此。
+ * Systems 读取 GameWorld、修改 GameWorld，不持有状态。
+ */
+
+import type { PlayerState } from '../types/entity';
+import type { FactionId } from '../types/data';
+import { GameMap } from './GameMap';
+import { FogOfWar } from './FogOfWar';
+
+export class GameWorld {
+  readonly map: GameMap;
+  readonly fogOfWar: FogOfWar;
+  readonly players: PlayerState[] = [];
+
+  // 实体注册表（后续由实体的工厂方法填充）
+  // unitRegisty / buildingRegistry / resourceFields / projectiles 在 entities 模块完成后挂载
+
+  constructor(mapWidth: number, mapHeight: number, tileSize = 32) {
+    this.map = new GameMap({
+      name: 'Default',
+      width: mapWidth,
+      height: mapHeight,
+      tileSize,
+    });
+    this.fogOfWar = new FogOfWar(mapWidth, mapHeight);
+  }
+
+  /** 初始化玩家 */
+  addPlayer(faction: FactionId, guilds: string[], isAI = false): number {
+    const index = this.players.length;
+    this.players.push({
+      index,
+      faction,
+      guilds,
+      resources: {
+        crystal: 2000,
+        industry: 50,
+        supply: 0,
+        supplyCap: 20,
+      },
+      isAI,
+    });
+    return index;
+  }
+
+  /** 获取玩家状态 */
+  getPlayer(index: number): PlayerState | undefined {
+    return this.players[index];
+  }
+
+  /** 检查玩家是否有足够资源 */
+  canAfford(playerIndex: number, cost: { crystal?: number; industry?: number; supply?: number }): boolean {
+    const p = this.players[playerIndex];
+    if (!p) return false;
+    if (cost.crystal && p.resources.crystal < cost.crystal) return false;
+    if (cost.industry && p.resources.industry < cost.industry) return false;
+    if (cost.supply && (p.resources.supplyCap - p.resources.supply) < cost.supply) return false;
+    return true;
+  }
+
+  /** 扣除资源 */
+  spend(playerIndex: number, cost: { crystal?: number; industry?: number; supply?: number }): void {
+    const p = this.players[playerIndex];
+    if (!p) return;
+    if (cost.crystal) p.resources.crystal -= cost.crystal;
+    if (cost.industry) p.resources.industry -= cost.industry;
+    if (cost.supply) p.resources.supply += cost.supply; // supply 是占用，不是消耗
+  }
+}
