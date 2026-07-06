@@ -8,7 +8,7 @@ import Phaser from 'phaser';
 import { GameWorld } from '../core/GameWorld';
 import { CameraController } from '../core/CameraController';
 import { InputController } from '../core/InputController';
-import { FogOfWar } from '../core/FogOfWar';
+import { FogOfWar, FogState } from '../core/FogOfWar';
 import { MovementSystem } from '../systems/MovementSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
@@ -70,6 +70,12 @@ export class GameScene extends Phaser.Scene {
     // 放置起始资源点
     this.placeInitialResources();
 
+    // 放置起始单位和建筑
+    this.placeStartingUnits();
+
+    // 初始探索玩家出生点周围区域
+    this.initializeFogOfWar();
+
     // 注册输入回调
     this.setupInputCallbacks();
   }
@@ -117,6 +123,119 @@ export class GameScene extends Phaser.Scene {
       rect.setDepth(1);
       this.resourceSprites.set(field.id, rect);
     }
+  }
+
+  /** 放置玩家起始单位和建筑 */
+  private placeStartingUnits(): void {
+    // 玩家(0)起始——地图左上
+    const playerStart = { x: 6, y: 6 };
+
+    // 帝国指挥中心
+    const cc = new Building(
+      0, 'arcane_empire', playerStart.x, playerStart.y,
+      2000, 'structure', 'production', 'bld_cc_empire', 0, 50
+    );
+    cc.complete(); // 直接完成建造
+    this.buildings.push(cc);
+    this.addBuildingSprite(cc);
+
+    // 三个工兵
+    for (let i = 0; i < 3; i++) {
+      const worker = new Unit(
+        0, 'arcane_empire',
+        playerStart.x + 1 + i, playerStart.y + 2,
+        80, 'light', 'infantry',
+        2.0, 5, 'physical', 3, 1.0, 5,
+        'unit_worker'
+      );
+      this.units.push(worker);
+      this.addUnitSprite(worker);
+    }
+
+    // 一个奥术守卫
+    const guard = new Unit(
+      0, 'arcane_empire',
+      playerStart.x + 2, playerStart.y + 2,
+      350, 'heavy', 'infantry',
+      1.8, 30, 'magic', 1, 1.0, 6,
+      'unit_arcane_heavy', []
+    );
+    this.units.push(guard);
+    this.addUnitSprite(guard);
+
+    // AI(1)起始——地图右下
+    const aiStart = { x: 56, y: 56 };
+    const aiCC = new Building(
+      1, 'hammer_federation', aiStart.x, aiStart.y,
+      2000, 'structure', 'production', 'bld_cc_federation', 0, 80
+    );
+    aiCC.complete();
+    this.buildings.push(aiCC);
+    this.addBuildingSprite(aiCC);
+
+    for (let i = 0; i < 4; i++) {
+      const aiRifle = new Unit(
+        1, 'hammer_federation',
+        aiStart.x + 1 + i, aiStart.y + 2,
+        120, 'light', 'infantry',
+        2.2, 18, 'physical', 5, 0.8, 7,
+        'unit_rifleman'
+      );
+      this.units.push(aiRifle);
+      this.addUnitSprite(aiRifle);
+    }
+  }
+
+  /** 初始迷雾：双方出生点附近都标记为已探索 */
+  private initializeFogOfWar(): void {
+    const fog = this.world.fogOfWar;
+
+    // 手动把双方出生点周围的 tile 设为 Explored（绕过 unit vision）
+    const startAreas = [
+      { x: 3, y: 3, w: 12, h: 12 },   // 玩家区域
+      { x: 53, y: 53, w: 12, h: 12 }, // AI 区域
+    ];
+
+    for (const area of startAreas) {
+      for (let y = area.y; y < area.y + area.h; y++) {
+        for (let x = area.x; x < area.x + area.w; x++) {
+          // 直接用 reflect 访问私有字段——临时方案，后续应加公开API
+          (fog as unknown as { fog: FogState[][] }).fog[y][x] = 1; // Explored
+        }
+      }
+    }
+
+    // 然后用单位视野更新一次（玩家可见自己的单位周围）
+    fog.update(
+      this.units.map(u => ({
+        tileX: Math.round(u.tileX),
+        tileY: Math.round(u.tileY),
+        sight: u.sight,
+        owner: u.owner,
+      })),
+      0
+    );
+  }
+
+  /** 为单位创建精灵 */
+  private addUnitSprite(unit: Unit): void {
+    const w = tileToWorld(unit.tileX, unit.tileY);
+    const size = unit.spriteKey.startsWith('unit_magitech_mech') ||
+                 unit.spriteKey.startsWith('unit_transport') ||
+                 unit.spriteKey.startsWith('unit_scout_bike') ? 24 : 16;
+    const color = unit.owner === 0 ? 0x00ff00 : 0xff4444;
+    const rect = this.add.rectangle(w.x, w.y, size, size, color, 0.8);
+    rect.setDepth(10);
+    this.unitSprites.set(unit.id, rect);
+  }
+
+  /** 为建筑创建精灵 */
+  private addBuildingSprite(building: Building): void {
+    const w = tileToWorld(building.tileX, building.tileY);
+    const color = building.owner === 0 ? 0x00ff88 : 0xff6644;
+    const rect = this.add.rectangle(w.x, w.y, 24, 24, color, 0.9);
+    rect.setDepth(5);
+    this.buildingSprites.set(building.id, rect);
   }
 
   /** 输入回调 */
