@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 水晶步枪兵 - 基础步兵 -->
+  <!-- 靴子 -->
+  <rect x="20" y="52" width="10" height="8" rx="2" fill="#4a3728"/>
+  <rect x="34" y="52" width="10" height="8" rx="2" fill="#4a3728"/>
+  <!-- 腿 -->
+  <rect x="22" y="42" width="8" height="12" fill="#5a4a3a"/>
+  <rect x="34" y="42" width="8" height="12" fill="#5a4a3a"/>
+  <!-- 身体 -->
+  <rect x="18" y="22" width="28" height="22" rx="3" fill="#667788"/>
+  <!-- 肩带 -->
+  <rect x="16" y="24" width="32" height="4" rx="1" fill="#556677"/>
+  <!-- 头 -->
+  <circle cx="32" cy="14" r="10" fill="#e8c8a0"/>
+  <!-- 军帽 -->
+  <rect x="22" y="4" width="20" height="8" rx="2" fill="#4a5568"/>
+  <rect x="24" y="2" width="16" height="3" rx="1" fill="#3a4558"/>
+  <!-- 枪身 -->
+  <rect x="44" y="24" width="16" height="4" rx="1" fill="#444"/>
+  <!-- 水晶弹匣 -->
+  <rect x="42" y="28" width="6" height="10" rx="1" fill="#9b59b6"/>
+  <rect x="43" y="30" width="4" height="6" rx="1" fill="#c8a2c8" opacity="0.6"/>
+  <!-- 枪口 -->
+  <rect x="58" y="23" width="4" height="6" rx="1" fill="#555"/>
+  <!-- 枪口闪光 -->
+  <circle cx="62" cy="26" r="3" fill="#cc88ff" opacity="0.5"/>
+</svg>

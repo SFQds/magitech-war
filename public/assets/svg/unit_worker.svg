@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 工兵 - 安全帽+扳手 -->
+  <!-- 靴子 -->
+  <rect x="20" y="52" width="10" height="8" rx="2" fill="#5a4a30"/>
+  <rect x="34" y="52" width="10" height="8" rx="2" fill="#5a4a30"/>
+  <!-- 腿/工装裤 -->
+  <rect x="22" y="40" width="8" height="14" fill="#7a6a50"/>
+  <rect x="34" y="40" width="8" height="14" fill="#7a6a50"/>
+  <!-- 身体 -->
+  <rect x="18" y="24" width="28" height="18" rx="3" fill="#998866"/>
+  <!-- 工装口袋 -->
+  <rect x="22" y="30" width="8" height="6" fill="#887755"/>
+  <rect x="34" y="30" width="8" height="6" fill="#887755"/>
+  <!-- 头 -->
+  <circle cx="32" cy="15" r="10" fill="#e8c8a0"/>
+  <!-- 安全帽 -->
+  <ellipse cx="32" cy="7" rx="14" ry="5" fill="#cc8822"/>
+  <rect x="22" y="4" width="20" height="6" rx="2" fill="#ddaa33"/>
+  <!-- 扳手（右手） -->
+  <rect x="40" y="28" width="20" height="4" rx="2" fill="#aaa" transform="rotate(-20, 40, 30)"/>
+  <circle cx="58" cy="22" r="5" fill="none" stroke="#aaa" stroke-width="2.5"/>
+</svg>
