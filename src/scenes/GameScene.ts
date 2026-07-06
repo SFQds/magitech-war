@@ -8,7 +8,7 @@ import Phaser from 'phaser';
 import { GameWorld } from '../core/GameWorld';
 import { CameraController } from '../core/CameraController';
 import { InputController } from '../core/InputController';
-import { FogOfWar, FogState } from '../core/FogOfWar';
+import { FogOfWar } from '../core/FogOfWar';
 import { MovementSystem } from '../systems/MovementSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
@@ -190,22 +190,11 @@ export class GameScene extends Phaser.Scene {
   private initializeFogOfWar(): void {
     const fog = this.world.fogOfWar;
 
-    // 手动把双方出生点周围的 tile 设为 Explored（绕过 unit vision）
-    const startAreas = [
-      { x: 3, y: 3, w: 12, h: 12 },   // 玩家区域
-      { x: 53, y: 53, w: 12, h: 12 }, // AI 区域
-    ];
+    // 公开 API：双方出生点周围区域设为已探索
+    fog.revealArea(3, 3, 12, 12);    // 玩家区域
+    fog.revealArea(53, 53, 12, 12);  // AI 区域
 
-    for (const area of startAreas) {
-      for (let y = area.y; y < area.y + area.h; y++) {
-        for (let x = area.x; x < area.x + area.w; x++) {
-          // 直接用 reflect 访问私有字段——临时方案，后续应加公开API
-          (fog as unknown as { fog: FogState[][] }).fog[y][x] = 1; // Explored
-        }
-      }
-    }
-
-    // 然后用单位视野更新一次（玩家可见自己的单位周围）
+    // 再用单位视野更新一次（玩家可见自己单位周围）
     fog.update(
       this.units.map(u => ({
         tileX: Math.round(u.tileX),

@@ -81,4 +81,15 @@ export class FogOfWar {
   getGrid(): ReadonlyArray<ReadonlyArray<FogState>> {
     return this.fog;
   }
+
+  /** 将指定矩形区域标记为已探索 */
+  revealArea(x: number, y: number, w: number, h: number): void {
+    for (let ty = y; ty < y + h && ty < this.height; ty++) {
+      for (let tx = x; tx < x + w && tx < this.width; tx++) {
+        if (tx >= 0 && ty >= 0 && tx < this.width && ty < this.height) {
+          this.fog[ty][tx] = FogState.Explored;
+        }
+      }
+    }
+  }
 }
