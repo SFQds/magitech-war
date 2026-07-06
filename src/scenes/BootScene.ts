@@ -44,7 +44,6 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    // TODO: 跳转到菜单场景
-    this.scene.start('BootScene'); // 临时：先停在启动场景
+    this.scene.start('MenuScene');
   }
 }
