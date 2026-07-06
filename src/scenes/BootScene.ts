@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { AssetGenerator } from '../utils/AssetGenerator';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -15,7 +16,7 @@ export class BootScene extends Phaser.Scene {
 
     this.load.on('progress', (value: number) => {
       progressBar.clear();
-      progressBar.fillStyle(0x9b59b6, 1); // 水晶紫
+      progressBar.fillStyle(0x9b59b6, 1);
       progressBar.fillRect(width / 2 - 155, height / 2 - 10, 310 * value, 20);
     });
 
@@ -24,7 +25,7 @@ export class BootScene extends Phaser.Scene {
       progressBox.destroy();
     });
 
-    // 加载 Logo 文字
+    // 标题
     const title = this.add.text(width / 2, height / 2 - 60, '魔导工业革命', {
       fontSize: '28px',
       color: '#c8a2c8',
@@ -32,18 +33,18 @@ export class BootScene extends Phaser.Scene {
     });
     title.setOrigin(0.5);
 
-    const subtitle = this.add.text(width / 2, height / 2 + 40, '正在加载…', {
+    this.add.text(width / 2, height / 2 + 40, '正在生成占位资源…', {
       fontSize: '14px',
       color: '#7f6a8e',
       fontFamily: 'Arial, sans-serif',
-    });
-    subtitle.setOrigin(0.5);
-
-    // TODO: 加载游戏资源
-    // this.load.image('logo', 'assets/ui/logo.png');
+    }).setOrigin(0.5);
   }
 
   create(): void {
+    // 生成所有占位纹理
+    const generator = new AssetGenerator(this);
+    generator.generateAll();
+
     this.scene.start('MenuScene');
   }
 }
