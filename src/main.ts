@@ -23,4 +23,7 @@ const config: Phaser.Types.Core.GameConfig = {
   },
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// 禁用游戏画布上的右键菜单
+game.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
