@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 战斗法师 - 帝国法师长袍+法杖 -->
+  <!-- 长袍底部 -->
+  <polygon points="16,48 24,24 40,24 48,48" fill="#3a2a6a"/>
+  <polygon points="20,48 26,28 38,28 44,48" fill="#4a3a7a"/>
+  <!-- 腰带 -->
+  <rect x="20" y="34" width="24" height="4" rx="2" fill="#c8a2c8" opacity="0.6"/>
+  <!-- 头 -->
+  <circle cx="32" cy="14" r="9" fill="#e8c8a0"/>
+  <!-- 法师兜帽 -->
+  <path d="M20,18 Q20,4 32,2 Q44,4 44,18" fill="#2a1a5a"/>
+  <ellipse cx="32" cy="16" rx="12" ry="4" fill="#3a2a6a"/>
+  <!-- 法杖 -->
+  <rect x="46" y="6" width="4" height="40" rx="2" fill="#8a6a3a"/>
+  <!-- 法杖顶水晶 -->
+  <circle cx="48" cy="4" r="5" fill="#9b59b6"/>
+  <circle cx="48" cy="4" r="3" fill="#cc88ff" opacity="0.6"/>
+  <!-- 奥术充能光环 -->
+  <circle cx="48" cy="4" r="8" fill="none" stroke="#9b59b6" stroke-width="1" opacity="0.4"/>
+  <circle cx="48" cy="4" r="10" fill="none" stroke="#c8a2c8" stroke-width="0.5" opacity="0.25"/>
+  <!-- 左手施法 -->
+  <circle cx="18" cy="30" r="4" fill="#9b59b6" opacity="0.3"/>
+</svg>

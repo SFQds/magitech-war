@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <!-- 采矿场 - 通用 -->
+  <rect x="12" y="28" width="72" height="60" rx="4" fill="#555544"/>
+  <!-- 传送带 -->
+  <rect x="0" y="64" width="96" height="8" rx="2" fill="#444"/>
+  <line x1="0" y1="68" x2="96" y2="68" stroke="#555" stroke-width="1"/>
+  <!-- 竖井塔 -->
+  <rect x="36" y="8" width="24" height="54" rx="3" fill="#666655"/>
+  <rect x="40" y="4" width="16" height="8" rx="2" fill="#777766"/>
+  <!-- 绞盘 -->
+  <circle cx="48" cy="18" r="6" fill="#888"/>
+  <circle cx="48" cy="18" r="3" fill="#444"/>
+  <!-- 水晶 -->
+  <rect x="44" y="72" width="8" height="10" rx="2" fill="#9b59b6"/>
+  <rect x="46" y="74" width="4" height="6" rx="1" fill="#cc88ff" opacity="0.5"/>
+  <!-- 水晶碎片 -->
+  <polygon points="30,74 34,68 38,74" fill="#9b59b6" opacity="0.5"/>
+  <polygon points="58,72 62,66 66,72" fill="#9b59b6" opacity="0.5"/>
+</svg>

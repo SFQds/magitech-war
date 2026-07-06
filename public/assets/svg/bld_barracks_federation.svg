@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <!-- 联邦兵营 - 砖砌训练设施 -->
+  <rect x="8" y="22" width="80" height="66" rx="3" fill="#664433"/>
+  <line x1="8" y1="36" x2="88" y2="36" stroke="#5a3a2a" stroke-width="1"/>
+  <line x1="8" y1="50" x2="88" y2="50" stroke="#5a3a2a" stroke-width="1"/>
+  <line x1="8" y1="64" x2="88" y2="64" stroke="#5a3a2a" stroke-width="1"/>
+  <rect x="4" y="14" width="88" height="12" rx="2" fill="#775544"/>
+  <!-- 窗户 -->
+  <rect x="16" y="34" width="14" height="10" rx="2" fill="#ffcc66" opacity="0.3"/>
+  <rect x="36" y="34" width="14" height="10" rx="2" fill="#ffcc66" opacity="0.3"/>
+  <rect x="56" y="34" width="14" height="10" rx="2" fill="#ffcc66" opacity="0.3"/>
+  <!-- 大门 -->
+  <rect x="34" y="60" width="28" height="28" rx="3" fill="#3a1a0a"/>
+  <!-- 国旗 -->
+  <line x1="80" y1="10" x2="80" y2="0" stroke="#666" stroke-width="2"/>
+  <rect x="80" y="0" width="14" height="10" fill="#e67e22"/>
+</svg>

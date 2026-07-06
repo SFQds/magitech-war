@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 突击工兵 - 联邦战斗工兵 -->
+  <!-- 靴子 -->
+  <rect x="18" y="52" width="12" height="8" rx="2" fill="#4a3a28"/>
+  <rect x="34" y="52" width="12" height="8" rx="2" fill="#4a3a28"/>
+  <!-- 工装裤 -->
+  <rect x="20" y="40" width="10" height="14" fill="#6a5a40"/>
+  <rect x="34" y="40" width="10" height="14" fill="#6a5a40"/>
+  <!-- 身体 -->
+  <rect x="16" y="22" width="32" height="20" rx="3" fill="#887744"/>
+  <!-- 工具带 -->
+  <rect x="14" y="34" width="36" height="5" rx="2" fill="#665533"/>
+  <!-- 头 -->
+  <circle cx="32" cy="14" r="10" fill="#e8c8a0"/>
+  <!-- 焊接面罩（推上） -->
+  <rect x="22" y="2" width="20" height="12" rx="3" fill="#333"/>
+  <rect x="24" y="4" width="16" height="6" rx="2" fill="#1a1a1a"/>
+  <!-- 右手：焊枪/步枪 -->
+  <rect x="44" y="24" width="16" height="4" rx="1" fill="#555"/>
+  <rect x="58" y="22" width="4" height="8" rx="1" fill="#444"/>
+  <!-- 焊枪火焰 -->
+  <ellipse cx="62" cy="26" rx="4" ry="2" fill="#ff6622" opacity="0.6"/>
+  <ellipse cx="64" cy="26" rx="2" ry="1" fill="#ffaa44" opacity="0.5"/>
+  <!-- 左手：扳手 -->
+  <rect x="4" y="30" width="16" height="4" rx="2" fill="#aaa" transform="rotate(-30, 6, 32)"/>
+  <circle cx="2" cy="22" r="4" fill="none" stroke="#aaa" stroke-width="2"/>
+  <!-- 背上工具包 -->
+  <rect x="22" y="16" width="20" height="8" rx="2" fill="#665533" opacity="0.6"/>
+</svg>

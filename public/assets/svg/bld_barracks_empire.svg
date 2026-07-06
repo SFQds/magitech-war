@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <!-- 帝国兵营 - 训练场+冥想室 -->
+  <rect x="8" y="20" width="80" height="68" rx="4" fill="#3a3a4a"/>
+  <rect x="4" y="16" width="88" height="8" rx="2" fill="#4a4a5a"/>
+  <!-- 柱廊 -->
+  <rect x="12" y="24" width="6" height="60" fill="#4a4a5a"/>
+  <rect x="26" y="24" width="6" height="60" fill="#4a4a5a"/>
+  <rect x="64" y="24" width="6" height="60" fill="#4a4a5a"/>
+  <rect x="78" y="24" width="6" height="60" fill="#4a4a5a"/>
+  <!-- 训练场沙地 -->
+  <rect x="34" y="32" width="28" height="52" fill="#8a8040" opacity="0.3"/>
+  <!-- 标靶 -->
+  <circle cx="48" cy="48" r="8" fill="none" stroke="#cc4444" stroke-width="2"/>
+  <circle cx="48" cy="48" r="4" fill="none" stroke="#cc4444" stroke-width="1.5"/>
+  <circle cx="48" cy="48" r="1.5" fill="#cc4444"/>
+  <!-- 符文阵（冥想区） -->
+  <circle cx="70" cy="56" r="12" fill="none" stroke="#9b59b6" stroke-width="1" opacity="0.3"/>
+  <!-- 大门 -->
+  <rect x="36" y="64" width="24" height="24" rx="3" fill="#1a1a2e"/>
+  <rect x="38" y="66" width="20" height="20" rx="2" fill="#5a4a7a" opacity="0.4"/>
+</svg>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <!-- 魔导机甲 - 双足步行机甲 -->
+  <!-- 左腿 -->
+  <rect x="20" y="64" width="16" height="24" rx="3" fill="#665544"/>
+  <rect x="22" y="80" width="12" height="12" rx="2" fill="#554433"/>
+  <!-- 右腿 -->
+  <rect x="60" y="64" width="16" height="24" rx="3" fill="#665544"/>
+  <rect x="62" y="80" width="12" height="12" rx="2" fill="#554433"/>
+  <!-- 膝关节 -->
+  <circle cx="28" cy="68" r="4" fill="#887766"/>
+  <circle cx="68" cy="68" r="4" fill="#887766"/>
+  <!-- 机身 -->
+  <rect x="16" y="24" width="64" height="44" rx="6" fill="#776655"/>
+  <!-- 胸甲默库里合金板 -->
+  <rect x="36" y="28" width="24" height="16" rx="3" fill="#9b59b6" opacity="0.5"/>
+  <rect x="38" y="30" width="20" height="12" rx="2" fill="#cc88ff" opacity="0.3"/>
+  <!-- 左臂 -->
+  <rect x="4" y="30" width="14" height="28" rx="3" fill="#665544"/>
+  <rect x="2" y="36" width="6" height="14" rx="2" fill="#554433"/>
+  <!-- 右臂（武器臂） -->
+  <rect x="78" y="28" width="14" height="32" rx="3" fill="#665544"/>
+  <rect x="88" y="24" width="8" height="20" rx="2" fill="#554433"/>
+  <!-- 肩甲 -->
+  <rect x="10" y="22" width="22" height="10" rx="3" fill="#887766"/>
+  <rect x="64" y="22" width="22" height="10" rx="3" fill="#887766"/>
+  <!-- 头部（驾驶舱） -->
+  <rect x="34" y="8" width="28" height="20" rx="4" fill="#554433"/>
+  <rect x="38" y="12" width="20" height="12" rx="2" fill="#88aacc" opacity="0.5"/>
+  <!-- 天线 -->
+  <line x1="48" y1="8" x2="48" y2="0" stroke="#998877" stroke-width="2"/>
+  <circle cx="48" cy="0" r="2" fill="#ff4444"/>
+</svg>
