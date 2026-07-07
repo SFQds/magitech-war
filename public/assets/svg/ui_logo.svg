@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 80">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3a2a5a"/>
+      <stop offset="100%" style="stop-color:#1a1a2e"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="80" rx="8" fill="url(#g)" stroke="#9b59b6" stroke-width="1.5"/>
+  <text x="150" y="44" text-anchor="middle" font-size="22" fill="#c8a2c8" font-family="Arial,sans-serif" font-weight="bold">魔导工业革命</text>
+  <text x="150" y="64" text-anchor="middle" font-size="10" fill="#7f6a8e" font-family="Arial,sans-serif">MAGITECH INDUSTRIAL REVOLUTION</text>
+</svg>

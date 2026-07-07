@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <text x="32" y="36" text-anchor="middle" font-size="10" fill="#888" font-family="sans-serif">5人编队</text>
+  <rect x="4" y="48" width="12" height="10" rx="2" fill="#4a3728"/><rect x="4" y="54" width="12" height="6" fill="#5a4738"/>
+  <rect x="18" y="46" width="12" height="12" rx="2" fill="#4a3728"/><rect x="18" y="52" width="12" height="8" fill="#5a4738"/>
+  <rect x="32" y="48" width="12" height="10" rx="2" fill="#4a3728"/><rect x="32" y="54" width="12" height="6" fill="#5a4738"/>
+  <rect x="46" y="46" width="12" height="12" rx="2" fill="#4a3728"/><rect x="46" y="52" width="12" height="8" fill="#5a4738"/>
+  <rect x="6" y="34" width="8" height="16" fill="#667788"/><rect x="20" y="32" width="8" height="16" fill="#667788"/>
+  <rect x="34" y="34" width="8" height="16" fill="#667788"/><rect x="48" y="32" width="8" height="16" fill="#667788"/>
+  <circle cx="10" cy="24" r="8" fill="#e8c8a0"/><circle cx="24" cy="22" r="8" fill="#e8c8a0"/>
+  <circle cx="38" cy="24" r="8" fill="#e8c8a0"/><circle cx="52" cy="22" r="8" fill="#e8c8a0"/>
+  <rect x="8" y="16" width="12" height="6" rx="2" fill="#4a5568"/><rect x="22" y="14" width="12" height="6" rx="2" fill="#4a5568"/>
+  <rect x="36" y="16" width="12" height="6" rx="2" fill="#4a5568"/><rect x="50" y="14" width="12" height="6" rx="2" fill="#4a5568"/>
+  <rect x="18" y="28" width="12" height="3" fill="#444"/><rect x="46" y="28" width="12" height="3" fill="#444"/>
+</svg>
