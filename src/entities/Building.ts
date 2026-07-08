@@ -14,7 +14,7 @@ export class Building extends Entity {
   buildProgress: number = 0;        // 0~1, 1=建造完成
   rallyPoint: Point | null = null;
   productionQueue: ProductionItem[] = [];
-  maxQueueSize: number = 1;         // 机械行会流水线可提升至3
+  maxQueueSize: number = 5;         // 默认支持 5 个排队槽位
   providesSupply: number = 0;
   providesIndustry: number = 0;
 

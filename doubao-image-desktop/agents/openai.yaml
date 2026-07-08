@@ -1,0 +1,4 @@
+interface:
+  display_name: "豆包桌面生图"
+  short_description: "Generate images with Doubao desktop, remove AI watermarks, and strip backgrounds to transparent PNGs."
+  default_prompt: "Use $doubao-image-desktop to generate images with Doubao desktop, clean watermarks, or remove backgrounds."

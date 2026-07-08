@@ -24,12 +24,12 @@ interface AStarNode {
 export class MovementSystem {
   /** 为单个单位计算路径并设置 */
   static navigate(unit: Unit, target: Point, map: GameMap): void {
-    const path = this.findPath(
-      { x: unit.tileX, y: unit.tileY },
-      target,
-      map,
-      unit.category
-    );
+    // 取整坐标，防止浮点下标访问 grid
+    const start = {
+      x: Math.round(unit.tileX),
+      y: Math.round(unit.tileY),
+    };
+    const path = this.findPath(start, target, map, unit.category);
     if (path.length > 0) {
       unit.setPath(path);
     }
@@ -42,24 +42,30 @@ export class MovementSystem {
     map: GameMap,
     _category: string
   ): Point[] {
+    // 座标取整（防御性：防止浮点下标访问 grid）
+    const sx = Math.round(start.x);
+    const sy = Math.round(start.y);
+    const ex = Math.round(end.x);
+    const ey = Math.round(end.y);
+
+    // 起点或终点不可通过 → 返回空
+    if (!map.isPassable(sx, sy) || !map.isPassable(ex, ey)) {
+      return [];
+    }
+
     const grid = map.getPassableGrid();
     const w = map.config.width;
     const h = map.config.height;
-
-    // 终点不可通过或不在范围内 → 返回空
-    if (!map.isPassable(end.x, end.y)) {
-      return [];
-    }
 
     const openList: AStarNode[] = [];
     const closedSet = new Set<string>();
 
     const startNode: AStarNode = {
-      x: start.x,
-      y: start.y,
+      x: sx,
+      y: sy,
       g: 0,
-      h: manhattan(start, end),
-      f: manhattan(start, end),
+      h: manhattan({ x: sx, y: sy }, { x: ex, y: ey }),
+      f: manhattan({ x: sx, y: sy }, { x: ex, y: ey }),
       parent: null,
     };
     openList.push(startNode);
@@ -81,7 +87,7 @@ export class MovementSystem {
       const key = `${current.x},${current.y}`;
 
       // 到达终点
-      if (current.x === end.x && current.y === end.y) {
+      if (current.x === ex && current.y === ey) {
         return this.reconstructPath(current);
       }
 
@@ -112,7 +118,7 @@ export class MovementSystem {
 
         const moveCost = (dx !== 0 && dy !== 0) ? 1.414 : 1;
         const g = current.g + moveCost;
-        const h = manhattan({ x: nx, y: ny }, end);
+        const h = manhattan({ x: nx, y: ny }, { x: ex, y: ey });
         const f = g + h;
 
         openList.push({ x: nx, y: ny, g, h, f, parent: current });
@@ -135,7 +141,8 @@ export class MovementSystem {
 
   /** 每帧更新单位位置 */
   static updateMovement(unit: Unit, deltaSec: number, map: GameMap): void {
-    if (unit.state !== 'moving' || unit.path.length === 0) return;
+    // 接受 moving 和 pursuing 两种移动状态
+    if ((unit.state !== 'moving' && unit.state !== 'pursuing') || unit.path.length === 0) return;
 
     const target = unit.path[unit.pathIndex];
     if (!target) {
@@ -154,8 +161,15 @@ export class MovementSystem {
       unit.pathIndex++;
 
       if (unit.pathIndex >= unit.path.length) {
-        // 到达终点
-        unit.clearPath();
+        // 到达终点：根据之前的状态切换
+        if (unit.state === 'pursuing' && unit.targetEntityId) {
+          // 追击到达 → 准备攻击
+          unit.state = 'attacking';
+        } else {
+          unit.clearPath();
+        }
+        unit.path = [];
+        unit.pathIndex = 0;
       }
       return;
     }

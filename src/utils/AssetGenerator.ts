@@ -6,6 +6,10 @@
  */
 
 import Phaser from 'phaser';
+import { PNG_SPRITE_KEYS } from '../config/sprites';
+
+/** 已有 PNG 精灵的 key（不生成占位纹理） */
+const PNG_KEYS = new Set<string>(PNG_SPRITE_KEYS);
 
 export class AssetGenerator {
   private scene: Phaser.Scene;
@@ -14,7 +18,7 @@ export class AssetGenerator {
     this.scene = scene;
   }
 
-  /** 生成所有 P0 占位资源 */
+  /** 生成所有占位资源（自动跳过已有 PNG 的 key） */
   generateAll(): void {
     this.terrainTiles();
     this.units();
@@ -349,11 +353,14 @@ export class AssetGenerator {
    * @param h 高度
    * @param draw 绘制回调
    */
-  private draw(key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void): void {
-    if (this.scene.textures.exists(key)) return; // 已存在
+  private draw(key: string, w: number, h: number, drawFn: (g: Phaser.GameObjects.Graphics) => void): void {
+    if (PNG_KEYS.has(key)) return; // PNG 已覆盖，不生成占位纹理
+    if (this.scene.textures.exists(key)) {
+      this.scene.textures.remove(key); // 删除旧 SVG/占位纹理，让 PNG 重新注册
+    }
 
     const g = this.scene.add.graphics();
-    draw(g);
+    drawFn(g);
     g.generateTexture(key, w, h);
     g.destroy();
   }

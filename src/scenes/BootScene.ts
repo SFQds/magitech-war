@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { AssetGenerator } from '../utils/AssetGenerator';
+import { PNG_SPRITE_KEYS } from '../config/sprites';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -7,7 +8,6 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // 显示加载进度
     const { width, height } = this.cameras.main;
     const progressBar = this.add.graphics();
     const progressBox = this.add.graphics();
@@ -25,25 +25,24 @@ export class BootScene extends Phaser.Scene {
       progressBox.destroy();
     });
 
-    // 标题
-    const title = this.add.text(width / 2, height / 2 - 60, '魔导工业革命', {
-      fontSize: '28px',
-      color: '#c8a2c8',
-      fontFamily: 'Arial, sans-serif',
-    });
-    title.setOrigin(0.5);
+    // === PNG 精灵列表（和 config/sprites.ts 保持一致） ===
+    for (const key of PNG_SPRITE_KEYS) {
+      this.load.image(key, `assets/sprites/${key}.png`);
+    }
 
-    this.add.text(width / 2, height / 2 + 40, '正在生成占位资源…', {
-      fontSize: '14px',
-      color: '#7f6a8e',
-      fontFamily: 'Arial, sans-serif',
+    this.add.text(width / 2, height / 2 - 60, '魔导工业革命', {
+      fontSize: '28px', color: '#c8a2c8', fontFamily: 'Arial, sans-serif',
+    }).setOrigin(0.5);
+
+    this.add.text(width / 2, height / 2 + 40, '正在加载精灵资源…', {
+      fontSize: '14px', color: '#7f6a8e', fontFamily: 'Arial, sans-serif',
     }).setOrigin(0.5);
   }
 
   create(): void {
-    // 生成所有占位纹理
-    const generator = new AssetGenerator(this);
-    generator.generateAll();
+    // 为未加载的纹理生成占位图（地形、未实装的单位/建筑等）
+    const gen = new AssetGenerator(this);
+    gen.generateAll();
 
     this.scene.start('MenuScene');
   }

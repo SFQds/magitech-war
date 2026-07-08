@@ -8,7 +8,7 @@ import type { DamageType, ArmorType, FactionId, ResourceType } from './data';
 // ============ 实体状态枚举 ============
 
 /** 单位当前行为状态 */
-export type UnitState = 'idle' | 'moving' | 'attacking' | 'gathering' | 'building' | 'dead';
+export type UnitState = 'idle' | 'moving' | 'attacking' | 'pursuing' | 'gathering' | 'building' | 'dead';
 
 /** 建筑当前状态 */
 export type BuildingState = 'constructing' | 'idle' | 'producing' | 'researching' | 'destroyed';

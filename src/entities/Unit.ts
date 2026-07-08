@@ -19,6 +19,7 @@ export class Unit extends Entity {
   path: Point[] = [];
   pathIndex: number = 0;
   targetEntityId: string | null = null;
+  targetResourceId: string | null = null;
   cargo: Unit[] = [];
   abilities: UnitAbility[];
   abilityCharges: number = 0;
@@ -66,7 +67,7 @@ export class Unit extends Entity {
   clearPath(): void {
     this.path = [];
     this.pathIndex = 0;
-    if (this.state === 'moving') {
+    if (this.state === 'moving' || this.state === 'pursuing') {
       this.state = 'idle';
     }
   }
@@ -81,7 +82,7 @@ export class Unit extends Entity {
   /** 停止攻击 */
   stopAttacking(): void {
     this.targetEntityId = null;
-    if (this.state === 'attacking') {
+    if (this.state === 'attacking' || this.state === 'pursuing') {
       this.state = 'idle';
     }
   }

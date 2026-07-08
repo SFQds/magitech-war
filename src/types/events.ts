@@ -22,15 +22,18 @@ export enum GameEvent {
   // ---- 建筑事件 ----
   BUILDING_COMPLETE = 'building:complete',
   BUILDING_DESTROYED = 'building:destroyed',
+  PRODUCTION_STARTED = 'production:started',
   PRODUCTION_COMPLETE = 'production:complete',
   RESEARCH_COMPLETE = 'research:complete',
 
   // ---- 资源事件 ----
   RESOURCE_CHANGED = 'resource:changed',
   RESOURCE_DEPLETED = 'resource:depleted',
+  RESOURCE_GATHERED = 'resource:gathered',
 
   // ---- 选择/输入事件 ----
   SELECTION_CHANGED = 'selection:changed',
+  BUILDING_SELECTED = 'building:selected',
   COMMAND_ISSUED = 'command:issued',
   RIGHT_CLICK = 'input:right_click',
 
@@ -88,6 +91,20 @@ export interface ProductionCompleteData {
   buildingId: string;
   playerIndex: number;
   unitDefId: string;
+}
+
+export interface ProductionStartedData {
+  buildingId: string;
+  playerIndex: number;
+  unitDefId: string;
+  totalTime: number;
+}
+
+export interface ResourceGatheredData {
+  fieldId: string;
+  workerId: string;
+  playerIndex: number;
+  amount: number;
 }
 
 export interface ResearchCompleteData {

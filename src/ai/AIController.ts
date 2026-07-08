@@ -6,6 +6,9 @@
 
 import type { GameWorld } from '../core/GameWorld';
 import type { AnyCommand } from '../types/commands';
+import type { Unit } from '../entities/Unit';
+import type { Building } from '../entities/Building';
+import type { ResourceField } from '../entities/ResourceField';
 import { EconomyAI } from './EconomyAI';
 import { MilitaryAI } from './MilitaryAI';
 
@@ -36,8 +39,8 @@ export class AIController {
     this.militaryAI = new MilitaryAI(world, playerIndex);
   }
 
-  /** 每帧调用 */
-  update(deltaSec: number): AnyCommand[] {
+  /** 每帧调用，返回 AI 决策的命令列表 */
+  update(deltaSec: number, units: Unit[], buildings: Building[], _fields: ResourceField[]): AnyCommand[] {
     this.tickTimer += deltaSec;
 
     if (this.tickTimer < this.tickInterval) return [];
@@ -45,11 +48,11 @@ export class AIController {
 
     const commands: AnyCommand[] = [];
 
-    // 经济决策
-    commands.push(...this.economyAI.evaluate());
+    // 经济决策（需要 units 来统计工人数）
+    commands.push(...this.economyAI.evaluate(buildings, units));
 
     // 军事决策
-    commands.push(...this.militaryAI.evaluate());
+    commands.push(...this.militaryAI.evaluate(units, buildings));
 
     return commands;
   }

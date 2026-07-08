@@ -9,17 +9,80 @@ import { Unit } from '../entities/Unit';
 import { ResourceField } from '../entities/ResourceField';
 import { Building } from '../entities/Building';
 
+export interface GatherEvent {
+  workerId: string;
+  fieldId: string;
+  playerIndex: number;
+  amount: number;
+}
+
 export class ResourceSystem {
-  /** 工兵采集资源 */
+  /** 工兵采集资源（单次调用） */
   static gather(worker: Unit, field: ResourceField): number {
     if (!field.isActive || field.isDepleted) return 0;
-    if (field.currentGatherers >= field.maxGatherers) return 0;
-
+    // 允许超出 maxGatherers 的情况（已到场的已通过 GameScene 检查）
     const gathered = field.gather(10); // 基础采集速率：10/次
     return gathered;
   }
 
-  /** 更新所有玩家资源 */
+  /**
+   * 每帧更新所有正在采集的工人
+   * 每 1 秒执行一次采集 tick
+   */
+  static updateGathering(
+    units: Unit[],
+    fields: ResourceField[],
+    players: PlayerState[],
+    deltaSec: number,
+  ): GatherEvent[] {
+    const events: GatherEvent[] = [];
+
+    for (const unit of units) {
+      if (!unit.isAlive || unit.state !== 'gathering') continue;
+
+      if (!unit.targetResourceId) {
+        unit.state = 'idle';
+        continue;
+      }
+
+      const field = fields.find(f => f.id === unit.targetResourceId);
+      if (!field || !field.isActive || field.isDepleted) {
+        unit.targetResourceId = null;
+        unit.state = 'idle';
+        continue;
+      }
+
+      // 累积采集计时
+      (unit as any)._gatherTimer = ((unit as any)._gatherTimer ?? 0) + deltaSec;
+      if ((unit as any)._gatherTimer >= 1.0) {
+        (unit as any)._gatherTimer -= 1.0;
+
+        const amount = ResourceSystem.gather(unit, field);
+        if (amount > 0) {
+          const player = players[unit.owner];
+          if (player) {
+            player.resources.crystal += amount;
+            events.push({
+              workerId: unit.id,
+              fieldId: field.id,
+              playerIndex: unit.owner,
+              amount,
+            });
+          }
+
+          if (field.isDepleted) {
+            unit.targetResourceId = null;
+            unit.state = 'idle';
+            if (field.currentGatherers > 0) field.currentGatherers--;
+          }
+        }
+      }
+    }
+
+    return events;
+  }
+
+  /** 更新所有玩家资源（补给/工业上限重算） */
   static updateResources(
     players: PlayerState[],
     _units: Unit[],
