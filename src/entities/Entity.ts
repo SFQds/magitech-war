@@ -19,6 +19,9 @@ export abstract class Entity {
   armorType: ArmorType;
   /** 固定减伤值（科技/技能叠加） */
   armor: number = 0;
+  /** 护盾生命值（奥术守卫等有护盾的单位） */
+  shieldHp: number = 0;
+  maxShieldHp: number = 0;
   isActive: boolean;
   spriteKey: string;
 
@@ -47,11 +50,23 @@ export abstract class Entity {
     this.spriteKey = spriteKey;
   }
 
-  /** 受到伤害，返回是否死亡 */
-  takeDamage(amount: number): boolean {
+  /** 受到伤害，返回是否死亡。damageType 用于虚空穿透护甲 */
+  takeDamage(amount: number, damageType?: string): boolean {
     if (!this.isActive) return false;
-    // 护甲减伤（至少造成1点伤害）
-    const final = Math.max(1, amount - this.armor);
+    let remaining = amount;
+    // 护盾优先吸收伤害
+    if (this.shieldHp > 0) {
+      if (remaining <= this.shieldHp) {
+        this.shieldHp -= remaining;
+        remaining = 0;
+      } else {
+        remaining -= this.shieldHp;
+        this.shieldHp = 0;
+      }
+    }
+    // 虚空伤害穿透50%护甲
+    const effectiveArmor = damageType === 'void' ? Math.floor(this.armor * 0.5) : this.armor;
+    const final = Math.max(1, remaining - effectiveArmor);
     this.hp -= final;
     if (this.hp <= 0) {
       this.hp = 0;

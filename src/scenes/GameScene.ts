@@ -923,6 +923,13 @@ export class GameScene extends Phaser.Scene {
       s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
 
     this.applyTechToUnit(unit);
+
+    // 奥术守卫：初始护盾 200
+    if (unitDefId === 'unit_arcane_guard') {
+      unit.shieldHp = 200;
+      unit.maxShieldHp = 200;
+    }
+
     this.addUnit(unit);
     EventBus.emit(GameEvent.UNIT_CREATED, {
       unitId: unit.id,
@@ -1106,13 +1113,32 @@ export class GameScene extends Phaser.Scene {
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist < 0.3) {
-        // 命中
-        target.takeDamage(proj.damage);
+        // 命中（虚空穿透护甲由 takeDamage 处理）
+        target.takeDamage(proj.damage, proj.damageType);
         proj.isActive = false;
         toRemove.push(proj.id);
 
         // 命中闪光
         this.flashTimers.set(proj.targetId, 0.12);
+
+        // 掷弹兵AOE：命中后对周围2格内敌人造成溅射伤害
+        const attackerUnit = this.unitMap.get(proj.sourceId);
+        if (attackerUnit && attackerUnit.spriteKey === 'unit_grenadier') {
+          const aoeEvents = CombatSystem.calculateAOE(
+            target.tileX, target.tileY, 2, Math.round(proj.damage * 0.5),
+            proj.damageType, proj.owner, attackerUnit.faction,
+            this.units, this.buildings,
+          );
+          for (const ae of aoeEvents) {
+            this.flashTimers.set(ae.targetId, 0.12);
+            if (ae.targetDied) {
+              this.flashTimers.delete(ae.targetId);
+              EventBus.emit(GameEvent.UNIT_KILLED, {
+                unitId: ae.targetId, killerId: proj.sourceId, playerIndex: 1,
+              });
+            }
+          }
+        }
 
         if (!target.isAlive) {
           this.flashTimers.delete(proj.targetId);

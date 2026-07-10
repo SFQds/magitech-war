@@ -52,13 +52,13 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
   unit_rifleman: {
     displayName: '水晶步枪兵',
     cost: { crystal: 150, supply: 1, time: 10 },
-    stats: { hp: 120, armor: 'light', category: 'infantry', speed: 2.2, damage: 14, dmgType: 'physical', range: 5, cooldown: 0.8, sight: 7 },
+    stats: { hp: 120, armor: 'light', category: 'infantry', speed: 2.2, damage: 16, dmgType: 'crystal', range: 5, cooldown: 0.8, sight: 7 },
     attackEffect: 'proj_bullet',
   },
   unit_battle_mage: {
     displayName: '战斗法师',
-    cost: { crystal: 240, supply: 2, time: 15 },
-    stats: { hp: 150, armor: 'light', category: 'infantry', speed: 2.5, damage: 30, dmgType: 'magic', range: 6, cooldown: 1.0, sight: 6 },
+    cost: { crystal: 300, supply: 2, time: 15 },
+    stats: { hp: 150, armor: 'light', category: 'infantry', speed: 2.5, damage: 25, dmgType: 'magic', range: 6, cooldown: 1.0, sight: 6 },
     attackEffect: 'proj_magic_bolt',
   },
   unit_magitech_mech: {
@@ -69,8 +69,8 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
   },
   unit_arcane_heavy: {
     displayName: '奥术重步',
-    cost: { crystal: 600, supply: 3, time: 30 },
-    stats: { hp: 400, armor: 'heavy', category: 'infantry', speed: 2.0, damage: 40, dmgType: 'magic', range: 2, cooldown: 0.9, sight: 6 },
+    cost: { crystal: 350, supply: 3, time: 25 },
+    stats: { hp: 250, armor: 'heavy', category: 'infantry', speed: 1.8, damage: 20, dmgType: 'magic', range: 4, cooldown: 1.0, sight: 6 },
     attackEffect: 'melee',
   },
   unit_scout_bike: {
@@ -90,6 +90,25 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     cost: { crystal: 400, supply: 1, time: 20 },
     stats: { hp: 400, armor: 'structure', category: 'infantry', speed: 0, damage: 25, dmgType: 'physical', range: 6, cooldown: 1.2, sight: 6 },
     attackEffect: 'proj_bullet',
+  },
+  // === L3 专属兵种 ===
+  unit_arcane_guard: {
+    displayName: '奥术守卫',
+    cost: { crystal: 500, supply: 3, time: 25 },
+    stats: { hp: 350, armor: 'shield', category: 'infantry', speed: 1.8, damage: 30, dmgType: 'magic', range: 1, cooldown: 1.2, sight: 5 },
+    attackEffect: 'melee',
+  },
+  unit_hammer_squad: {
+    displayName: '铁锤步兵团',
+    cost: { crystal: 350, supply: 4, time: 18 },
+    stats: { hp: 400, armor: 'light', category: 'infantry', speed: 2.0, damage: 60, dmgType: 'physical', range: 5, cooldown: 1.8, sight: 7 },
+    attackEffect: 'proj_bullet',
+  },
+  unit_grenadier: {
+    displayName: '掷弹兵',
+    cost: { crystal: 250, supply: 2, time: 14 },
+    stats: { hp: 100, armor: 'light', category: 'infantry', speed: 2.4, damage: 30, dmgType: 'alchemy', range: 4, cooldown: 1.5, sight: 5 },
+    attackEffect: 'proj_cannon',
   },
 };
 
@@ -126,14 +145,14 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     cost: { crystal: 300, industry: 0, time: 15 },
     hp: 800,
     provides: { supply: 20, industry: 0 },
-    produces: ['unit_rifleman', 'unit_battle_mage'],
+    produces: ['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier'],
   },
   bld_factory: {
     displayName: '工厂',
     cost: { crystal: 500, industry: 40, time: 30 },
     hp: 1000,
     provides: { supply: 20, industry: 30 },
-    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport'],
+    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport', 'unit_hammer_squad'],
   },
   bld_refinery: {
     displayName: '采矿场',

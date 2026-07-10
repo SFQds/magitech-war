@@ -15,9 +15,12 @@ import type { StrategyDirective } from './StrategyManager';
 const UNIT_CRYSTAL_COST: Record<string, number> = {
   unit_worker: 100,
   unit_rifleman: 150,
-  unit_battle_mage: 240,
+  unit_battle_mage: 300,
   unit_magitech_mech: 400,
-  unit_arcane_heavy: 600,
+  unit_arcane_heavy: 350,
+  unit_arcane_guard: 500,
+  unit_hammer_squad: 350,
+  unit_grenadier: 250,
 };
 
 export class EconomyAI {
@@ -101,6 +104,19 @@ export class EconomyAI {
     }
 
     // 2. 建造建筑（缺什么建什么，不受侵略性限制；但高侵略时优先训练而非新建）
+    const hasRefinery = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_refinery'
+    );
+    const hasPowerPlant = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_power_plant'
+    );
+    const hasTechBuilding = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive &&
+        (b.spriteKey === 'bld_ancient_archive' || b.spriteKey === 'bld_assembly_workshop')
+    );
+    const faction = player.faction;
+    const techBldId = faction === 'arcane_empire' ? 'bld_ancient_archive' : 'bld_assembly_workshop';
+
     if (directive.aggression < 0.7 || (!hasBarracks && !hasFactory)) {
       if (!hasBarracks && crystal >= 300) {
         commands.push({
@@ -113,6 +129,47 @@ export class EconomyAI {
         commands.push({
           type: 'build', playerIndex: this.playerIndex,
           unitIds: [], buildingDefId: 'bld_factory',
+          position: { x: 0, y: 0 }, frame: 0,
+        } as any);
+      }
+    }
+    // 采矿场: 水晶充裕时建造（扩张阶段优先）
+    if (!hasRefinery && crystal >= 400) {
+      commands.push({
+        type: 'build', playerIndex: this.playerIndex,
+        unitIds: [], buildingDefId: 'bld_refinery',
+        position: { x: 0, y: 0 }, frame: 0,
+      } as any);
+    }
+    // 工业车间: 工厂存在且有富余水晶时建造
+    if (!hasPowerPlant && hasFactory && crystal >= 400) {
+      commands.push({
+        type: 'build', playerIndex: this.playerIndex,
+        unitIds: [], buildingDefId: 'bld_power_plant',
+        position: { x: 0, y: 0 }, frame: 0,
+      } as any);
+    }
+    // 科技建筑: 中期水晶充裕时建造
+    if (!hasTechBuilding && crystal >= 500) {
+      commands.push({
+        type: 'build', playerIndex: this.playerIndex,
+        unitIds: [], buildingDefId: techBldId,
+        position: { x: 0, y: 0 }, frame: 0,
+      } as any);
+    }
+
+    // 2.5. 科技研究: 水晶充裕时从科技建筑发起
+    if (hasTechBuilding && crystal >= 500) {
+      const techBld = buildings.find(
+        b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === techBldId
+      );
+      if (techBld && techBld.state === 'idle' && !techBld.researchingTechId) {
+        // 扩张倾向优先采集科技，否则优先建筑加固
+        const techId = directive.expansion > 0.5 ? 'tech:advanced_mining' : 'tech:structure_reinforce';
+        commands.push({
+          type: 'research', playerIndex: this.playerIndex,
+          unitIds: [], buildingId: techBld.id,
+          buildingDefId: '', techDefId: techId,
           position: { x: 0, y: 0 }, frame: 0,
         } as any);
       }
@@ -130,9 +187,12 @@ export class EconomyAI {
       let producer = ownProductions.find(b => {
         if (trainedBuildings.has(b.id)) return false;
         if (unitDefId === 'unit_magitech_mech') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_hammer_squad') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_arcane_guard') return b.spriteKey === 'bld_ancient_archive';
         if (unitDefId === 'unit_battle_mage') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_arcane_heavy') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_rifleman') return b.spriteKey === 'bld_barracks';
+        if (unitDefId === 'unit_grenadier') return b.spriteKey === 'bld_barracks';
         return false;
       });
       if (!producer) continue;

@@ -30,10 +30,12 @@ export interface CombatEvent {
   damage: number;
   targetDied: boolean;
   attackType: DamageType;
-  /** 'melee' = 近战即时伤害, 其他值 = 弹道纹理 key */
+  /** 'melee' = 近战即时伤害, 'aoe' = 范围伤害, 其他值 = 弹道纹理 key */
   attackEffect: string;
   /** 是否为近战攻击 */
   isMelee: boolean;
+  /** AOE 半径（掷弹兵等范围攻击），0 表示单体 */
+  aoeRadius?: number;
   /** 弹道起点（远程时有值） */
   attackerTileX?: number;
   attackerTileY?: number;
@@ -150,8 +152,8 @@ export class CombatSystem {
           const attackEffect = def?.attackEffect ?? 'melee';
 
           if (attackEffect === 'melee') {
-            // 近战：即时伤害 + 红色闪烁（由 GameScene 处理闪光）
-            const died = target.takeDamage(damage);
+            // 近战：即时伤害（虚空穿透护甲由 takeDamage 处理）
+            const died = target.takeDamage(damage, unit.attackType);
             events.push({
               attackerId: unit.id,
               targetId: target.id,
@@ -279,5 +281,57 @@ export class CombatSystem {
     }
 
     return nearest;
+  }
+
+  /** AOE 范围伤害：对中心点 radius 范围内所有敌人造成伤害（掷弹兵等） */
+  static calculateAOE(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    damage: number,
+    damageType: DamageType,
+    sourceOwner: number,
+    sourceFaction: string,
+    units: Unit[],
+    buildings: Building[],
+  ): CombatEvent[] {
+    const events: CombatEvent[] = [];
+    // 对范围内单位
+    for (const target of units) {
+      if (target.owner === sourceOwner || !target.isAlive) continue;
+      const d = distance({ x: centerX, y: centerY }, { x: target.tileX, y: target.tileY });
+      if (d <= radius) {
+        const finalDmg = this.calculateDamage(damage, damageType, target.armorType, sourceFaction);
+        const died = target.takeDamage(finalDmg, damageType);
+        events.push({
+          attackerId: '',
+          targetId: target.id,
+          damage: finalDmg,
+          targetDied: died,
+          attackType: damageType,
+          attackEffect: 'aoe',
+          isMelee: false,
+        });
+      }
+    }
+    // 对范围内建筑
+    for (const target of buildings) {
+      if (target.owner === sourceOwner || !target.isAlive) continue;
+      const d = distance({ x: centerX, y: centerY }, { x: target.tileX, y: target.tileY });
+      if (d <= radius) {
+        const finalDmg = this.calculateDamage(damage, damageType, target.armorType, sourceFaction);
+        const died = target.takeDamage(finalDmg, damageType);
+        events.push({
+          attackerId: '',
+          targetId: target.id,
+          damage: finalDmg,
+          targetDied: died,
+          attackType: damageType,
+          attackEffect: 'aoe',
+          isMelee: false,
+        });
+      }
+    }
+    return events;
   }
 }

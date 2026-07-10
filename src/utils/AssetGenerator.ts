@@ -214,6 +214,45 @@ export class AssetGenerator {
       g.fillStyle(0xff8844, 0.6);
       g.fillCircle(62, 30, 2);         // 枪口焰
     });
+
+    // 奥术守卫 (L3帝国专属)
+    this.draw('unit_arcane_guard', S, S, (g) => {
+      g.fillStyle(0xc8c8e8);
+      g.fillRect(16, 20, 32, 36);       // 银白重甲
+      g.fillStyle(0xf0d860, 0.6);
+      g.fillCircle(56, 28, 8);          // 左臂符文环（护盾）
+      g.fillStyle(0xf0d860, 0.3);
+      g.fillCircle(56, 28, 14);         // 护盾光晕
+    });
+
+    // 铁锤步兵团 (L3联邦专属)
+    this.draw('unit_hammer_squad', S, S, (g) => {
+      g.fillStyle(0x777766);
+      g.fillRect(4, 28, 8, 12);         // 5人小队-兵1
+      g.fillRect(14, 26, 8, 14);        // 兵2
+      g.fillRect(24, 30, 8, 10);        // 兵3
+      g.fillRect(34, 26, 8, 14);        // 兵4
+      g.fillRect(44, 28, 8, 12);        // 兵5
+      g.fillStyle(0xff6622, 0.4);
+      g.fillCircle(8, 28, 2);           // 枪口焰×5
+      g.fillCircle(18, 28, 2);
+      g.fillCircle(28, 28, 2);
+      g.fillCircle(38, 28, 2);
+      g.fillCircle(48, 28, 2);
+    });
+
+    // 掷弹兵 (L2炼金协会)
+    this.draw('unit_grenadier', S, S, (g) => {
+      g.fillStyle(0x557744);
+      g.fillRect(20, 24, 24, 28);
+      g.fillStyle(0xddaa88);
+      g.fillCircle(32, 18, 10);
+      g.fillStyle(0x88cc44, 0.8);       // 腰间酸液瓶
+      g.fillCircle(20, 40, 5);
+      g.fillCircle(44, 40, 5);
+      g.fillStyle(0x88cc44, 0.4);
+      g.fillCircle(32, 44, 6);           // 投掷弹药
+    });
   }
 
   // ============ 建筑 (96×96) ============
