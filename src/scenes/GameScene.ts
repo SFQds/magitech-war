@@ -13,7 +13,10 @@ import { CombatSystem } from '../systems/CombatSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { GuildSystem } from '../systems/GuildSystem';
+import { HeroSystem } from '../systems/HeroSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
+import { Hero } from '../entities/Hero';
+import { getFactionHero } from '../config/heroData';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { ResourceField } from '../entities/ResourceField';
@@ -74,6 +77,7 @@ export class GameScene extends Phaser.Scene {
 
   // 实体列表 + 快速查找
   private units: Unit[] = [];
+  private heroes: Hero[] = [];
   private buildings: Building[] = [];
   private resourceFields: ResourceField[] = [];
   private projectiles: Projectile[] = [];
@@ -680,6 +684,12 @@ export class GameScene extends Phaser.Scene {
     // 4.5 行会机制（奥术充能 / 流水线协议）
     GuildSystem.update(this.world.players, this.units, this.buildings, deltaSec);
 
+    // 4.6 英雄系统（被动光环 + 主动技能）
+    const heroCmds = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, deltaSec);
+    for (const cmd of heroCmds) {
+      this.executeCommand(cmd);
+    }
+
     // 5. 采集
     const gatherMults = new Map<number, number>();
     // 玩家0科技采集加成
@@ -889,6 +899,17 @@ export class GameScene extends Phaser.Scene {
         });
         break;
       }
+      case 'spawn': {
+        // 马库斯空投：在指定位置生成单位
+        const sc = cmd as any;
+        for (let i = 0; i < (sc.count ?? 1); i++) {
+          const sPos = this.world.map.findNearbyPassable(sc.position.x, sc.position.y, 5);
+          if (sPos) {
+            this.spawnUnit(sc.unitDefId, sPos, sc.playerIndex);
+          }
+        }
+        break;
+      }
       case 'stop':
       case 'hold_position': {
         for (const id of cmd.unitIds) {
@@ -910,8 +931,26 @@ export class GameScene extends Phaser.Scene {
   // ============ 单位生成 ============
 
   private spawnUnit(unitDefId: string, pos: Point, owner: number): void {
+    // 英雄路径
+    if (unitDefId.startsWith('hero:')) {
+      const faction = this.world.players[owner]?.faction ?? 'arcane_empire';
+      const hero = HeroSystem.trainHero(unitDefId, owner, faction, pos.x, pos.y);
+      if (hero) {
+        this.heroes.push(hero);
+        this.units.push(hero);
+        this.unitMap.set(hero.id, hero);
+        this.addUnitSprite(hero);
+        EventBus.emit(GameEvent.UNIT_CREATED, {
+          unitId: hero.id, playerIndex: owner,
+          defId: unitDefId, position: { x: pos.x, y: pos.y },
+        });
+      }
+      return;
+    }
+
     const def = UNIT_DEFS[unitDefId];
     if (!def) return;
+    // ... rest unchanged
 
     // 出生点安全检查：如果瓦片不可通过，搜索附近可通过位置
     let spawnX = pos.x;

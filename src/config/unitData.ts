@@ -135,14 +135,14 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     cost: { crystal: 0, industry: 0, time: 0 },
     hp: 2000,
     provides: { supply: 50, industry: 50 },
-    produces: ['unit_worker'],
+    produces: ['unit_worker', 'hero:isabelle'],
   },
   bld_cc_federation: {
     displayName: '联邦指挥中心',
     cost: { crystal: 0, industry: 0, time: 0 },
     hp: 2000,
     provides: { supply: 50, industry: 80 },
-    produces: ['unit_worker'],
+    produces: ['unit_worker', 'hero:marcus'],
   },
   bld_barracks: {
     displayName: '兵营',

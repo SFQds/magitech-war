@@ -19,7 +19,8 @@ export type CommandType =
   | 'research'
   | 'gather'
   | 'deploy'
-  | 'use_ability';
+  | 'use_ability'
+  | 'spawn';
 
 // ============ 命令接口 ============
 
@@ -110,7 +111,16 @@ export type AnyCommand =
   | DeployCommand
   | AbilityCommand
   | StopCommand
-  | HoldPositionCommand;
+  | HoldPositionCommand
+  | SpawnCommand;
+
+/** 生成单位命令（马库斯空投等） */
+export interface SpawnCommand extends Command {
+  type: 'spawn';
+  unitDefId: string;
+  count: number;
+  position: Point;
+}
 
 // ============ 命令队列 ============
 
