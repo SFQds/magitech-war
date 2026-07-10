@@ -24,6 +24,7 @@ export class AssetGenerator {
     this.units();
     this.buildings();
     this.uiIcons();
+    this.projectiles();
   }
 
   // ============ 地形瓦片 (32×32) ============
@@ -341,6 +342,50 @@ export class AssetGenerator {
       g.fillStyle(0xffffff);
       g.fillCircle(12, 9, 4);   // 头
       g.fillRect(9, 14, 6, 8);  // 身体
+    });
+  }
+
+  // ============ 弹道特效 ============
+
+  private projectiles(): void {
+    // 步枪子弹 — 金色弹丸 + 尾迹
+    this.draw('proj_bullet', 8, 4, (g) => {
+      // 尾迹
+      g.fillStyle(0xffcc44, 0.4);
+      g.fillRect(2, 1, 4, 2);
+      // 弹头
+      g.fillStyle(0xffdd66);
+      g.fillRect(5, 0, 3, 4);
+      g.fillStyle(0xffffff);
+      g.fillRect(6, 1, 1, 2);
+    });
+
+    // 魔法飞弹 — 紫色能量球 + 光晕
+    this.draw('proj_magic_bolt', 8, 8, (g) => {
+      // 外层光晕
+      g.fillStyle(0x8844cc, 0.3);
+      g.fillCircle(4, 4, 4);
+      // 内核
+      g.fillStyle(0xbb66ff);
+      g.fillCircle(4, 4, 3);
+      // 高亮
+      g.fillStyle(0xddccff);
+      g.fillCircle(3, 3, 1);
+    });
+
+    // 机甲炮弹 — 橙红炮弹 + 尾焰
+    this.draw('proj_cannon', 10, 6, (g) => {
+      // 尾焰
+      g.fillStyle(0xff6600, 0.6);
+      g.fillRect(0, 1, 4, 4);
+      g.fillStyle(0xff4400, 0.8);
+      g.fillRect(1, 2, 2, 2);
+      // 弹体
+      g.fillStyle(0xdd5544);
+      g.fillRect(4, 0, 6, 6);
+      // 高光
+      g.fillStyle(0xff8866);
+      g.fillRect(6, 1, 3, 2);
     });
   }
 

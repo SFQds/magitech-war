@@ -10,6 +10,8 @@ import { Building } from '../entities/Building';
 import { Entity } from '../entities/Entity';
 import { MovementSystem } from './MovementSystem';
 import type { GameMap } from '../core/GameMap';
+import type { FogOfWar } from '../core/FogOfWar';
+import { UNIT_DEFS, getFactionBonuses } from '../config/unitData';
 import { distance } from '../utils/MathUtils';
 
 /** 伤害-护甲 克制矩阵 */
@@ -28,6 +30,15 @@ export interface CombatEvent {
   damage: number;
   targetDied: boolean;
   attackType: DamageType;
+  /** 'melee' = 近战即时伤害, 其他值 = 弹道纹理 key */
+  attackEffect: string;
+  /** 是否为近战攻击 */
+  isMelee: boolean;
+  /** 弹道起点（远程时有值） */
+  attackerTileX?: number;
+  attackerTileY?: number;
+  targetTileX?: number;
+  targetTileY?: number;
 }
 
 export class CombatSystem {
@@ -35,10 +46,16 @@ export class CombatSystem {
   static calculateDamage(
     baseDamage: number,
     attackType: DamageType,
-    targetArmor: ArmorType
+    targetArmor: ArmorType,
+    attackerFaction?: string,
   ): number {
-    const multiplier = DAMAGE_MATRIX[attackType]?.[targetArmor] ?? 1.0;
-    return Math.round(baseDamage * multiplier);
+    const matrixMult = DAMAGE_MATRIX[attackType]?.[targetArmor] ?? 1.0;
+    // 帝国魔法伤害+10%
+    let factionMult = 1.0;
+    if (attackerFaction && attackType === 'magic') {
+      factionMult = getFactionBonuses(attackerFaction).magicDmgMult;
+    }
+    return Math.round(baseDamage * matrixMult * factionMult);
   }
 
   /** 单位攻击目标 — 检查距禈并计算伤害 */
@@ -71,6 +88,7 @@ export class CombatSystem {
     allBuildings: Building[],
     map: GameMap,
     deltaSec: number,
+    fogOfWar?: FogOfWar,
   ): CombatEvent[] {
     const events: CombatEvent[] = [];
 
@@ -122,23 +140,44 @@ export class CombatSystem {
           unit.state = 'attacking';
         }
 
-        // 冷却完毕 → 造成伤害
+        // 冷却完毕 → 攻击
         if (unit.attackTimer <= 0) {
           const damage = CombatSystem.calculateDamage(unit.attackDamage, unit.attackType, target.armorType);
-          const died = target.takeDamage(damage);
-
           unit.attackTimer = unit.attackCooldown;
 
-          events.push({
-            attackerId: unit.id,
-            targetId: target.id,
-            damage,
-            targetDied: died,
-            attackType: unit.attackType,
-          });
+          const def = UNIT_DEFS[unit.spriteKey];
+          const attackEffect = def?.attackEffect ?? 'melee';
 
-          if (died) {
-            unit.stopAttacking();
+          if (attackEffect === 'melee') {
+            // 近战：即时伤害 + 红色闪烁（由 GameScene 处理闪光）
+            const died = target.takeDamage(damage);
+            events.push({
+              attackerId: unit.id,
+              targetId: target.id,
+              damage,
+              targetDied: died,
+              attackType: unit.attackType,
+              attackEffect: 'melee',
+              isMelee: true,
+            });
+            if (died) {
+              unit.stopAttacking();
+            }
+          } else {
+            // 远程：弹道事件，伤害由弹道命中时结算
+            events.push({
+              attackerId: unit.id,
+              targetId: target.id,
+              damage,
+              targetDied: false,
+              attackType: unit.attackType,
+              attackEffect,
+              isMelee: false,
+              attackerTileX: unit.tileX,
+              attackerTileY: unit.tileY,
+              targetTileX: target.tileX,
+              targetTileY: target.tileY,
+            });
           }
         }
         continue;
@@ -146,11 +185,15 @@ export class CombatSystem {
 
       // === 自动索敌：空闲单位（或移动中的作战单位）自动攻击视野内敌人 ===
       // 工人不自动攻击；已有攻击目标的跳过（防止覆盖用户命令）
+      // AI 锁定的单位不自动索敌（防止 CombatSystem 覆盖 AI 撤退/防守命令）
       if (unit.targetEntityId) continue;
       if (unit.state !== 'idle' && unit.state !== 'moving') continue;
       if (unit.spriteKey === 'unit_worker') continue;
+      if (unit.holdPosition) continue;
+      // 仅 retreat 阻止索敌；defend/recover 允许途中自卫
+      if (unit.aiLockedAction === 'retreat') continue;
 
-      const enemy = CombatSystem.findNearestEnemy(unit, allUnits, allBuildings);
+      const enemy = CombatSystem.findNearestEnemy(unit, allUnits, allBuildings, fogOfWar);
       if (!enemy) continue;
 
       const dist = distance(
@@ -199,12 +242,15 @@ export class CombatSystem {
     unit: Unit,
     units: Unit[],
     buildings: Building[],
+    fogOfWar?: FogOfWar,
   ): Entity | null {
     let nearest: Entity | null = null;
     let nearestDist = unit.sight;
 
     for (const other of units) {
       if (other.owner === unit.owner || !other.isAlive) continue;
+      // 迷雾过滤：仅玩家单位受限制，AI 单位全图可见
+      if (fogOfWar && unit.owner === 0 && !fogOfWar.isVisible(Math.round(other.tileX), Math.round(other.tileY))) continue;
       const dist = distance(
         { x: unit.tileX, y: unit.tileY },
         { x: other.tileX, y: other.tileY },
@@ -218,6 +264,8 @@ export class CombatSystem {
     // 也检查建筑
     for (const bld of buildings) {
       if (bld.owner === unit.owner || !bld.isAlive) continue;
+      // 迷雾过滤：仅玩家单位受限制
+      if (fogOfWar && unit.owner === 0 && !fogOfWar.isVisible(bld.tileX, bld.tileY)) continue;
       const dist = distance(
         { x: unit.tileX, y: unit.tileY },
         { x: bld.tileX, y: bld.tileY },

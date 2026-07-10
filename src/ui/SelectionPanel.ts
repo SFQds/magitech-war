@@ -4,6 +4,7 @@
 
 import Phaser from 'phaser';
 import { Unit } from '../entities/Unit';
+import { CATEGORY_NAMES, STATE_NAMES, getDisplayName } from '../config/unitData';
 
 export class SelectionPanel {
   private scene: Phaser.Scene;
@@ -41,14 +42,17 @@ export class SelectionPanel {
     }
 
     const u = units[0];
-    this.nameText.setText(`${u.category} (${units.length}个)`);
-    this.hpText.setText(`HP: ${u.hp}/${u.maxHp}`);
-    this.stateText.setText(`状态: ${u.state}`);
+    const catName = CATEGORY_NAMES[u.category] ?? u.category;
+    const stateName = STATE_NAMES[u.state] ?? u.state;
+    const unitName = getDisplayName(u.spriteKey);
+    this.nameText.setText(`${unitName}·${catName} (${units.length}个)`);
+    this.hpText.setText(`生命: ${u.hp}/${u.maxHp}`);
+    this.stateText.setText(`状态: ${stateName}`);
 
     if (units.length > 1) {
       const totalHp = units.reduce((s, u) => s + u.hp, 0);
       const totalMax = units.reduce((s, u) => s + u.maxHp, 0);
-      this.hpText.setText(`总HP: ${totalHp}/${totalMax}`);
+      this.hpText.setText(`总生命: ${totalHp}/${totalMax}`);
     }
   }
 

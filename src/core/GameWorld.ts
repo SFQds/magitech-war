@@ -9,6 +9,7 @@ import type { PlayerState } from '../types/entity';
 import type { FactionId } from '../types/data';
 import { GameMap } from './GameMap';
 import { FogOfWar } from './FogOfWar';
+import { FACTION_DEFS } from '../config/unitData';
 
 export class GameWorld {
   readonly map: GameMap;
@@ -31,13 +32,14 @@ export class GameWorld {
   /** 初始化玩家 */
   addPlayer(faction: FactionId, guilds: string[], isAI = false): number {
     const index = this.players.length;
+    const fd = FACTION_DEFS[faction];
     this.players.push({
       index,
       faction,
       guilds,
       resources: {
-        crystal: 2000,
-        industry: 50,
+        crystal: fd?.startingCrystal ?? 2000,
+        industry: fd?.startingIndustry ?? 50,
         supply: 0,
         supplyCap: 20,
       },

@@ -114,4 +114,21 @@ export class GameMap {
   getPassableGrid(): ReadonlyArray<ReadonlyArray<boolean>> {
     return this.passableGrid;
   }
+
+  /** 在坐标附近搜索最近可通过瓦片（用于安全放置单位） */
+  findNearbyPassable(startX: number, startY: number, maxRadius: number = 10): { x: number; y: number } | null {
+    for (let r = 0; r <= maxRadius; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // 只检查外圈
+          const tx = startX + dx;
+          const ty = startY + dy;
+          if (this.isPassable(tx, ty)) {
+            return { x: tx, y: ty };
+          }
+        }
+      }
+    }
+    return null;
+  }
 }

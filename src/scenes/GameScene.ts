@@ -24,18 +24,16 @@ import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import { tileToWorld } from '../utils/MathUtils';
 import type { Point } from '../types/entity';
+import { UNIT_DEFS, BUILDING_DEFS, getBuildingCost, FACTION_DEFS, TECH_DEFS } from '../config/unitData';
+import { SoundManager } from '../utils/SoundManager';
 
-/** 单位训练成本（临时硬编码，后续从 JSON 加载） */
-const UNIT_COSTS: Record<string, { crystal: number; supply: number; time: number; category: string }> = {
-  unit_worker:       { crystal: 100, supply: 1, time: 8,  category: 'infantry' },
-  unit_rifleman:     { crystal: 150, supply: 1, time: 10, category: 'infantry' },
-  unit_battle_mage:  { crystal: 250, supply: 2, time: 15, category: 'infantry' },
-};
-
-/** 建筑建造成本 */
-const BUILDING_COSTS: Record<string, { crystal: number; industry: number; time: number; providesSupply: number; providesIndustry: number }> = {
-  bld_barracks: { crystal: 300, industry: 0, time: 15, providesSupply: 20, providesIndustry: 0 },
-};
+// 运行时从配置生成（兼容现有代码）
+const UNIT_COSTS = Object.fromEntries(
+  Object.entries(UNIT_DEFS).map(([k, v]) => [k, { ...v.cost, category: v.stats.category }])
+) as Record<string, { crystal: number; supply: number; time: number; category: string }>;
+const BUILDING_COSTS = Object.fromEntries(
+  Object.entries(BUILDING_DEFS).map(([k, v]) => [k, { ...v.cost, providesSupply: v.provides.supply, providesIndustry: v.provides.industry }])
+) as Record<string, { crystal: number; industry: number; time: number; providesSupply: number; providesIndustry: number }>;
 
 export class GameScene extends Phaser.Scene {
   world!: GameWorld;
@@ -58,10 +56,9 @@ export class GameScene extends Phaser.Scene {
   private unitSprites = new Map<string, Phaser.GameObjects.Image>();
   private buildingSprites = new Map<string, Phaser.GameObjects.Image>();
   private resourceSprites = new Map<string, Phaser.GameObjects.Image>();
-  private projectileSprites = new Map<string, Phaser.GameObjects.Rectangle>();
+  private projectileSprites = new Map<string, Phaser.GameObjects.Image>();
 
-  // 地图瓦片渲染
-  private tileGraphics!: Phaser.GameObjects.Graphics;
+  // 地图渲染（不再持有 Graphics，改为大量 Image 对象由 Phaser 自动批处理）
   private fogOverlay!: Phaser.GameObjects.Graphics;
 
   // 选中状态（同时支持单位和建筑）
@@ -84,13 +81,31 @@ export class GameScene extends Phaser.Scene {
 
   // ============ 初始化 ============
 
+  private _mapId: string = 'map_valley';
+
+  init(data?: { map?: string }): void {
+    this._mapId = data?.map ?? 'map_valley';
+  }
+
+  preload(): void {
+    // 加载地图 JSON
+    this.load.json('mapData', `data/maps/${this._mapId}.json`);
+  }
+
   create(): void {
-    const mapW = 64;
-    const mapH = 64;
+    const mapJson = this.cache.json.get('mapData') as any;
+    const mapW = mapJson?.width ?? 64;
+    const mapH = mapJson?.height ?? 64;
     const tileSize = 32;
 
     // 初始化 GameWorld
     this.world = new GameWorld(mapW, mapH, tileSize);
+
+    // 如果 JSON 有 tiles 数据，加载到地图
+    if (mapJson?.tiles) {
+      this.world.map.loadFromData(mapJson);
+    }
+
     this.world.addPlayer('arcane_empire', ['mages_guild', 'alchemists_society'], false);
     this.world.addPlayer('hammer_federation', ['mechanists_guild', 'alchemists_society'], true);
 
@@ -102,16 +117,32 @@ export class GameScene extends Phaser.Scene {
 
     // 渲染世界
     this.renderTiles();
-    this.placeInitialResources();
-    this.placeStartingUnits();
+    // 用 JSON 中的水晶矿数据替代硬编码
+    if (mapJson?.crystalFields && mapJson.crystalFields.length > 0) {
+      for (const cf of mapJson.crystalFields) {
+        const field = new ResourceField(cf.x, cf.y, 'crystal', cf.amount ?? 5000, 3);
+        this.addResourceField(field);
+      }
+    } else {
+      this.placeInitialResources();
+    }
+    // 读取地图出生点
+    const p0Start = mapJson?.startPositions?.find((s: any) => s.player === 0);
+    const p1Start = mapJson?.startPositions?.find((s: any) => s.player === 1);
+    const p0x = p0Start?.x ?? 6;
+    const p0y = p0Start?.y ?? 6;
+    const p1x = p1Start?.x ?? 56;
+    const p1y = p1Start?.y ?? 56;
+
+    this.placeStartingUnits(p0x, p0y, p1x, p1y);
     this.initializeFogOfWar();
     this.setupInputCallbacks();
 
     // 键盘快捷键
     this.setupKeyboard();
 
-    // 开局聚焦玩家基地
-    this.cameraCtrl.centerOn(6 * 32 + 16, 6 * 32 + 16);
+    // 开局聚焦玩家实际出生点
+    this.cameraCtrl.centerOn(p0x * tileSize + tileSize/2, p0y * tileSize + tileSize/2);
 
     // 通知 HUDScene 初始化小地图
     const hudScene = this.scene.get('HUDScene') as any;
@@ -131,29 +162,26 @@ export class GameScene extends Phaser.Scene {
       delta: p0.resources.crystal,
     });
     EventBus.emit(GameEvent.GAME_STARTED, {});
+
+    // 音效事件监听
+    this.setupSoundListeners();
   }
 
   // ============ 地图渲染 ============
 
+  /** 用 AssetGenerator 已生成的 tile_* 纹理绘制地图瓦片 */
   private renderTiles(): void {
-    this.tileGraphics = this.add.graphics();
     const map = this.world.map;
     const ts = map.config.tileSize;
-
-    const colors: Record<string, number> = {
-      grass: 0x2d5a27,
-      sand: 0xc2b280,
-      water: 0x2244aa,
-      mountain: 0x666666,
-      forest: 0x1a4a1a,
-    };
 
     for (let y = 0; y < map.config.height; y++) {
       for (let x = 0; x < map.config.width; x++) {
         const terrain = map.getTile(x, y);
-        const color = colors[terrain] ?? 0x2d5a27;
-        this.tileGraphics.fillStyle(color, 1);
-        this.tileGraphics.fillRect(x * ts, y * ts, ts, ts);
+        const texKey = `tile_${terrain}`;
+        // 如果 terrain 是合法值则纹理一定已生成，否则回退到 tile_grass
+        const key = this.textures.exists(texKey) ? texKey : 'tile_grass';
+        const img = this.add.image(x * ts + ts / 2, y * ts + ts / 2, key);
+        img.setDepth(0);
       }
     }
   }
@@ -171,36 +199,55 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private placeStartingUnits(): void {
-    // 玩家(0) — 左上
-    const ps = { x: 6, y: 6 };
-    const cc = new Building(0, 'arcane_empire', ps.x, ps.y, 2000, 'structure', 'production', 'bld_cc_empire', 50, 50);
+  private placeStartingUnits(p0x: number, p0y: number, p1x: number, p1y: number): void {
+    // 玩家(0) — 奥术帝国
+    this.spawnFactionStartingUnits(0, 'arcane_empire', p0x, p0y, 'bld_cc_empire');
+
+    // AI(1) — 铁锤联邦
+    this.spawnFactionStartingUnits(1, 'hammer_federation', p1x, p1y, 'bld_cc_federation');
+  }
+
+  /** 按阵营配置生成起始单位 */
+  private spawnFactionStartingUnits(
+    owner: number, factionId: string, bx: number, by: number, ccBldId: string
+  ): void {
+    const fd = FACTION_DEFS[factionId];
+    if (!fd) return;
+
+    // 指挥中心
+    const cc = new Building(owner, factionId as any, bx, by, 2000, 'structure', 'production',
+      ccBldId, 50, fd.startingIndustry);
     cc.complete();
     this.addBuilding(cc);
 
-    for (let i = 0; i < 3; i++) {
-      const w = new Unit(0, 'arcane_empire', ps.x + 1 + i, ps.y + 2, 80, 'light', 'infantry', 2.0, 5, 'physical', 3, 1.0, 5, 'unit_worker');
-      this.addUnit(w);
-    }
-    const guard = new Unit(0, 'arcane_empire', ps.x + 2, ps.y + 2, 350, 'heavy', 'infantry', 1.8, 30, 'magic', 1, 1.0, 6, 'unit_arcane_heavy');
-    this.addUnit(guard);
-
-    // AI(1) — 右下
-    const as = { x: 56, y: 56 };
-    const aiCC = new Building(1, 'hammer_federation', as.x, as.y, 2000, 'structure', 'production', 'bld_cc_federation', 50, 80);
-    aiCC.complete();
-    this.addBuilding(aiCC);
-
-    for (let i = 0; i < 4; i++) {
-      const r = new Unit(1, 'hammer_federation', as.x + 1 + i, as.y + 2, 120, 'light', 'infantry', 2.2, 18, 'physical', 5, 0.8, 7, 'unit_rifleman');
-      this.addUnit(r);
+    // 起始单位 — 使用安全出生点搜索
+    let nextSpawnX = bx + 1;
+    let nextSpawnY = by + 2;
+    for (const [unitDefId, count] of fd.startingUnits) {
+      const def = UNIT_DEFS[unitDefId];
+      if (!def) continue;
+      const s = def.stats;
+      for (let i = 0; i < count; i++) {
+        const safe = this.world.map.findNearbyPassable(nextSpawnX, nextSpawnY, 8);
+        const ux = safe ? safe.x : nextSpawnX;
+        const uy = safe ? safe.y : nextSpawnY;
+        const unit = new Unit(owner, factionId as any, ux, uy,
+          s.hp, s.armor, s.category, s.speed, s.damage, s.dmgType,
+          s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
+        this.addUnit(unit);
+        nextSpawnX = ux + 1;
+        nextSpawnY = uy;
+      }
     }
   }
 
   private initializeFogOfWar(): void {
     const fog = this.world.fogOfWar;
-    fog.revealArea(3, 3, 12, 12);
-    fog.revealArea(53, 53, 12, 12);
+    // 环绕双方出生点 12×12 区域
+    const cc = this.buildings.find(b => b.owner === 0 && b.isAlive);
+    const aiCC = this.buildings.find(b => b.owner === 1 && b.isAlive);
+    if (cc) fog.revealArea(cc.tileX - 3, cc.tileY - 3, 12, 12);
+    if (aiCC) fog.revealArea(aiCC.tileX - 3, aiCC.tileY - 3, 12, 12);
     fog.update(
       this.units.map(u => ({ tileX: Math.round(u.tileX), tileY: Math.round(u.tileY), sight: u.sight, owner: u.owner })),
       0,
@@ -484,18 +531,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateSelectionHighlight(): void {
-    const selected = new Set(this.inputCtrl.getSelection());
-    for (const [id, sprite] of this.unitSprites) {
-      if (sprite instanceof Phaser.GameObjects.Rectangle) {
-        sprite.setStrokeStyle(selected.has(id) ? 2 : 0, 0xffff00);
-      }
-    }
-    // 建筑选中高亮
-    for (const [id, sprite] of this.buildingSprites) {
-      if (sprite instanceof Phaser.GameObjects.Rectangle) {
-        sprite.setStrokeStyle(id === this.selectedBuildingId ? 2 : 0, 0xffff00);
-      }
-    }
+    // 选中视觉由 syncSprites() 统一处理（tint 方式），
+    // 此处只确保输入状态已更新（selection 已在调用方设置好）
   }
 
   // ============ 主循环 ============
@@ -536,31 +573,51 @@ export class GameScene extends Phaser.Scene {
       this.executeCommand(cmd);
     }
 
+    // 3.5. 迷雾更新（必须在战斗之前，确保索敌时可见性正确）
+    this.world.fogOfWar.update(
+      this.units.map(u => ({
+        tileX: Math.round(u.tileX),
+        tileY: Math.round(u.tileY),
+        sight: u.sight,
+        owner: u.owner,
+      })),
+      0,
+    );
+
     // 4. 战斗（索敌 + 伤害 + 弹射事件）
     const combatEvents = CombatSystem.updateCombat(
       this.units, this.buildings,
       this.units, this.buildings,
       this.world.map,
       deltaSec,
+      this.world.fogOfWar,
     );
     for (const evt of combatEvents) {
-      // 受伤闪光
-      this.flashTimers.set(evt.targetId, 0.12);
-
       EventBus.emit(GameEvent.UNIT_ATTACK_START, {
         attackerId: evt.attackerId,
         targetId: evt.targetId,
       });
-      if (evt.targetDied) {
-        this.flashTimers.delete(evt.targetId);
-        const targetUnit = this.unitMap.get(evt.targetId);
-        const targetBld = this.buildingMap.get(evt.targetId);
-        const owner = targetUnit?.owner ?? targetBld?.owner ?? -1;
-        EventBus.emit(GameEvent.UNIT_KILLED, {
-          unitId: evt.targetId,
-          killerId: evt.attackerId,
-          playerIndex: owner,
-        });
+
+      if (evt.isMelee) {
+        // 近战：伤害已即时结算，只需闪光反馈
+        this.flashTimers.set(evt.targetId, 0.12);
+        if (evt.targetDied) {
+          this.flashTimers.delete(evt.targetId);
+          const targetUnit = this.unitMap.get(evt.targetId);
+          const targetBld = this.buildingMap.get(evt.targetId);
+          const owner = targetUnit?.owner ?? targetBld?.owner ?? -1;
+          EventBus.emit(GameEvent.UNIT_KILLED, {
+            unitId: evt.targetId,
+            killerId: evt.attackerId,
+            playerIndex: owner,
+          });
+        }
+      } else {
+        // 远程：生成弹道，伤害由弹道命中时结算
+        const attacker = this.unitMap.get(evt.attackerId);
+        if (attacker) {
+          this.spawnProjectile(attacker, evt.targetId, evt.damage, evt.attackEffect);
+        }
       }
     }
 
@@ -570,6 +627,7 @@ export class GameScene extends Phaser.Scene {
       this.resourceFields,
       this.world.players,
       deltaSec,
+      this.buildings,
     );
     for (const ge of gatherEvents) {
       EventBus.emit(GameEvent.RESOURCE_GATHERED, {
@@ -610,6 +668,9 @@ export class GameScene extends Phaser.Scene {
     // 7.1 建造进度
     this.updateBuildingConstruction(deltaSec);
 
+    // 7.2 研究进度
+    this.updateResearch(deltaSec);
+
     // 8. 弹射物更新
     this.updateProjectiles(deltaSec);
 
@@ -622,19 +683,9 @@ export class GameScene extends Phaser.Scene {
     // 10. 精灵同步
     this.syncSprites();
 
-    // 11. 迷雾
-    this.world.fogOfWar.update(
-      this.units.map(u => ({
-        tileX: Math.round(u.tileX),
-        tileY: Math.round(u.tileY),
-        sight: u.sight,
-        owner: u.owner,
-      })),
-      0,
-    );
     this.renderFogOfWar();
 
-    // 12. HUD 资源更新（每 0.5 秒发一次，减少事件频率）
+    // 11. HUD 资源更新（每 0.5 秒发一次，减少事件频率）
     this._lastHudTick += deltaSec;
     if (this._lastHudTick >= 0.5) {
       this._lastHudTick = 0;
@@ -689,6 +740,11 @@ export class GameScene extends Phaser.Scene {
           const unit = this.unitMap.get(id);
           if (unit && unit.isAlive) {
             MovementSystem.navigate(unit, mc.target, this.world.map);
+            // navigate 会 setPath 覆盖 state='moving'
+            // 如果单位有攻击目标 → 改为 pursuing，让 CombatSystem 接管攻击
+            if (cmd.type === 'attack_move' && unit.targetEntityId) {
+              unit.state = 'pursuing';
+            }
           }
         }
         break;
@@ -704,17 +760,18 @@ export class GameScene extends Phaser.Scene {
         break;
       }
       case 'build': {
-        // AI自动放置建造
+        // AI自动放置建造 — 搜索 CC 附近可行走位置
         const bc = cmd as any;
         const cost = BUILDING_COSTS[bc.buildingDefId];
         if (!cost) break;
         if (!this.world.canAfford(cmd.playerIndex, { crystal: cost.crystal })) break;
         const aiCC = this.buildings.find(b => b.owner === cmd.playerIndex && b.isAlive);
         if (!aiCC) break;
-        let px = aiCC.tileX + 3; let py = aiCC.tileY + 3;
-        if (!this.world.map.isPassable(px, py)) { px = aiCC.tileX + 4; py = aiCC.tileY + 2; }
+        // 从 CC 周围搜索第一个可通过瓦片
+        const safePos = this.world.map.findNearbyPassable(aiCC.tileX + 3, aiCC.tileY + 3, 15);
+        if (!safePos) break;
         this.world.spend(cmd.playerIndex, { crystal: cost.crystal });
-        const bld = new Building(cmd.playerIndex, 'hammer_federation', px, py, 800, 'structure', 'production', bc.buildingDefId, cost.providesSupply, cost.providesIndustry);
+        const bld = new Building(cmd.playerIndex, 'hammer_federation', safePos.x, safePos.y, 800, 'structure', 'production', bc.buildingDefId, cost.providesSupply, cost.providesIndustry);
         this.addBuilding(bld);
         break;
       }
@@ -726,11 +783,50 @@ export class GameScene extends Phaser.Scene {
           if (unit && unit.isAlive && gc.resourceFieldId) {
             const field = this.fieldMap.get(gc.resourceFieldId);
             if (field && field.isActive && !field.isDepleted) {
+              field.currentGatherers++;
               unit.state = 'gathering';
               unit.targetResourceId = field.id;
               (unit as any)._gatherTimer = 0;
               MovementSystem.navigate(unit, { x: field.tileX, y: field.tileY }, this.world.map);
             }
+          }
+        }
+        break;
+      }
+      case 'research': {
+        const rc = cmd as any;
+        const bld = this.buildingMap.get(rc.buildingId);
+        if (!bld || bld.owner !== cmd.playerIndex) break;
+
+        const tech = TECH_DEFS[rc.techDefId];
+        if (!tech) break;
+        if (!this.world.canAfford(cmd.playerIndex, { crystal: tech.crystal })) break;
+        if (this.techTree.isResearched(rc.techDefId)) break;
+        if (bld.researchingTechId) break; // 已在研究
+        if (bld.state !== 'idle') break;
+
+        this.world.spend(cmd.playerIndex, { crystal: tech.crystal });
+        bld.researchingTechId = rc.techDefId;
+        bld.researchProgress = 0;
+        bld.researchTotalTime = tech.time;
+        bld.state = 'researching';
+        EventBus.emit(GameEvent.PRODUCTION_STARTED, {
+          buildingId: bld.id, playerIndex: cmd.playerIndex,
+          unitDefId: rc.techDefId, totalTime: tech.time,
+        });
+        break;
+      }
+      case 'stop':
+      case 'hold_position': {
+        for (const id of cmd.unitIds) {
+          const unit = this.unitMap.get(id);
+          if (!unit || !unit.isAlive) continue;
+          unit.stopAttacking();
+          unit.clearPath();
+          unit.holdPosition = cmd.type === 'hold_position';
+          unit.aiLockedAction = null;
+          if (cmd.type === 'stop') {
+            unit.state = 'idle';
           }
         }
         break;
@@ -741,25 +837,21 @@ export class GameScene extends Phaser.Scene {
   // ============ 单位生成 ============
 
   private spawnUnit(unitDefId: string, pos: Point, owner: number): void {
-    const cost = UNIT_COSTS[unitDefId];
-    if (!cost) return;
+    const def = UNIT_DEFS[unitDefId];
+    if (!def) return;
+
+    // 出生点安全检查：如果瓦片不可通过，搜索附近可通过位置
+    let spawnX = pos.x;
+    let spawnY = pos.y;
+    if (!this.world.map.isPassable(spawnX, spawnY)) {
+      const safe = this.world.map.findNearbyPassable(spawnX, spawnY, 10);
+      if (safe) { spawnX = safe.x; spawnY = safe.y; }
+    }
 
     const faction = owner === 0 ? 'arcane_empire' as const : 'hammer_federation' as const;
-
-    let unit: Unit;
-    switch (unitDefId) {
-      case 'unit_worker':
-        unit = new Unit(owner, faction, pos.x, pos.y, 80, 'light', 'infantry', 2.0, 5, 'physical', 3, 1.0, 5, 'unit_worker');
-        break;
-      case 'unit_rifleman':
-        unit = new Unit(owner, faction, pos.x, pos.y, 120, 'light', 'infantry', 2.2, 18, 'physical', 5, 0.8, 7, 'unit_rifleman');
-        break;
-      case 'unit_battle_mage':
-        unit = new Unit(owner, faction, pos.x, pos.y, 150, 'light', 'infantry', 2.5, 30, 'magic', 6, 1.2, 6, 'unit_battle_mage');
-        break;
-      default:
-        return;
-    }
+    const s = def.stats;
+    const unit = new Unit(owner, faction, spawnX, spawnY, s.hp, s.armor, s.category,
+      s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
 
     this.addUnit(unit);
     EventBus.emit(GameEvent.UNIT_CREATED, {
@@ -860,25 +952,45 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** 每帧推进研究进度 */
+  private updateResearch(deltaSec: number): void {
+    for (const bld of this.buildings) {
+      if (!bld.isAlive || bld.state !== 'researching' || !bld.researchingTechId) continue;
+      bld.researchProgress += deltaSec / bld.researchTotalTime;
+      if (bld.researchProgress >= 1) {
+        this.techTree.completeTech(bld.researchingTechId);
+        const techId = bld.researchingTechId;
+        bld.researchingTechId = null;
+        bld.researchProgress = 0;
+        bld.state = 'idle';
+        EventBus.emit(GameEvent.RESEARCH_COMPLETE, {
+          buildingId: bld.id, playerIndex: bld.owner, techDefId: techId,
+        });
+      }
+    }
+  }
+
   // ============ 弹射物 ============
 
-  private spawnProjectile(attacker: Unit, targetId: string): void {
+  private spawnProjectile(attacker: Unit, targetId: string, damage: number, effectKey: string): void {
     const proj = new Projectile(
       attacker.owner,
       attacker.faction,
       attacker.tileX, attacker.tileY,
       attacker.id, targetId,
       15, // 弹速 tiles/s
-      attacker.attackDamage,
+      damage,
       attacker.attackType,
       true,
     );
     this.projectiles.push(proj);
 
+    // 用弹道纹理渲染（AssetGenerator 已生成 proj_* 纹理，fallback 到黄色矩形）
+    const texKey = this.textures.exists(effectKey) ? effectKey : '__DEFAULT';
     const w = tileToWorld(proj.tileX, proj.tileY);
-    const rect = this.add.rectangle(w.x, w.y, 4, 4, 0xffff00, 1);
-    rect.setDepth(20);
-    this.projectileSprites.set(proj.id, rect);
+    const img = this.add.image(w.x, w.y, texKey);
+    img.setDepth(20);
+    this.projectileSprites.set(proj.id, img);
   }
 
   private updateProjectiles(deltaSec: number): void {
@@ -906,12 +1018,22 @@ export class GameScene extends Phaser.Scene {
         proj.isActive = false;
         toRemove.push(proj.id);
 
+        // 命中闪光
+        this.flashTimers.set(proj.targetId, 0.12);
+
         if (!target.isAlive) {
+          this.flashTimers.delete(proj.targetId);
           EventBus.emit(GameEvent.UNIT_KILLED, {
             unitId: target.id,
             killerId: proj.sourceId,
             playerIndex: target.owner,
           });
+          // 清理所有以此目标为攻击对象的单位（避免 2s 空闲窗口）
+          for (const unit of this.units) {
+            if (unit.targetEntityId === proj.targetId) {
+              unit.stopAttacking();
+            }
+          }
         }
       } else {
         const move = proj.speed * deltaSec;
@@ -925,6 +1047,8 @@ export class GameScene extends Phaser.Scene {
       if (sprite) {
         const w = tileToWorld(proj.tileX, proj.tileY);
         sprite.setPosition(w.x, w.y);
+        // 弹道朝向目标旋转（纹理默认朝右，atan2(dy,dx) 正对）
+        sprite.setRotation(Math.atan2(dy, dx));
       }
     }
 
@@ -1026,6 +1150,8 @@ export class GameScene extends Phaser.Scene {
   private syncSprites(): void {
     // 衰减闪光计时器
     const dt = this.game.loop.delta / 1000;
+    const selected = new Set(this.inputCtrl.getSelection());
+    const selectedBuilding = this.selectedBuildingId;
 
     for (const unit of this.units) {
       const sprite = this.unitSprites.get(unit.id);
@@ -1035,7 +1161,7 @@ export class GameScene extends Phaser.Scene {
       sprite.setPosition(w.x, w.y);
 
       if (unit.isAlive) {
-        // 击中闪光：tint 白色
+        // 击中闪光（白色）优先级最高
         const flashRemain = this.flashTimers.get(unit.id);
         if (flashRemain && flashRemain > 0) {
           sprite.setTint(0xffffff);
@@ -1044,7 +1170,12 @@ export class GameScene extends Phaser.Scene {
         } else {
           this.flashTimers.delete(unit.id);
           sprite.setAlpha(0.9);
-          sprite.clearTint();
+          // 选中高亮（黄色）
+          if (selected.has(unit.id)) {
+            sprite.setTint(0xffff55);
+          } else {
+            sprite.clearTint();
+          }
         }
 
         // 头顶血条（仅受伤时显示）
@@ -1087,7 +1218,21 @@ export class GameScene extends Phaser.Scene {
         this.flashTimers.set(bld.id, flashRemain - dt);
       } else if (bld.hpPercent < 1.0) {
         this.flashTimers.delete(bld.id);
-        sprite.clearTint();
+        // 受伤建筑：也显示选中高亮
+        if (bld.id === selectedBuilding) {
+          sprite.setTint(0xffff55);
+        } else {
+          sprite.clearTint();
+        }
+        sprite.setAlpha(0.9);
+      } else {
+        // 满血建筑：选中高亮
+        this.flashTimers.delete(bld.id);
+        if (bld.id === selectedBuilding) {
+          sprite.setTint(0xffff55);
+        } else {
+          sprite.clearTint();
+        }
         sprite.setAlpha(0.9);
       }
     }
@@ -1124,6 +1269,48 @@ export class GameScene extends Phaser.Scene {
   private clearHpBar(unitId: string): void {
     const bar = this._hpBarCache.get(unitId);
     if (bar) { bar.destroy(); this._hpBarCache.delete(unitId); }
+  }
+
+  // ============ 声音 ============
+
+  private setupSoundListeners(): void {
+    // 攻击
+    EventBus.on(GameEvent.UNIT_ATTACK_START, () => {
+      SoundManager.play('attack', 0.15);
+    });
+
+    // 建造完成
+    EventBus.on(GameEvent.BUILDING_COMPLETE, () => {
+      SoundManager.play('build', 0.25);
+    });
+
+    // 单位死亡
+    EventBus.on(GameEvent.UNIT_KILLED, () => {
+      SoundManager.play('death', 0.2);
+    });
+
+    // 生产完成
+    EventBus.on(GameEvent.PRODUCTION_COMPLETE, () => {
+      SoundManager.play('produce', 0.25);
+    });
+
+    // 胜利/失败
+    EventBus.on(GameEvent.GAME_OVER, (data) => {
+      const d = data as { winnerIndex: number };
+      if (d.winnerIndex === 0) {
+        SoundManager.play('victory', 0.4);
+      } else {
+        SoundManager.play('defeat', 0.4);
+      }
+    });
+
+    // 选择单位（非空选择时发声）
+    EventBus.on(GameEvent.SELECTION_CHANGED, (data) => {
+      const d = data as { unitIds: string[] };
+      if (d.unitIds.length > 0) {
+        SoundManager.play('select', 0.12);
+      }
+    });
   }
 
   // ============ 迷雾渲染 ============

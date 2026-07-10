@@ -34,6 +34,7 @@ export class ResourceSystem {
     fields: ResourceField[],
     players: PlayerState[],
     deltaSec: number,
+    buildings?: Building[],
   ): GatherEvent[] {
     const events: GatherEvent[] = [];
 
@@ -58,15 +59,25 @@ export class ResourceSystem {
         (unit as any)._gatherTimer -= 1.0;
 
         const amount = ResourceSystem.gather(unit, field);
-        if (amount > 0) {
+        // 采矿场速率检查：无采矿场=3/s，有=10/s
+        let gathered = amount;
+        if (buildings) {
+          const hasRefinery = buildings.some(b => b.owner === unit.owner && b.isAlive && b.spriteKey === 'bld_refinery');
+          gathered = hasRefinery ? amount : 3;
+          // 无采矿场时只采集 3，退还矿场 7
+          if (!hasRefinery) {
+            field.amount += (amount - gathered);
+          }
+        }
+        if (gathered > 0) {
           const player = players[unit.owner];
           if (player) {
-            player.resources.crystal += amount;
+            player.resources.crystal += gathered;
             events.push({
               workerId: unit.id,
               fieldId: field.id,
               playerIndex: unit.owner,
-              amount,
+              amount: gathered,
             });
           }
 

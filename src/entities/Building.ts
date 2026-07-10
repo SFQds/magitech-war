@@ -17,6 +17,12 @@ export class Building extends Entity {
   maxQueueSize: number = 5;         // 默认支持 5 个排队槽位
   providesSupply: number = 0;
   providesIndustry: number = 0;
+  /** 正在研究的科技 ID */
+  researchingTechId: string | null = null;
+  /** 研究进度 0~1 */
+  researchProgress: number = 0;
+  /** 研究总耗时（秒） */
+  researchTotalTime: number = 0;
 
   constructor(
     owner: number,

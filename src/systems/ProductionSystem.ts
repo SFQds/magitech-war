@@ -4,6 +4,7 @@
 
 import { Building } from '../entities/Building';
 import type { ProductionItem } from '../types/entity';
+import { getFactionBonuses } from '../config/unitData';
 
 export class ProductionSystem {
   /** 开始建造/训练 */
@@ -14,10 +15,14 @@ export class ProductionSystem {
   ): void {
     if (!building.canEnqueue()) return;
 
+    // 联邦生产速度+15% → 时间×0.85
+    const bonuses = getFactionBonuses(building.faction);
+    const effectiveTime = buildTime * bonuses.productionSpeedMult;
+
     building.enqueueProduction({
       unitDefId,
-      timeRemaining: buildTime,
-      totalTime: buildTime,
+      timeRemaining: effectiveTime,
+      totalTime: effectiveTime,
     });
   }
 

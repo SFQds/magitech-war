@@ -2,5 +2,10 @@ node_modules/
 dist/
 .DS_Store
 *.log
+.zcode/
+output/
 doubao-image-desktop/debug/
 doubao-image-desktop/output/
+src/scenes/HUDScene_backup.ts
+src/scenes/nul
+nul

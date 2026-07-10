@@ -24,6 +24,10 @@ export class Unit extends Entity {
   abilities: UnitAbility[];
   abilityCharges: number = 0;
   maxAbilityCharges: number = 3;
+  /** 坚守位置 — true 时 CombatSystem 不会自动索敌追击 */
+  holdPosition: boolean = false;
+  /** AI 强制行为标记 — 设置后 CombatSystem 不会覆盖此单位的行为 */
+  aiLockedAction: 'retreat' | 'defend' | 'attack' | 'recover' | null = null;
 
   constructor(
     owner: number,

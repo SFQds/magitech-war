@@ -1,11 +1,23 @@
 /**
  * 经济 AI — 资源管理、建造决策
+ *
+ * 读取 StrategyDirective 调整建造/训练优先级
  */
 
 import type { GameWorld } from '../core/GameWorld';
 import type { AnyCommand } from '../types/commands';
 import type { Building } from '../entities/Building';
 import type { Unit } from '../entities/Unit';
+import type { ResourceField } from '../entities/ResourceField';
+import type { StrategyDirective } from './StrategyManager';
+
+/** 单位造价快速查询（避免循环依赖 unitData.ts，同步维护） */
+const UNIT_CRYSTAL_COST: Record<string, number> = {
+  unit_worker: 100,
+  unit_rifleman: 150,
+  unit_battle_mage: 300,
+  unit_magitech_mech: 400,
+};
 
 export class EconomyAI {
   private world: GameWorld;
@@ -19,86 +31,116 @@ export class EconomyAI {
   }
 
   /** 每次 tick 输出建造/训练命令 */
-  evaluate(buildings: Building[], units: Unit[]): AnyCommand[] {
+  evaluate(
+    buildings: Building[],
+    units: Unit[],
+    fields: ResourceField[],
+    directive: StrategyDirective,
+  ): AnyCommand[] {
     const commands: AnyCommand[] = [];
     const player = this.world.getPlayer(this.playerIndex);
     if (!player) return commands;
 
-    const { crystal, supply, supplyCap } = player.resources;
+    const crystal = player.resources.crystal;
+    const { supply, supplyCap } = player.resources;
 
-    // 统计己方工人和兵营
+    // 难度通过 tickInterval 实现，这里直接用实际水晶值（避免与 GameScene 花费验证不一致）
+
     const workerCount = units.filter(
       u => u.owner === this.playerIndex && u.isAlive && u.spriteKey === 'unit_worker'
     ).length;
 
-    const hasBarracks = buildings.some(
-      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_barracks'
-    );
-
-    const ownBuildings = buildings.filter(
-      b => b.owner === this.playerIndex && b.isAlive && b.buildingType === 'production' && b.canEnqueue()
-    );
-    if (ownBuildings.length === 0) return commands;
-
-    // 1. 优先训练工人（如果少于6个）
-    if (crystal >= 100 && supply < supplyCap && workerCount < 6) {
-      const cc = ownBuildings.find(b => b.spriteKey === 'bld_cc_federation') ?? ownBuildings[0];
-      commands.push({
-        type: 'train',
-        playerIndex: this.playerIndex,
-        unitIds: [],
-        buildingId: cc.id,
-        unitDefId: 'unit_worker',
-        count: 1,
-        frame: 0,
-      });
-      return commands;
-    }
-
-    // 2. 没有兵营 → 建造兵营（水晶 >= 400 确保有余量）
-    if (!hasBarracks && crystal >= 400) {
-      commands.push({
-        type: 'build',
-        playerIndex: this.playerIndex,
-        unitIds: [],
-        buildingDefId: 'bld_barracks',
-        position: { x: 0, y: 0 }, // 由 GameScene 自动选位
-        frame: 0,
-      } as any);
-      return commands;
-    }
-
-    // 3. 有兵营 → 训练战斗法师（优先）
-    if (hasBarracks && crystal >= 250 && supply < supplyCap) {
-      const barracks = buildings.find(
-        b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_barracks' && b.canEnqueue()
+    // 0. 指派空闲工人去采集
+    const activeFields = fields.filter(f => f.isActive && !f.isDepleted);
+    if (activeFields.length > 0) {
+      const idleWorkers = units.filter(u =>
+        u.owner === this.playerIndex && u.isAlive &&
+        u.spriteKey === 'unit_worker' && u.state === 'idle'
       );
-      if (barracks) {
-        commands.push({
-          type: 'train',
-          playerIndex: this.playerIndex,
-          unitIds: [],
-          buildingId: barracks.id,
-          unitDefId: 'unit_battle_mage',
-          count: 1,
-          frame: 0,
-        });
-        return commands;
+      for (const worker of idleWorkers) {
+        let closest: ResourceField | null = null;
+        let closestDist = Infinity;
+        for (const f of activeFields) {
+          const d = Math.abs(worker.tileX - f.tileX) + Math.abs(worker.tileY - f.tileY);
+          if (d < closestDist) { closestDist = d; closest = f; }
+        }
+        if (closest) {
+          commands.push({
+            type: 'gather', playerIndex: this.playerIndex,
+            unitIds: [worker.id], resourceFieldId: closest!.id, frame: 0,
+          });
+        }
       }
     }
 
-    // 4. 退而求其次：训练步枪兵
-    if (crystal >= 150 && supply < supplyCap) {
-      const cc = ownBuildings.find(b => b.spriteKey === 'bld_cc_federation') ?? ownBuildings[0];
+    // 生产建筑列表
+    const ownProductions = buildings.filter(
+      b => b.owner === this.playerIndex && b.isAlive && b.buildingType === 'production' && b.canEnqueue()
+    );
+    if (ownProductions.length === 0) return commands;
+
+    const hasBarracks = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_barracks'
+    );
+    const hasFactory = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_factory'
+    );
+    const cc = ownProductions.find(b =>
+      b.spriteKey === 'bld_cc_empire' || b.spriteKey === 'bld_cc_federation'
+    ) ?? ownProductions[0];
+
+    // 1. 工人数量维护（扩张倾向高时目标更多）
+    const targetWorkers = directive.expansion > 0.5 ? 8 : 5;
+    if (crystal >= 100 && supply < supplyCap && workerCount < targetWorkers) {
       commands.push({
-        type: 'train',
-        playerIndex: this.playerIndex,
-        unitIds: [],
-        buildingId: cc.id,
-        unitDefId: 'unit_rifleman',
-        count: 1,
-        frame: 0,
+        type: 'train', playerIndex: this.playerIndex,
+        unitIds: [], buildingId: cc.id, unitDefId: 'unit_worker', count: 1, frame: 0,
       });
+      // 不 return，继续尝试建造和训练其他单位
+    }
+
+    // 2. 建造建筑（高进攻时不建新建筑，全力暴兵）
+    if (directive.aggression < 0.7) {
+      if (!hasBarracks && crystal >= 300) {
+        commands.push({
+          type: 'build', playerIndex: this.playerIndex,
+          unitIds: [], buildingDefId: 'bld_barracks',
+          position: { x: 0, y: 0 }, frame: 0,
+        } as any);
+      }
+      if (!hasFactory && crystal >= 500) {
+        commands.push({
+          type: 'build', playerIndex: this.playerIndex,
+          unitIds: [], buildingDefId: 'bld_factory',
+          position: { x: 0, y: 0 }, frame: 0,
+        } as any);
+      }
+    }
+
+    // 3. 按 directive.preferredUnits 优先级训练（每个建筑一次一个）
+    const trainedBuildings = new Set<string>();
+    for (const unitDefId of directive.preferredUnits) {
+      if (unitDefId === 'unit_worker') continue;
+      if (supply >= supplyCap) continue;
+
+      const unitCost = UNIT_CRYSTAL_COST[unitDefId] ?? 999;
+      if (crystal < unitCost) continue;
+
+      let producer = ownProductions.find(b => {
+        if (trainedBuildings.has(b.id)) return false;
+        if (unitDefId === 'unit_magitech_mech') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_battle_mage') return b.spriteKey === 'bld_barracks';
+        if (unitDefId === 'unit_rifleman') return b.spriteKey === 'bld_barracks';
+        return false;
+      });
+      if (!producer) continue;
+
+      commands.push({
+        type: 'train', playerIndex: this.playerIndex,
+        unitIds: [], buildingId: producer.id,
+        unitDefId, count: 1, frame: 0,
+      });
+      trainedBuildings.add(producer.id);
     }
 
     return commands;

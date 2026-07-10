@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { AssetGenerator } from '../utils/AssetGenerator';
 import { PNG_SPRITE_KEYS } from '../config/sprites';
+import { SoundManager } from '../utils/SoundManager';
 
 export class BootScene extends Phaser.Scene {
   constructor() {

@@ -1,95 +1,319 @@
 /**
- * 军事 AI — 部队集结、攻击决策
+ * 军事 AI — 运营层：目标权重选择、防守调度、持续单位管理
+ *
+ * 读取 StrategyDirective，不再"流放"已交战单位 — 每 tick 持续评估所有作战单位。
  */
 
 import type { GameWorld } from '../core/GameWorld';
 import type { AnyCommand } from '../types/commands';
 import type { Unit } from '../entities/Unit';
 import type { Building } from '../entities/Building';
-import { AIPlanner } from './AIPlanner';
+import type { StrategyDirective } from './StrategyManager';
+
+/** 目标权重基础分 */
+const BUILDING_PRIORITY: Record<string, number> = {
+  bld_cc_empire: 80,
+  bld_cc_federation: 80,
+  bld_barracks: 60,
+  bld_factory: 60,
+};
+
+/** 建筑回复半径（tile） */
+const RECOVER_RADIUS = 3;
+/** 回复目标 HP 百分比 */
+const RECOVER_HP_TARGET = 0.7;
 
 export class MilitaryAI {
   private world: GameWorld;
   private playerIndex: number;
-  private attackGrouped: boolean = false; // 是否已编组过进攻部队
+  /** 风筝检测：unitId → { targetId, distance, unchangedTicks } */
+  private kiteTracker = new Map<string, { targetId: string; distance: number; unchangedTicks: number }>();
+  /** 撤退冷却：unitId → remaining ticks（防止乒乓效应） */
+  private retreatCooldown = new Map<string, number>();
 
   constructor(world: GameWorld, playerIndex: number) {
     this.world = world;
     this.playerIndex = playerIndex;
   }
 
-  /** 每次 tick 输出军事命令 */
-  evaluate(units: Unit[], _buildings: Building[]): AnyCommand[] {
+  evaluate(
+    units: Unit[],
+    buildings: Building[],
+    directive: StrategyDirective,
+  ): AnyCommand[] {
     const commands: AnyCommand[] = [];
 
-    // 收集己方作战单位（非工人）
-    const combatUnits = units.filter(
-      u => u.owner === this.playerIndex
-        && u.isAlive
-        && u.spriteKey !== 'unit_worker'
-        && u.state !== 'attacking'
+    const ownCombat = units.filter(
+      u => u.owner === this.playerIndex && u.isAlive && u.spriteKey !== 'unit_worker'
+    );
+    const ownBuildings = buildings.filter(
+      b => b.owner === this.playerIndex && b.isAlive
+    );
+    const enemyUnits = units.filter(
+      u => u.owner !== this.playerIndex && u.isAlive
+    );
+    const enemyBuildings = buildings.filter(
+      b => b.owner !== this.playerIndex && b.isAlive
     );
 
-    if (combatUnits.length < 3) return commands; // 至少3个作战单位才进攻
-
-    // 寻找敌方最近的建筑作为攻击目标（优先指挥中心）
-    const enemyBuildings = _buildings.filter(b => b.owner !== this.playerIndex && b.isAlive);
-
-    // 如果没有敌方建筑可见，寻找敌方单位
-    if (enemyBuildings.length === 0) {
-      const enemyUnits = units.filter(u => u.owner !== this.playerIndex && u.isAlive);
-      if (enemyUnits.length === 0) return commands;
-
-      const target = enemyUnits[0];
-      // 对每个作战单位发出攻击移动命令
-      const targetTile = { x: Math.round(target.tileX), y: Math.round(target.tileY) };
-
-      for (const cu of combatUnits) {
-        commands.push({
-          type: 'attack_move',
-          playerIndex: this.playerIndex,
-          unitIds: [cu.id],
-          target: targetTile,
-          frame: 0,
-        });
-      }
+    if (ownCombat.length === 0) {
+      this.kiteTracker.clear();
       return commands;
     }
 
-    // 有敌方建筑，进攻最近的
-    const targetBld = enemyBuildings.reduce((closest, b) => {
-      const closestPos = { x: closest.tileX, y: closest.tileY };
-      const bPos = { x: b.tileX, y: b.tileY };
+    // === 持续管理：对所有作战单位评估（不跳过任何状态） ===
+    for (const unit of ownCombat) {
+      const target = unit.targetEntityId
+        ? (units.find(u => u.id === unit.targetEntityId) ?? buildings.find(b => b.id === unit.targetEntityId))
+        : null;
 
-      // 用第一个作战单位的位置作为参考
-      const ref = combatUnits[0];
-      const dClosest = Math.abs(ref.tileX - closestPos.x) + Math.abs(ref.tileY - closestPos.y);
-      const dB = Math.abs(ref.tileX - bPos.x) + Math.abs(ref.tileY - bPos.y);
-      return dB < dClosest ? b : closest;
-    });
+      // 目标已死亡或不存在 → 重置
+      if (unit.targetEntityId && !target) {
+        unit.stopAttacking();
+        unit.holdPosition = false;
+        unit.aiLockedAction = null;
+        this.kiteTracker.delete(unit.id);
+        continue;
+      }
 
-    const targetTile = { x: targetBld.tileX, y: targetBld.tileY };
+      // 防守单位：目标存活则继续防守，不清除
+      if (unit.aiLockedAction === 'defend' && target) continue;
+      // 防守目标消失 → 清除锁定
+      if (unit.aiLockedAction === 'defend' && !target) {
+        unit.stopAttacking();
+        unit.aiLockedAction = null;
+        unit.holdPosition = false;
+        continue;
+      }
 
-    // 为编队规划路径
-    const startPositions = combatUnits.map(u => ({
-      x: Math.round(u.tileX),
-      y: Math.round(u.tileY),
-    }));
+      // 撤退/恢复状态
+      if (unit.aiLockedAction === 'retreat' || unit.aiLockedAction === 'recover') {
+        // 检查是否到达建筑附近
+        const nearOwnBuilding = ownBuildings.some(b => {
+          const d = Math.abs(unit.tileX - b.tileX) + Math.abs(unit.tileY - b.tileY);
+          return d <= RECOVER_RADIUS;
+        });
 
-    const paths = AIPlanner.planGroupPath(this.world, startPositions, targetTile);
+        if (nearOwnBuilding) {
+          unit.aiLockedAction = 'recover';
+          unit.holdPosition = false;
+          unit.hp = Math.min(unit.maxHp, unit.hp + 3 * 2);
+          if (unit.hpPercent >= RECOVER_HP_TARGET) {
+            unit.aiLockedAction = null;
+            unit.stopAttacking();
+            this.retreatCooldown.set(unit.id, 3);
+          }
+          continue;
+        }
+        // 尚未到达建筑 → 继续移动
+        continue;
+      }
 
-    for (let i = 0; i < combatUnits.length; i++) {
-      const cu = combatUnits[i];
-      // 攻击移动：MoveCommand type 可以是 'attack_move'
-      commands.push({
-        type: 'attack_move',
-        playerIndex: this.playerIndex,
-        unitIds: [cu.id],
-        target: targetTile,
-        frame: 0,
-      });
+      // HP 过低 → 开始撤退（有冷却：刚恢复的 3 tick 内不再次撤退）
+      const cooldownRemaining = this.retreatCooldown.get(unit.id) ?? 0;
+      if (unit.hpPercent < 0.3 && cooldownRemaining <= 0) {
+        unit.stopAttacking();
+        unit.holdPosition = false;
+        unit.aiLockedAction = 'retreat';
+
+        if (ownBuildings.length === 0) continue; // 无己方建筑，无法撤退
+
+        // 撤退到离敌人最远的己方建筑（避免退到交战区）
+        const nearestOwnBld = ownBuildings.reduce((closest, b) => {
+          const d1 = Math.abs(closest.tileX - unit.tileX) + Math.abs(closest.tileY - unit.tileY);
+          const d2 = Math.abs(b.tileX - unit.tileX) + Math.abs(b.tileY - unit.tileY);
+          return d2 < d1 ? b : closest;
+        });
+
+        commands.push({
+          type: 'move',
+          playerIndex: this.playerIndex,
+          unitIds: [unit.id],
+          target: { x: nearestOwnBld.tileX, y: nearestOwnBld.tileY + 1 },
+          frame: 0,
+        });
+        this.kiteTracker.delete(unit.id);
+        continue;
+      }
+
+      // 风筝检测
+      if (target && unit.targetEntityId) {
+        const currentDist = Math.abs(unit.tileX - target.tileX) + Math.abs(unit.tileY - target.tileY);
+        const record = this.kiteTracker.get(unit.id);
+        if (record && record.targetId === unit.targetEntityId) {
+          if (currentDist >= record.distance) {
+            record.unchangedTicks++;
+            if (record.unchangedTicks >= 3) {
+              unit.stopAttacking();
+              this.kiteTracker.delete(unit.id);
+              const altTarget = this.selectBestTarget(
+                [unit], enemyUnits.filter(e => e.id !== unit.targetEntityId), enemyBuildings, ownBuildings
+              );
+              if (altTarget) {
+                unit.attackTarget(altTarget.id);
+                commands.push({
+                  type: 'attack_move',
+                  playerIndex: this.playerIndex,
+                  unitIds: [unit.id],
+                  target: { x: Math.round(altTarget.tileX), y: Math.round(altTarget.tileY) },
+                  frame: 0,
+                });
+              }
+            }
+          } else {
+            record.distance = currentDist;
+            record.unchangedTicks = 0;
+          }
+        } else {
+          this.kiteTracker.set(unit.id, { targetId: unit.targetEntityId, distance: currentDist, unchangedTicks: 0 });
+        }
+      }
+    }
+
+    // === 防守调度：每个受威胁建筑独立分配防御者 ===
+    if (enemyUnits.length > 0) {
+      // 收集已被分配防御的敌人 ID（防重复）
+      const alreadyDefended = new Set(
+        ownCombat.filter(u => u.aiLockedAction === 'defend' && u.targetEntityId).map(u => u.targetEntityId!)
+      );
+
+      for (const bld of ownBuildings) {
+        const nearbyEnemies = enemyUnits.filter(e => {
+          const d = Math.abs(e.tileX - bld.tileX) + Math.abs(e.tileY - bld.tileY);
+          return d <= 8 && !alreadyDefended.has(e.id);
+        });
+        if (nearbyEnemies.length === 0) continue;
+
+        for (const enemy of nearbyEnemies) {
+          // 优先 idle，其次 pursuing，最后可打断 attacking 的单位
+          let defender = ownCombat.find(u =>
+            u.holdPosition === false && u.aiLockedAction === null && u.state === 'idle'
+          );
+          if (!defender) {
+            defender = ownCombat.find(u =>
+              u.holdPosition === false && u.aiLockedAction === null && u.state === 'pursuing'
+            );
+          }
+          if (!defender) {
+            defender = ownCombat.find(u =>
+              u.holdPosition === false && u.aiLockedAction === null
+            );
+          }
+          if (!defender) break;
+
+          defender.stopAttacking();
+          defender.holdPosition = false;
+          defender.aiLockedAction = 'defend';
+          defender.attackTarget(enemy.id);
+
+          commands.push({
+            type: 'attack_move',
+            playerIndex: this.playerIndex,
+            unitIds: [defender.id],
+            target: { x: Math.round(enemy.tileX), y: Math.round(enemy.tileY) },
+            frame: 0,
+          });
+        }
+      }
+    }
+
+    // === 进攻分配：每个空闲单位独立选择最佳目标 ===
+    const unassigned = ownCombat.filter(u =>
+      u.isAlive &&
+      u.targetEntityId === null &&
+      u.state === 'idle' &&
+      u.holdPosition === false &&
+      u.aiLockedAction === null
+    );
+
+    const attackThreshold = directive.phase === 'early' ? 2 : 1;
+    if (unassigned.length >= attackThreshold) {
+      for (const unit of unassigned) {
+        const best = this.selectBestTarget([unit], enemyUnits, enemyBuildings, ownBuildings);
+        if (!best) continue;
+
+        unit.attackTarget(best.id);
+        commands.push({
+          type: 'attack_move',
+          playerIndex: this.playerIndex,
+          unitIds: [unit.id],
+          target: { x: Math.round(best.tileX), y: Math.round(best.tileY) },
+          frame: 0,
+        });
+      }
+    }
+
+    // 清理无效的风筝记录 + 减少撤退冷却
+    for (const [unitId] of this.kiteTracker) {
+      if (!units.some(u => u.id === unitId && u.isAlive)) {
+        this.kiteTracker.delete(unitId);
+      }
+    }
+    for (const [unitId, ticks] of this.retreatCooldown) {
+      if (ticks <= 1) {
+        this.retreatCooldown.delete(unitId);
+      } else {
+        this.retreatCooldown.set(unitId, ticks - 1);
+      }
     }
 
     return commands;
+  }
+
+  // ============ 目标选择 ============
+
+  private selectBestTarget(
+    ownUnits: Unit[],
+    enemies: Unit[],
+    enemyBuildings: Building[],
+    ownBuildings: Building[],
+  ): { id: string; tileX: number; tileY: number } | null {
+    let bestScore = -Infinity;
+    let best: { id: string; tileX: number; tileY: number } | null = null;
+
+    // 用每个自己单位独立计算距离（如果传入多个，用平均位置）
+    const avgX = ownUnits.reduce((s, u) => s + u.tileX, 0) / ownUnits.length;
+    const avgY = ownUnits.reduce((s, u) => s + u.tileY, 0) / ownUnits.length;
+
+    // 权重常量
+    const UNIT_ATTACKING_OUR_BUILDING = 100;
+    const UNIT_ATTACKING_OUR_UNIT = 80;
+    const UNIT_LOW_HP = 75;
+    const UNIT_HIGH_DPS = 55;
+    const UNIT_DEFAULT = 40;
+
+    // 评估单位（优先于建筑 — 有敌方单位在附近时先清单位）
+    for (const enemy of enemies) {
+      let priority = UNIT_DEFAULT;
+      if (enemy.targetEntityId && ownBuildings.some(b => b.id === enemy.targetEntityId)) {
+        priority = UNIT_ATTACKING_OUR_BUILDING;
+      } else if (enemy.targetEntityId && ownUnits.some(u => u.id === enemy.targetEntityId)) {
+        priority = UNIT_ATTACKING_OUR_UNIT; // 敌人在攻击我方单位 → 高优先
+      } else if (enemy.hpPercent < 0.3) {
+        priority = UNIT_LOW_HP;
+      } else if (enemy.attackDamage >= 25) {
+        priority = UNIT_HIGH_DPS;
+      }
+
+      const dist = Math.abs(avgX - enemy.tileX) + Math.abs(avgY - enemy.tileY);
+      const score = priority * Math.max(1 / (dist + 1), 0.15);
+      if (score > bestScore) {
+        bestScore = score;
+        best = { id: enemy.id, tileX: enemy.tileX, tileY: enemy.tileY };
+      }
+    }
+
+    // 评估建筑
+    for (const bld of enemyBuildings) {
+      const priority = BUILDING_PRIORITY[bld.spriteKey] ?? 40;
+      const dist = Math.abs(avgX - bld.tileX) + Math.abs(avgY - bld.tileY);
+      const score = priority * Math.max(1 / (dist + 1), 0.15);
+      if (score > bestScore) {
+        bestScore = score;
+        best = { id: bld.id, tileX: bld.tileX, tileY: bld.tileY };
+      }
+    }
+
+    return best;
   }
 }
