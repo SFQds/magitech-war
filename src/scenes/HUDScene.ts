@@ -16,7 +16,7 @@ import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import type { SelectionData } from '../types/events';
 import { ProductionSystem } from '../systems/ProductionSystem';
-import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getDisplayName } from '../config/unitData';
+import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getDisplayName, getBuildingCost, getFactionBonuses } from '../config/unitData';
 
 export class HUDScene extends Phaser.Scene {
   private resourceDisplay!: ResourceDisplay;
@@ -73,9 +73,11 @@ export class HUDScene extends Phaser.Scene {
 
       if (units.length === 1 && units[0].spriteKey === 'unit_worker') {
         const btns: { label: string; cost: string; spriteKey?: string; callback: () => void }[] = [];
+        const playerFaction = gs.world?.players?.[0]?.faction;
         for (const [bldId, def] of Object.entries(BUILDING_DEFS)) {
           if (def.cost.crystal > 0) {
-            btns.push({ label: `建造${def.displayName}`, cost: `💎${def.cost.crystal}`, spriteKey: bldId, callback: () => this.enterBuildMode(units[0].id, bldId) });
+            const cost = getBuildingCost(bldId, playerFaction);
+            btns.push({ label: `建造${def.displayName}`, cost: cost ? `💎${cost.crystal}` : `💎?`, spriteKey: bldId, callback: () => this.enterBuildMode(units[0].id, bldId) });
           }
         }
         this.commandCard.setCommands(btns);
@@ -175,7 +177,9 @@ export class HUDScene extends Phaser.Scene {
     gs.world.spend(0, { crystal: td.crystal });
     bld.researchingTechId = techDefId;
     bld.researchProgress = 0;
-    bld.researchTotalTime = td.time;
+    // 应用阵营研究速度加成（帝国 +15%）
+    const bonuses = getFactionBonuses(bld.faction);
+    bld.researchTotalTime = td.time * bonuses.researchSpeedMult;
     bld.state = 'researching';
     EventBus.emit(GameEvent.PRODUCTION_STARTED, { buildingId: bld.id, playerIndex: 0, unitDefId: techDefId, totalTime: td.time });
     this.refreshResourceDisplay();

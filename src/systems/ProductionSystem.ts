@@ -31,7 +31,8 @@ export class ProductionSystem {
     const completed: ProductionComplete[] = [];
 
     for (const building of buildings) {
-      if (!building.isAlive) continue;
+      // 建设中建筑无法生产单位
+      if (!building.isAlive || building.state === 'constructing') continue;
 
       const result = building.tickProduction(deltaSec);
       if (result) {

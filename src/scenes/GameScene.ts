@@ -31,9 +31,9 @@ import { SoundManager } from '../utils/SoundManager';
 const UNIT_COSTS = Object.fromEntries(
   Object.entries(UNIT_DEFS).map(([k, v]) => [k, { ...v.cost, category: v.stats.category }])
 ) as Record<string, { crystal: number; supply: number; time: number; category: string }>;
-const BUILDING_COSTS = Object.fromEntries(
-  Object.entries(BUILDING_DEFS).map(([k, v]) => [k, { ...v.cost, providesSupply: v.provides.supply, providesIndustry: v.provides.industry }])
-) as Record<string, { crystal: number; industry: number; time: number; providesSupply: number; providesIndustry: number }>;
+// P0修复: 移除不含阵营倍率的BUILDING_COSTS常量
+// 统一使用 getBuildingCost(buildingDefId, factionId) 含联邦-20%加成
+// const BUILDING_COSTS 已删除
 
 export class GameScene extends Phaser.Scene {
   world!: GameWorld;
@@ -823,7 +823,8 @@ export class GameScene extends Phaser.Scene {
       case 'build': {
         // AI自动放置建造 — 搜索 CC 附近可行走位置
         const bc = cmd as any;
-        const cost = BUILDING_COSTS[bc.buildingDefId];
+        const aiFaction = this.world.players[cmd.playerIndex]?.faction ?? 'hammer_federation';
+        const cost = getBuildingCost(bc.buildingDefId, aiFaction);
         if (!cost) break;
         if (!this.world.canAfford(cmd.playerIndex, { crystal: cost.crystal })) break;
         const aiCC = this.buildings.find(b => b.owner === cmd.playerIndex && b.isAlive);
@@ -834,7 +835,6 @@ export class GameScene extends Phaser.Scene {
         // 检查是否已有建筑在此位置
         if (this.buildings.some(b => b.isAlive && b.tileX === safePos.x && b.tileY === safePos.y)) break;
         this.world.spend(cmd.playerIndex, { crystal: cost.crystal });
-        const aiFaction = this.world.players[cmd.playerIndex]?.faction ?? 'hammer_federation';
         const bldDef = BUILDING_DEFS[bc.buildingDefId];
         const bldHp = bldDef ? bldDef.hp : 800;
         const bld = new Building(cmd.playerIndex, aiFaction, safePos.x, safePos.y, bldHp, 'structure', 'production', bc.buildingDefId, cost.providesSupply, cost.providesIndustry);
@@ -936,7 +936,7 @@ export class GameScene extends Phaser.Scene {
 
   /** 进入建造模式 */
   enterBuildMode(buildingDefId: string, builderId: string): void {
-    const cost = BUILDING_COSTS[buildingDefId];
+    const cost = getBuildingCost(buildingDefId, this._playerFaction);
     if (!cost) return;
     if (!this.world.canAfford(0, { crystal: cost.crystal, industry: cost.industry })) return;
 
@@ -977,7 +977,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.buildMode) return;
 
     const defId = this.buildMode.buildingDefId;
-    const cost = BUILDING_COSTS[defId];
+    const cost = getBuildingCost(defId, this._playerFaction);
     if (!cost) return;
 
     const map = this.world.map;
@@ -1014,7 +1014,7 @@ export class GameScene extends Phaser.Scene {
 
     for (const bld of this.buildings) {
       if (!bld.isAlive || bld.state !== 'constructing') continue;
-      const cost = BUILDING_COSTS[bld.spriteKey];
+      const cost = getBuildingCost(bld.spriteKey, bld.faction);
       if (!cost) { bld.complete(); continue; }
 
       bld.buildProgress += deltaSec / cost.time;

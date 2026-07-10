@@ -110,7 +110,8 @@ export class ResourceSystem {
       let totalIndustry = 0;
 
       for (const building of buildings) {
-        if (building.owner !== player.index || !building.isAlive) continue;
+        // 建设中建筑不提供供给/工业（建造完成后才生效）
+        if (building.owner !== player.index || !building.isAlive || building.state === 'constructing') continue;
         totalSupply += building.providesSupply;
         totalIndustry += building.providesIndustry;
       }
