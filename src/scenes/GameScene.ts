@@ -24,7 +24,7 @@ import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import { tileToWorld } from '../utils/MathUtils';
 import type { Point } from '../types/entity';
-import { UNIT_DEFS, BUILDING_DEFS, getBuildingCost, FACTION_DEFS, TECH_DEFS } from '../config/unitData';
+import { UNIT_DEFS, BUILDING_DEFS, getBuildingCost, getFactionBonuses, FACTION_DEFS, TECH_DEFS } from '../config/unitData';
 import { SoundManager } from '../utils/SoundManager';
 
 // 运行时从配置生成（兼容现有代码）
@@ -41,6 +41,35 @@ export class GameScene extends Phaser.Scene {
   private inputCtrl!: InputController;
   private techTree!: TechTreeSystem;
   private aiController!: AIController;
+
+  /** 科技效果缓存（从 techTree 计算，每次研究完成时刷新） */
+  private techEffects = { gatherMult: 1.0, infantryArmor: 0, buildingHpMult: 1.0 };
+
+  /** 刷新科技效果缓存 */
+  private refreshTechEffects(): void {
+    this.techEffects = {
+      gatherMult: this.techTree.isResearched('tech:advanced_mining') ? 1.2 : 1.0,
+      infantryArmor: this.techTree.isResearched('tech:infantry_armor') ? 5 : 0,
+      buildingHpMult: this.techTree.isResearched('tech:structure_reinforce') ? 1.2 : 1.0,
+    };
+  }
+
+  /** 将科技效果应用到单位（新建单位时调用） */
+  private applyTechToUnit(unit: Unit): void {
+    const te = this.techEffects;
+    if (unit.category === 'infantry' && te.infantryArmor > 0) {
+      unit.armor = te.infantryArmor;
+    }
+  }
+
+  /** 将科技效果应用到建筑（新建建筑时调用） */
+  private applyTechToBuilding(bld: Building): void {
+    const te = this.techEffects;
+    if (te.buildingHpMult !== 1.0) {
+      bld.maxHp = Math.round(bld.maxHp * te.buildingHpMult);
+      bld.hp = Math.min(bld.hp, bld.maxHp);
+    }
+  }
 
   // 实体列表 + 快速查找
   private units: Unit[] = [];
@@ -82,9 +111,13 @@ export class GameScene extends Phaser.Scene {
   // ============ 初始化 ============
 
   private _mapId: string = 'map_valley';
+  private _playerFaction: string = 'arcane_empire';
+  private _aiDifficulty: string = 'normal';
 
-  init(data?: { map?: string }): void {
+  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string }): void {
     this._mapId = data?.map ?? 'map_valley';
+    this._playerFaction = data?.playerFaction ?? 'arcane_empire';
+    this._aiDifficulty = data?.aiDifficulty ?? 'normal';
   }
 
   preload(): void {
@@ -106,14 +139,20 @@ export class GameScene extends Phaser.Scene {
       this.world.map.loadFromData(mapJson);
     }
 
-    this.world.addPlayer('arcane_empire', ['mages_guild', 'alchemists_society'], false);
-    this.world.addPlayer('hammer_federation', ['mechanists_guild', 'alchemists_society'], true);
+    // 玩家选择的阵营 → AI 使用对立阵营
+    const playerFaction = this._playerFaction as 'arcane_empire' | 'hammer_federation';
+    const aiFaction = playerFaction === 'arcane_empire' ? 'hammer_federation' : 'arcane_empire';
+    const playerCC = playerFaction === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
+    const aiCC = aiFaction === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
+
+    this.world.addPlayer(playerFaction, ['mages_guild', 'alchemists_society'], false);
+    this.world.addPlayer(aiFaction, ['mechanists_guild', 'alchemists_society'], true);
 
     // 初始化子系统
     this.cameraCtrl = new CameraController(this.cameras.main, mapW, mapH, tileSize);
     this.inputCtrl = new InputController(this, 0);
     this.techTree = new TechTreeSystem();
-    this.aiController = new AIController(this.world, 1, 'normal');
+    this.aiController = new AIController(this.world, 1, this._aiDifficulty as 'easy' | 'normal' | 'hard');
 
     // 渲染世界
     this.renderTiles();
@@ -151,7 +190,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 开局跑一次资源计算（让 population/industry 正确反映建筑提供值）
-    ResourceSystem.updateResources(this.world.players, this.units, this.buildings);
+    ResourceSystem.updateResources(this.world.players, this.units, this.buildings, 0);
 
     // 发射初始资源事件（让 HUD 正确显示）
     const p0 = this.world.players[0];
@@ -200,11 +239,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private placeStartingUnits(p0x: number, p0y: number, p1x: number, p1y: number): void {
-    // 玩家(0) — 奥术帝国
-    this.spawnFactionStartingUnits(0, 'arcane_empire', p0x, p0y, 'bld_cc_empire');
-
-    // AI(1) — 铁锤联邦
-    this.spawnFactionStartingUnits(1, 'hammer_federation', p1x, p1y, 'bld_cc_federation');
+    const pf = this._playerFaction;
+    const af = pf === 'arcane_empire' ? 'hammer_federation' : 'arcane_empire';
+    const pCC = pf === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
+    const aCC = af === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
+    this.spawnFactionStartingUnits(0, pf, p0x, p0y, pCC);
+    this.spawnFactionStartingUnits(1, af, p1x, p1y, aCC);
   }
 
   /** 按阵营配置生成起始单位 */
@@ -218,6 +258,7 @@ export class GameScene extends Phaser.Scene {
     const cc = new Building(owner, factionId as any, bx, by, 2000, 'structure', 'production',
       ccBldId, 50, fd.startingIndustry);
     cc.complete();
+    this.applyTechToBuilding(cc);
     this.addBuilding(cc);
 
     // 起始单位 — 使用安全出生点搜索
@@ -234,6 +275,7 @@ export class GameScene extends Phaser.Scene {
         const unit = new Unit(owner, factionId as any, ux, uy,
           s.hp, s.armor, s.category, s.speed, s.damage, s.dmgType,
           s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
+        this.applyTechToUnit(unit);
         this.addUnit(unit);
         nextSpawnX = ux + 1;
         nextSpawnY = uy;
@@ -622,12 +664,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 5. 采集
+    const gatherMults = new Map<number, number>();
+    // 玩家0科技采集加成
+    gatherMults.set(0, this.techEffects.gatherMult);
+    // AI也享受（共享科技树，简化处理）
+    gatherMults.set(1, this.techEffects.gatherMult);
     const gatherEvents = ResourceSystem.updateGathering(
       this.units,
       this.resourceFields,
       this.world.players,
       deltaSec,
       this.buildings,
+      gatherMults,
     );
     for (const ge of gatherEvents) {
       EventBus.emit(GameEvent.RESOURCE_GATHERED, {
@@ -647,8 +695,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 6. 资源（补给/工业上限）
-    ResourceSystem.updateResources(this.world.players, this.units, this.buildings);
+    // 6. 资源（补给/工业上限 + 工业自然增长）
+    ResourceSystem.updateResources(this.world.players, this.units, this.buildings, deltaSec);
 
     // 7. 生产 → 生成单位
     const completed = ProductionSystem.updateProduction(this.buildings, deltaSec);
@@ -771,7 +819,11 @@ export class GameScene extends Phaser.Scene {
         const safePos = this.world.map.findNearbyPassable(aiCC.tileX + 3, aiCC.tileY + 3, 15);
         if (!safePos) break;
         this.world.spend(cmd.playerIndex, { crystal: cost.crystal });
-        const bld = new Building(cmd.playerIndex, 'hammer_federation', safePos.x, safePos.y, 800, 'structure', 'production', bc.buildingDefId, cost.providesSupply, cost.providesIndustry);
+        const aiFaction = this.world.players[cmd.playerIndex]?.faction ?? 'hammer_federation';
+        const bldDef = BUILDING_DEFS[bc.buildingDefId];
+        const bldHp = bldDef ? bldDef.hp : 800;
+        const bld = new Building(cmd.playerIndex, aiFaction, safePos.x, safePos.y, bldHp, 'structure', 'production', bc.buildingDefId, cost.providesSupply, cost.providesIndustry);
+        this.applyTechToBuilding(bld);
         this.addBuilding(bld);
         break;
       }
@@ -808,7 +860,9 @@ export class GameScene extends Phaser.Scene {
         this.world.spend(cmd.playerIndex, { crystal: tech.crystal });
         bld.researchingTechId = rc.techDefId;
         bld.researchProgress = 0;
-        bld.researchTotalTime = tech.time;
+        // 帝国研究速度+15%，联邦研究速度不变
+        const factionBonuses = getFactionBonuses(bld.faction);
+        bld.researchTotalTime = tech.time * factionBonuses.researchSpeedMult;
         bld.state = 'researching';
         EventBus.emit(GameEvent.PRODUCTION_STARTED, {
           buildingId: bld.id, playerIndex: cmd.playerIndex,
@@ -848,11 +902,12 @@ export class GameScene extends Phaser.Scene {
       if (safe) { spawnX = safe.x; spawnY = safe.y; }
     }
 
-    const faction = owner === 0 ? 'arcane_empire' as const : 'hammer_federation' as const;
+    const faction = this.world.players[owner]?.faction ?? (owner === 0 ? 'arcane_empire' : 'hammer_federation') as any;
     const s = def.stats;
     const unit = new Unit(owner, faction, spawnX, spawnY, s.hp, s.armor, s.category,
       s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
 
+    this.applyTechToUnit(unit);
     this.addUnit(unit);
     EventBus.emit(GameEvent.UNIT_CREATED, {
       unitId: unit.id,
@@ -917,11 +972,14 @@ export class GameScene extends Phaser.Scene {
 
     this.world.spend(0, { crystal: cost.crystal, industry: cost.industry });
 
-    // 创建建筑
+    // 创建建筑（HP 从 BUILDING_DEFS 读取）
+    const bldDef = BUILDING_DEFS[defId];
+    const bldHp = bldDef ? bldDef.hp : 800;
     const bld = new Building(
-      0, 'arcane_empire', tileX, tileY, 800, 'structure', 'production',
+      0, this._playerFaction as any, tileX, tileY, bldHp, 'structure', 'production',
       defId, cost.providesSupply, cost.providesIndustry,
     );
+    this.applyTechToBuilding(bld);
     this.addBuilding(bld);
 
     // 通知建造者走到建筑旁
@@ -963,6 +1021,26 @@ export class GameScene extends Phaser.Scene {
         bld.researchingTechId = null;
         bld.researchProgress = 0;
         bld.state = 'idle';
+
+        // 刷新科技效果缓存
+        this.refreshTechEffects();
+
+        // 回溯应用科技效果到现有实体
+        const te = this.techEffects;
+        if (techId === 'tech:infantry_armor') {
+          for (const u of this.units) {
+            if (u.category === 'infantry' && u.isAlive) u.armor = te.infantryArmor;
+          }
+        }
+        if (techId === 'tech:structure_reinforce') {
+          for (const b of this.buildings) {
+            if (b.isAlive) {
+              b.maxHp = Math.round(b.maxHp * te.buildingHpMult);
+              b.hp = Math.min(b.hp, b.maxHp);
+            }
+          }
+        }
+
         EventBus.emit(GameEvent.RESEARCH_COMPLETE, {
           buildingId: bld.id, playerIndex: bld.owner, techDefId: techId,
         });

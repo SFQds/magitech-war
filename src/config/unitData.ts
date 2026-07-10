@@ -73,6 +73,24 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     stats: { hp: 350, armor: 'heavy', category: 'infantry', speed: 1.8, damage: 30, dmgType: 'magic', range: 1, cooldown: 1.0, sight: 6 },
     attackEffect: 'melee',
   },
+  unit_scout_bike: {
+    displayName: '侦察摩托',
+    cost: { crystal: 200, supply: 1, time: 10 },
+    stats: { hp: 150, armor: 'light', category: 'vehicle', speed: 5.0, damage: 0, dmgType: 'physical', range: 0, cooldown: 0, sight: 12 },
+    attackEffect: 'melee',
+  },
+  unit_transport: {
+    displayName: '运输卡车',
+    cost: { crystal: 300, supply: 2, time: 15 },
+    stats: { hp: 250, armor: 'mechanical', category: 'vehicle', speed: 3.5, damage: 0, dmgType: 'physical', range: 0, cooldown: 0, sight: 6 },
+    attackEffect: 'melee',
+  },
+  unit_basic_turret: {
+    displayName: '基础炮塔',
+    cost: { crystal: 400, supply: 1, time: 20 },
+    stats: { hp: 400, armor: 'structure', category: 'infantry', speed: 0, damage: 25, dmgType: 'physical', range: 6, cooldown: 1.2, sight: 6 },
+    attackEffect: 'proj_bullet',
+  },
 };
 
 // ============================================================
@@ -95,6 +113,7 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     provides: { supply: 50, industry: 50 },
     produces: ['unit_worker'],
+    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_cc_federation: {
     displayName: '联邦指挥中心',
@@ -102,6 +121,7 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     provides: { supply: 50, industry: 80 },
     produces: ['unit_worker'],
+    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_barracks: {
     displayName: '兵营',
@@ -115,13 +135,34 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     cost: { crystal: 500, industry: 40, time: 30 },
     hp: 1000,
     provides: { supply: 20, industry: 30 },
-    produces: ['unit_magitech_mech'],
+    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport'],
   },
   bld_refinery: {
     displayName: '采矿场',
     cost: { crystal: 400, industry: 0, time: 25 },
     hp: 600,
     provides: { supply: 0, industry: 10 },
+    produces: [],
+  },
+  bld_power_plant: {
+    displayName: '工业车间',
+    cost: { crystal: 250, industry: 0, time: 18 },
+    hp: 500,
+    provides: { supply: 0, industry: 50 },
+    produces: [],
+  },
+  bld_turret: {
+    displayName: '炮塔',
+    cost: { crystal: 400, industry: 30, time: 20 },
+    hp: 400,
+    provides: { supply: 0, industry: 0 },
+    produces: [],
+  },
+  bld_wall: {
+    displayName: '城墙',
+    cost: { crystal: 50, industry: 0, time: 5 },
+    hp: 300,
+    provides: { supply: 0, industry: 0 },
     produces: [],
   },
 };

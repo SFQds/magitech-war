@@ -111,7 +111,10 @@ export interface PlayerState {
     industry: number;
     supply: number;
     supplyCap: number;
+    industryCap: number;
   };
+  /** 工业产值积累计时器（秒） */
+  _industryTimer?: number;
   isAI: boolean;
   aiDifficulty?: 'easy' | 'normal' | 'hard';
 }

@@ -35,6 +35,7 @@ export class ResourceSystem {
     players: PlayerState[],
     deltaSec: number,
     buildings?: Building[],
+    gatherMult?: Map<number, number>,
   ): GatherEvent[] {
     const events: GatherEvent[] = [];
 
@@ -69,6 +70,9 @@ export class ResourceSystem {
             field.amount += (amount - gathered);
           }
         }
+        // 科技采集加成
+        const mult = gatherMult?.get(unit.owner) ?? 1.0;
+        gathered = Math.round(gathered * mult);
         if (gathered > 0) {
           const player = players[unit.owner];
           if (player) {
@@ -97,10 +101,11 @@ export class ResourceSystem {
   static updateResources(
     players: PlayerState[],
     _units: Unit[],
-    buildings: Building[]
+    buildings: Building[],
+    deltaSec: number = 0,
   ): void {
     for (const player of players) {
-      // 重新计算补给和工业
+      // 重新计算补给上限和工业上限
       let totalSupply = 0;
       let totalIndustry = 0;
 
@@ -111,7 +116,20 @@ export class ResourceSystem {
       }
 
       player.resources.supplyCap = totalSupply;
-      player.resources.industry = totalIndustry;
+      player.resources.industryCap = totalIndustry;
+
+      // 工业产值：缓慢自然增长（1/s 基础 + 建筑提供值的 10% /s）
+      if (deltaSec > 0) {
+        const regenRate = 1 + totalIndustry * 0.1; // 每秒恢复量
+        player.resources.industry = Math.min(
+          totalIndustry,
+          player.resources.industry + regenRate * deltaSec,
+        );
+      } else {
+        // 初始化时直接填满（游戏开始）
+        if (player.resources.industry < 0) player.resources.industry = 0;
+        if (player.resources.industry > totalIndustry) player.resources.industry = totalIndustry;
+      }
     }
   }
 }

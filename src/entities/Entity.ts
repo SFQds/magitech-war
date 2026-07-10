@@ -17,6 +17,8 @@ export abstract class Entity {
   hp: number;
   maxHp: number;
   armorType: ArmorType;
+  /** 固定减伤值（科技/技能叠加） */
+  armor: number = 0;
   isActive: boolean;
   spriteKey: string;
 
@@ -48,7 +50,9 @@ export abstract class Entity {
   /** 受到伤害，返回是否死亡 */
   takeDamage(amount: number): boolean {
     if (!this.isActive) return false;
-    this.hp -= amount;
+    // 护甲减伤（至少造成1点伤害）
+    const final = Math.max(1, amount - this.armor);
+    this.hp -= final;
     if (this.hp <= 0) {
       this.hp = 0;
       this.isActive = false;

@@ -42,6 +42,7 @@ export class GameWorld {
         industry: fd?.startingIndustry ?? 50,
         supply: 0,
         supplyCap: 20,
+        industryCap: fd?.startingIndustry ?? 50,
       },
       isAI,
     });

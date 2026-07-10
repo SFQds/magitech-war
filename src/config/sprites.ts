@@ -14,6 +14,7 @@ export const PNG_SPRITE_KEYS = [
   'bld_barracks',
   'bld_factory',
   'bld_refinery',
+  'bld_power_plant',
   'ui_crystal',
   'proj_bullet',
   'proj_magic_bolt',

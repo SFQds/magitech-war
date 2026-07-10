@@ -188,7 +188,8 @@ export class CombatSystem {
       // AI 锁定的单位不自动索敌（防止 CombatSystem 覆盖 AI 撤退/防守命令）
       if (unit.targetEntityId) continue;
       if (unit.state !== 'idle' && unit.state !== 'moving') continue;
-      if (unit.spriteKey === 'unit_worker') continue;
+      // 工人 + 非战斗单位不自动攻击
+      if (unit.attackDamage <= 0) continue;
       if (unit.holdPosition) continue;
       // 仅 retreat 阻止索敌；defend/recover 允许途中自卫
       if (unit.aiLockedAction === 'retreat') continue;
