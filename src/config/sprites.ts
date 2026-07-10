@@ -20,6 +20,8 @@ export const PNG_SPRITE_KEYS = [
   'unit_transport',
   'unit_basic_turret',
   'bld_turret',
+  'bld_ancient_archive',
+  'bld_assembly_workshop',
   'ui_crystal',
   'proj_bullet',
   'proj_magic_bolt',

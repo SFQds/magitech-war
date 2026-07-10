@@ -113,7 +113,6 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     provides: { supply: 50, industry: 50 },
     produces: ['unit_worker'],
-    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_cc_federation: {
     displayName: '联邦指挥中心',
@@ -121,7 +120,6 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     provides: { supply: 50, industry: 80 },
     produces: ['unit_worker'],
-    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_barracks: {
     displayName: '兵营',
@@ -164,6 +162,22 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 400,
     provides: { supply: 0, industry: 0 },
     produces: [],
+  },
+  bld_ancient_archive: {
+    displayName: '古代典籍馆',
+    cost: { crystal: 350, industry: 20, time: 25 },
+    hp: 600,
+    provides: { supply: 0, industry: 10 },
+    produces: [],
+    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
+  },
+  bld_assembly_workshop: {
+    displayName: '流水线车间',
+    cost: { crystal: 350, industry: 20, time: 25 },
+    hp: 600,
+    provides: { supply: 0, industry: 10 },
+    produces: [],
+    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
 };
 
