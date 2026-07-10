@@ -20,6 +20,8 @@ export interface UnitDefData {
     range: number; cooldown: number; sight: number;
   };
   attackEffect: string;
+  /** 训练所需科技（空=无限制） */
+  techReq?: string[];
   abilities?: UnitAbility[];
 }
 
@@ -60,12 +62,14 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     cost: { crystal: 300, supply: 2, time: 15 },
     stats: { hp: 150, armor: 'light', category: 'infantry', speed: 2.5, damage: 25, dmgType: 'magic', range: 6, cooldown: 1.0, sight: 6 },
     attackEffect: 'proj_magic_bolt',
+    techReq: ['tech:battle_mage_training'],
   },
   unit_magitech_mech: {
     displayName: '魔导机甲',
     cost: { crystal: 400, supply: 3, time: 25 },
     stats: { hp: 500, armor: 'mechanical', category: 'vehicle', speed: 1.5, damage: 35, dmgType: 'physical', range: 5, cooldown: 1.5, sight: 5 },
     attackEffect: 'proj_cannon',
+    techReq: ['tech:mech_assembly'],
   },
   unit_arcane_heavy: {
     displayName: '奥术重步',
@@ -182,21 +186,21 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     provides: { supply: 0, industry: 0 },
     produces: [],
   },
-  bld_ancient_archive: {
+bld_ancient_archive: {
     displayName: '古代典籍馆',
     cost: { crystal: 350, industry: 20, time: 25 },
     hp: 600,
     provides: { supply: 0, industry: 10 },
-    produces: [],
-    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
+    produces: ['unit_arcane_guard'],
+    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce', 'tech:battle_mage_training', 'tech:mech_assembly'],
   },
   bld_assembly_workshop: {
     displayName: '流水线车间',
     cost: { crystal: 350, industry: 20, time: 25 },
     hp: 600,
     provides: { supply: 0, industry: 10 },
-    produces: [],
-    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
+    produces: ['unit_hammer_squad'],
+    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce', 'tech:battle_mage_training', 'tech:mech_assembly'],
   },
 };
 
@@ -324,5 +328,17 @@ export const TECH_DEFS: Record<string, TechDefData> = {
     crystal: 300,
     time: 40,
     desc: '建筑 HP +20%',
+  },
+  'tech:battle_mage_training': {
+    name: '战斗法师训练',
+    crystal: 250,
+    time: 30,
+    desc: '解锁战斗法师训练',
+  },
+  'tech:mech_assembly': {
+    name: '机甲装配技术',
+    crystal: 350,
+    time: 35,
+    desc: '解锁魔导机甲制造',
   },
 };

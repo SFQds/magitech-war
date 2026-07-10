@@ -93,9 +93,14 @@ export class HUDScene extends Phaser.Scene {
       const btns: any[] = [];
       // 训练按钮
       if (def?.produces) {
+        const gs2 = this.scene.get('GameScene') as any;
         for (const uid of def.produces) {
           const ud = UNIT_DEFS[uid];
-          btns.push({ label: getDisplayName(uid), cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback: () => this.issueTrainCommand(bld.id, uid) });
+          // 检查科技需求
+          const techsMet = !ud?.techReq?.length || ud.techReq.every((tid: string) => gs2.techTree?.isResearched(tid));
+          const label = techsMet ? getDisplayName(uid) : `${getDisplayName(uid)} 🔒`;
+          const callback = techsMet ? () => this.issueTrainCommand(bld.id, uid) : () => this.showToast('科技未解锁');
+          btns.push({ label, cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback });
         }
       }
       // 研究按钮

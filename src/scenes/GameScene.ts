@@ -12,6 +12,7 @@ import { MovementSystem } from '../systems/MovementSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { ProductionSystem } from '../systems/ProductionSystem';
+import { GuildSystem } from '../systems/GuildSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
@@ -675,6 +676,9 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // 4.5 行会机制（奥术充能 / 流水线协议）
+    GuildSystem.update(this.world.players, this.units, this.buildings, deltaSec);
 
     // 5. 采集
     const gatherMults = new Map<number, number>();
