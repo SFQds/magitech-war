@@ -11,12 +11,13 @@ import type { Unit } from '../entities/Unit';
 import type { ResourceField } from '../entities/ResourceField';
 import type { StrategyDirective } from './StrategyManager';
 
-/** 单位造价快速查询（避免循环依赖 unitData.ts，同步维护） */
+/** 单位造价快速查询（从 UNIT_DEFS 同步维护） */
 const UNIT_CRYSTAL_COST: Record<string, number> = {
   unit_worker: 100,
   unit_rifleman: 150,
-  unit_battle_mage: 300,
+  unit_battle_mage: 240,
   unit_magitech_mech: 400,
+  unit_arcane_heavy: 600,
 };
 
 export class EconomyAI {
@@ -99,8 +100,8 @@ export class EconomyAI {
       // 不 return，继续尝试建造和训练其他单位
     }
 
-    // 2. 建造建筑（高进攻时不建新建筑，全力暴兵）
-    if (directive.aggression < 0.7) {
+    // 2. 建造建筑（缺什么建什么，不受侵略性限制；但高侵略时优先训练而非新建）
+    if (directive.aggression < 0.7 || (!hasBarracks && !hasFactory)) {
       if (!hasBarracks && crystal >= 300) {
         commands.push({
           type: 'build', playerIndex: this.playerIndex,
@@ -130,6 +131,7 @@ export class EconomyAI {
         if (trainedBuildings.has(b.id)) return false;
         if (unitDefId === 'unit_magitech_mech') return b.spriteKey === 'bld_factory';
         if (unitDefId === 'unit_battle_mage') return b.spriteKey === 'bld_barracks';
+        if (unitDefId === 'unit_arcane_heavy') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_rifleman') return b.spriteKey === 'bld_barracks';
         return false;
       });

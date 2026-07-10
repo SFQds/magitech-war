@@ -70,7 +70,8 @@ export class CombatSystem {
     const damage = this.calculateDamage(
       attacker.attackDamage,
       attacker.attackType,
-      target.armorType
+      target.armorType,
+      attacker.faction,
     );
 
     return damage;
@@ -142,7 +143,7 @@ export class CombatSystem {
 
         // 冷却完毕 → 攻击
         if (unit.attackTimer <= 0) {
-          const damage = CombatSystem.calculateDamage(unit.attackDamage, unit.attackType, target.armorType);
+          const damage = CombatSystem.calculateDamage(unit.attackDamage, unit.attackType, target.armorType, unit.faction);
           unit.attackTimer = unit.attackCooldown;
 
           const def = UNIT_DEFS[unit.spriteKey];

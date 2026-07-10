@@ -50,6 +50,16 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private setupEvents(): void {
+    // 清理上次游戏残留的监听器，防止重复触发
+    EventBus.offAll(GameEvent.RESOURCE_CHANGED);
+    EventBus.offAll(GameEvent.SELECTION_CHANGED);
+    EventBus.offAll(GameEvent.BUILDING_SELECTED);
+    EventBus.offAll(GameEvent.PRODUCTION_STARTED);
+    EventBus.offAll(GameEvent.PRODUCTION_COMPLETE);
+    EventBus.offAll(GameEvent.UNIT_CREATED);
+    EventBus.offAll(GameEvent.UNIT_KILLED);
+    EventBus.offAll('attackmove:toggle');
+
     EventBus.on(GameEvent.RESOURCE_CHANGED, () => this.refreshResourceDisplay());
 
     EventBus.on(GameEvent.SELECTION_CHANGED, (data: unknown) => {
@@ -116,6 +126,19 @@ export class HUDScene extends Phaser.Scene {
     });
   }
 
+  /** 屏幕中央短暂浮动提示 */
+  private showToast(msg: string): void {
+    const { width, height } = this.cameras.main;
+    const text = this.add.text(width / 2, height / 2, msg, {
+      fontSize: '20px', color: '#ff6644', backgroundColor: '#1a1a2e',
+      padding: { x: 16, y: 8 }, fontFamily: 'Arial, sans-serif',
+    }).setOrigin(0.5).setDepth(300).setScrollFactor(0);
+    this.tweens.add({
+      targets: text, alpha: 0, y: text.y - 40, duration: 1200,
+      onComplete: () => text.destroy(),
+    });
+  }
+
   private refreshResourceDisplay(): void {
     const gs = this.scene.get('GameScene') as any;
     const r = gs.world?.players?.[0]?.resources;
@@ -129,7 +152,10 @@ export class HUDScene extends Phaser.Scene {
     const def = UNIT_DEFS[unitDefId];
     if (!def) return;
     const { crystal, supply, time } = def.cost;
-    if (!gs.world.canAfford(0, { crystal, supply })) return;
+    if (!gs.world.canAfford(0, { crystal, supply })) {
+      this.showToast('资源不足');
+      return;
+    }
     gs.world.spend(0, { crystal, supply });
     ProductionSystem.startProduction(bld, unitDefId, time);
     EventBus.emit(GameEvent.PRODUCTION_STARTED, { buildingId: bld.id, playerIndex: 0, unitDefId, totalTime: time });
@@ -142,7 +168,10 @@ export class HUDScene extends Phaser.Scene {
     if (!bld || bld.state !== 'idle') return;
     const td = TECH_DEFS[techDefId];
     if (!td) return;
-    if (!gs.world.canAfford(0, { crystal: td.crystal })) return;
+    if (!gs.world.canAfford(0, { crystal: td.crystal })) {
+      this.showToast('水晶不足');
+      return;
+    }
     gs.world.spend(0, { crystal: td.crystal });
     bld.researchingTechId = techDefId;
     bld.researchProgress = 0;

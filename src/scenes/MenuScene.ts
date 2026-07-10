@@ -198,12 +198,12 @@ export class MenuScene extends Phaser.Scene {
       SoundManager.init();
       const mapId = MAPS[this.currentMapIdx].id;
       const diff = DIFFICULTIES[this.difficultyIdx].id;
+      // 只启动 GameScene，HUDScene 由 GameScene 内部 launch
       this.scene.start('GameScene', {
         map: mapId,
         playerFaction: this.selectedFactionId,
         aiDifficulty: diff,
       });
-      this.scene.start('HUDScene');
     });
 
     // === 初始化显示 ===

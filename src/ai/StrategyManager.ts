@@ -110,6 +110,8 @@ export class StrategyManager {
     if (hasProduction && combatCount < 6) {
       return 'mid';
     }
+    // 无生产建筑时退回早/中期，避免卡在后期发不出兵
+    if (!hasProduction) return 'early';
     return 'late';
   }
 }

@@ -200,6 +200,11 @@ export class GameScene extends Phaser.Scene {
       newValue: p0.resources.crystal,
       delta: p0.resources.crystal,
     });
+    // HUDScene 并行启动（在 create 末尾）
+    if (!this.scene.isActive('HUDScene')) {
+      this.scene.launch('HUDScene');
+    }
+
     EventBus.emit(GameEvent.GAME_STARTED, {});
 
     // 音效事件监听
@@ -555,6 +560,11 @@ export class GameScene extends Phaser.Scene {
         EventBus.emit('attackmove:toggle' as any, { active: false });
       }
     });
+
+    // 滚轮缩放
+    this.input.on('wheel', (_pointer: any, _gx: any, _gy: any, _gz: any, delta: any) => {
+      if (delta && delta.y) this.cameraCtrl.zoomAt(delta.y);
+    });
   }
 
   private findEnemyAtTile(tx: number, ty: number): Entity | null {
@@ -582,6 +592,9 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (this._gameOver) return;
     const deltaSec = delta / 1000;
+
+    // 0. 建造预览跟随鼠标
+    if (this.buildMode) this.updateBuildPreviewPosition();
 
     // 1. 摄像机
     this.cameraCtrl.update(this.input.activePointer);
@@ -818,6 +831,8 @@ export class GameScene extends Phaser.Scene {
         // 从 CC 周围搜索第一个可通过瓦片
         const safePos = this.world.map.findNearbyPassable(aiCC.tileX + 3, aiCC.tileY + 3, 15);
         if (!safePos) break;
+        // 检查是否已有建筑在此位置
+        if (this.buildings.some(b => b.isAlive && b.tileX === safePos.x && b.tileY === safePos.y)) break;
         this.world.spend(cmd.playerIndex, { crystal: cost.crystal });
         const aiFaction = this.world.players[cmd.playerIndex]?.faction ?? 'hammer_federation';
         const bldDef = BUILDING_DEFS[bc.buildingDefId];

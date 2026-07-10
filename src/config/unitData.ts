@@ -52,13 +52,13 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
   unit_rifleman: {
     displayName: '水晶步枪兵',
     cost: { crystal: 150, supply: 1, time: 10 },
-    stats: { hp: 120, armor: 'light', category: 'infantry', speed: 2.2, damage: 18, dmgType: 'physical', range: 5, cooldown: 0.8, sight: 7 },
+    stats: { hp: 120, armor: 'light', category: 'infantry', speed: 2.2, damage: 14, dmgType: 'physical', range: 5, cooldown: 0.8, sight: 7 },
     attackEffect: 'proj_bullet',
   },
   unit_battle_mage: {
     displayName: '战斗法师',
-    cost: { crystal: 300, supply: 2, time: 15 },
-    stats: { hp: 150, armor: 'light', category: 'infantry', speed: 2.5, damage: 25, dmgType: 'magic', range: 6, cooldown: 1.2, sight: 6 },
+    cost: { crystal: 240, supply: 2, time: 15 },
+    stats: { hp: 150, armor: 'light', category: 'infantry', speed: 2.5, damage: 30, dmgType: 'magic', range: 6, cooldown: 1.0, sight: 6 },
     attackEffect: 'proj_magic_bolt',
   },
   unit_magitech_mech: {
@@ -69,8 +69,8 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
   },
   unit_arcane_heavy: {
     displayName: '奥术重步',
-    cost: { crystal: 1000, supply: 4, time: 40 },
-    stats: { hp: 350, armor: 'heavy', category: 'infantry', speed: 1.8, damage: 30, dmgType: 'magic', range: 1, cooldown: 1.0, sight: 6 },
+    cost: { crystal: 600, supply: 3, time: 30 },
+    stats: { hp: 400, armor: 'heavy', category: 'infantry', speed: 2.0, damage: 40, dmgType: 'magic', range: 2, cooldown: 0.9, sight: 6 },
     attackEffect: 'melee',
   },
   unit_scout_bike: {

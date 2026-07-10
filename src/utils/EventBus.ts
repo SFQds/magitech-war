@@ -24,6 +24,11 @@ class EventBusImpl {
     this.listeners.get(event)?.delete(callback);
   }
 
+  /** 取消某个事件的所有监听器 */
+  offAll(event: string): void {
+    this.listeners.delete(event);
+  }
+
   /** 触发事件 */
   emit(event: string, data: unknown): void {
     const callbacks = this.listeners.get(event);

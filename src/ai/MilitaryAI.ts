@@ -118,18 +118,24 @@ export class MilitaryAI {
 
         if (ownBuildings.length === 0) continue; // 无己方建筑，无法撤退
 
-        // 撤退到离敌人最远的己方建筑（避免退到交战区）
-        const nearestOwnBld = ownBuildings.reduce((closest, b) => {
-          const d1 = Math.abs(closest.tileX - unit.tileX) + Math.abs(closest.tileY - unit.tileY);
-          const d2 = Math.abs(b.tileX - unit.tileX) + Math.abs(b.tileY - unit.tileY);
-          return d2 < d1 ? b : closest;
+        // 撤退到离敌人平均位置最远的己方建筑（避免退到交战区）
+        // 计算所有敌方单位的平均位置
+        let enemyAvgX = 0, enemyAvgY = 0;
+        if (enemyUnits.length > 0) {
+          enemyAvgX = enemyUnits.reduce((s, e) => s + e.tileX, 0) / enemyUnits.length;
+          enemyAvgY = enemyUnits.reduce((s, e) => s + e.tileY, 0) / enemyUnits.length;
+        }
+        const safestBld = ownBuildings.reduce((best, b) => {
+          const dToEnemy = Math.abs(b.tileX - enemyAvgX) + Math.abs(b.tileY - enemyAvgY);
+          const bestD = Math.abs(best.tileX - enemyAvgX) + Math.abs(best.tileY - enemyAvgY);
+          return dToEnemy > bestD ? b : best;
         });
 
         commands.push({
           type: 'move',
           playerIndex: this.playerIndex,
           unitIds: [unit.id],
-          target: { x: nearestOwnBld.tileX, y: nearestOwnBld.tileY + 1 },
+          target: { x: safestBld.tileX, y: safestBld.tileY + 1 },
           frame: 0,
         });
         this.kiteTracker.delete(unit.id);
@@ -226,7 +232,7 @@ export class MilitaryAI {
       u.aiLockedAction === null
     );
 
-    const attackThreshold = directive.phase === 'early' ? 2 : 1;
+    const attackThreshold = 1; // 早期也允许进攻，避免单一单位留守
     if (unassigned.length >= attackThreshold) {
       for (const unit of unassigned) {
         const best = this.selectBestTarget([unit], enemyUnits, enemyBuildings, ownBuildings);
