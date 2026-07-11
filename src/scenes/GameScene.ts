@@ -268,51 +268,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private placeStartingUnits(p0x: number, p0y: number, p1x: number, p1y: number): void {
-    const pf = this._playerFaction;
-    const af = pf === 'arcane_empire' ? 'hammer_federation' : 'arcane_empire';
-    const pCC = pf === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
-    const aCC = af === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
-    this.spawnFactionStartingUnits(0, pf, p0x, p0y, pCC);
-    this.spawnFactionStartingUnits(1, af, p1x, p1y, aCC);
-  }
-
-  /** 按阵营配置生成起始单位 */
-  private spawnFactionStartingUnits(
-    owner: number, factionId: string, bx: number, by: number, ccBldId: string
-  ): void {
-    const fd = FACTION_DEFS[factionId];
-    if (!fd) return;
-
-    // 指挥中心
-    const cc = new Building(owner, factionId as any, bx, by, 2000, 'structure', 'production',
-      ccBldId, 50, fd.startingIndustry);
-    cc.complete();
-    this.applyTechToBuilding(cc);
-    this.addBuilding(cc);
-
-    // 起始单位 — 使用安全出生点搜索
-    let nextSpawnX = bx + 1;
-    let nextSpawnY = by + 2;
-    for (const [unitDefId, count] of fd.startingUnits) {
-      const def = UNIT_DEFS[unitDefId];
-      if (!def) continue;
-      const s = def.stats;
-      for (let i = 0; i < count; i++) {
-        const safe = this.world.map.findNearbyPassable(nextSpawnX, nextSpawnY, 8);
-        const ux = safe ? safe.x : nextSpawnX;
-        const uy = safe ? safe.y : nextSpawnY;
-        const unit = new Unit(owner, factionId as any, ux, uy,
-          s.hp, s.armor, s.category, s.speed, s.damage, s.dmgType,
-          s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
-        this.applyTechToUnit(unit);
-        this.addUnit(unit);
-        nextSpawnX = ux + 1;
-        nextSpawnY = uy;
-      }
-    }
-  }
-
   private initializeFogOfWar(): void {
     const fog = this.world.fogOfWar;
     // 环绕双方出生点 12×12 区域
@@ -988,60 +943,6 @@ export class GameScene extends Phaser.Scene {
         break;
       }
     }
-  }
-
-  // ============ 单位生成 ============
-
-  private spawnUnit(unitDefId: string, pos: Point, owner: number): void {
-    // 英雄路径
-    if (unitDefId.startsWith('hero:')) {
-      const faction = this.world.players[owner]?.faction ?? 'arcane_empire';
-      const hero = HeroSystem.trainHero(unitDefId, owner, faction, pos.x, pos.y);
-      if (hero) {
-        this.heroes.push(hero);
-        this.units.push(hero);
-        this.unitMap.set(hero.id, hero);
-        this.addUnitSprite(hero);
-        EventBus.emit(GameEvent.UNIT_CREATED, {
-          unitId: hero.id, playerIndex: owner,
-          defId: unitDefId, position: { x: pos.x, y: pos.y },
-        });
-      }
-      return;
-    }
-
-    const def = UNIT_DEFS[unitDefId];
-    if (!def) return;
-    // ... rest unchanged
-
-    // 出生点安全检查：如果瓦片不可通过，搜索附近可通过位置
-    let spawnX = pos.x;
-    let spawnY = pos.y;
-    if (!this.world.map.isPassable(spawnX, spawnY)) {
-      const safe = this.world.map.findNearbyPassable(spawnX, spawnY, 10);
-      if (safe) { spawnX = safe.x; spawnY = safe.y; }
-    }
-
-    const faction = this.world.players[owner]?.faction ?? (owner === 0 ? 'arcane_empire' : 'hammer_federation') as any;
-    const s = def.stats;
-    const unit = new Unit(owner, faction, spawnX, spawnY, s.hp, s.armor, s.category,
-      s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
-
-    this.applyTechToUnit(unit);
-
-    // 奥术守卫：初始护盾 200
-    if (unitDefId === 'unit_arcane_guard') {
-      unit.shieldHp = 200;
-      unit.maxShieldHp = 200;
-    }
-
-    this.addUnit(unit);
-    EventBus.emit(GameEvent.UNIT_CREATED, {
-      unitId: unit.id,
-      playerIndex: owner,
-      defId: unitDefId,
-      position: { x: pos.x, y: pos.y },
-    });
   }
 
   // ============ 建造系统 ============
