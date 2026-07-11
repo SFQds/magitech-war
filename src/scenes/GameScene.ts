@@ -20,6 +20,7 @@ import { FogRenderer } from '../rendering/FogRenderer';
 import { HpBarRenderer } from '../rendering/HpBarRenderer';
 import { ProjectileController } from '../controllers/ProjectileController';
 import { BuildController } from '../controllers/BuildController';
+import { UnitSpawner } from '../controllers/UnitSpawner';
 import { getFactionHero } from '../config/heroData';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
@@ -118,6 +119,7 @@ export class GameScene extends Phaser.Scene {
   private projectileController!: ProjectileController;
   // 血条渲染器
   private hpBarRenderer!: HpBarRenderer;
+  private unitSpawner!: UnitSpawner;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -171,6 +173,11 @@ export class GameScene extends Phaser.Scene {
     this.projectileController = new ProjectileController(this);
     this.buildController = new BuildController(this);
     this.hpBarRenderer = new HpBarRenderer(this);
+    this.unitSpawner = new UnitSpawner(this.world.map,
+      (u) => this.addUnit(u),
+      (b) => { this.applyTechToBuilding(b); this.addBuilding(b); },
+      (owner) => this.world.players[owner]?.faction ?? 'arcane_empire',
+    );
 
     // 渲染世界
     this.renderTiles();
@@ -191,7 +198,7 @@ export class GameScene extends Phaser.Scene {
     const p1x = p1Start?.x ?? 56;
     const p1y = p1Start?.y ?? 56;
 
-    this.placeStartingUnits(p0x, p0y, p1x, p1y);
+    this.unitSpawner.placeStartingUnits({x: p0x, y: p0y}, {x: p1x, y: p1y}, this._playerFaction, aiFaction);
     this.initializeFogOfWar();
     this.setupInputCallbacks();
 
@@ -321,7 +328,7 @@ export class GameScene extends Phaser.Scene {
 
   // ============ 实体增删 ============
 
-  private addUnit(unit: Unit): void {
+  addUnit(unit: Unit): void {
     this.units.push(unit);
     this.unitMap.set(unit.id, unit);
     this.addUnitSprite(unit);
@@ -786,7 +793,7 @@ export class GameScene extends Phaser.Scene {
     for (const item of completed) {
       const building = this.buildingMap.get(item.buildingId);
       if (building) {
-        this.spawnUnit(item.unitDefId, item.position, building.owner);
+        this.unitSpawner.spawnUnit(item.unitDefId, item.position, building.owner);
 
         EventBus.emit(GameEvent.PRODUCTION_COMPLETE, {
           buildingId: item.buildingId,
@@ -960,7 +967,7 @@ export class GameScene extends Phaser.Scene {
         for (let i = 0; i < (sc.count ?? 1); i++) {
           const sPos = this.world.map.findNearbyPassable(sc.position.x, sc.position.y, 5);
           if (sPos) {
-            this.spawnUnit(sc.unitDefId, sPos, sc.playerIndex);
+            this.unitSpawner.spawnUnit(sc.unitDefId, sPos, sc.playerIndex);
           }
         }
         break;
@@ -1041,75 +1048,29 @@ export class GameScene extends Phaser.Scene {
 
   /** 进入建造模式 */
   enterBuildMode(buildingDefId: string, builderId: string): void {
-    const cost = getBuildingCost(buildingDefId, this._playerFaction);
-    if (!cost) return;
-    if (!this.world.canAfford(0, { crystal: cost.crystal, industry: cost.industry })) return;
-
-    this.buildMode = { buildingDefId, builderId };
-    // 创建预览精灵（半透明）
-    if (!this.buildPreview) {
-      this.buildPreview = this.add.image(0, 0, buildingDefId);
-      this.buildPreview.setAlpha(0.5);
-      this.buildPreview.setDepth(30);
-      this.buildPreview.setDisplaySize(48, 48);
+    if (this.buildController.tryEnter(buildingDefId, builderId, this._playerFaction, this.world)) {
+      this.buildMode = this.buildController['mode']; // 同步兼容字段
+      this.buildPreview = this.buildController['preview'];
     }
   }
 
   /** 退出建造模式 */
   cancelBuildMode(): void {
+    this.buildController.cancel();
     this.buildMode = null;
-    if (this.buildPreview) { this.buildPreview.destroy(); this.buildPreview = null; }
+    this.buildPreview = null;
   }
 
   /** 更新建造预览位置 */
   private updateBuildPreviewPosition(): void {
-    if (!this.buildMode || !this.buildPreview) return;
-    const pointer = this.input.activePointer;
-    const tile = { x: Math.floor(pointer.worldX / 32), y: Math.floor(pointer.worldY / 32) };
-    const world = { x: tile.x * 32 + 16, y: tile.y * 32 + 16 };
-
-    this.buildPreview.setPosition(world.x, world.y);
-
-    // 检查是否可放置
-    const map = this.world.map;
-    const inBounds = map.inBounds(tile.x, tile.y) && map.isPassable(tile.x, tile.y);
-    const noOverlap = !this.buildings.some(b => b.isAlive && b.tileX === tile.x && b.tileY === tile.y);
-    this.buildPreview.setTint(inBounds && noOverlap ? 0x88ff88 : 0xff4444);
+    this.buildController.updatePreview(this.input.activePointer, this.world.map, this.buildings);
   }
 
   /** 确认放置建筑 */
   confirmBuild(tileX: number, tileY: number): void {
-    if (!this.buildMode) return;
-
-    const defId = this.buildMode.buildingDefId;
-    const cost = getBuildingCost(defId, this._playerFaction);
-    if (!cost) return;
-
-    const map = this.world.map;
-    if (!map.inBounds(tileX, tileY) || !map.isPassable(tileX, tileY)) return;
-    if (this.buildings.some(b => b.isAlive && b.tileX === tileX && b.tileY === tileY)) return;
-    if (!this.world.canAfford(0, { crystal: cost.crystal, industry: cost.industry })) return;
-
-    this.world.spend(0, { crystal: cost.crystal, industry: cost.industry });
-
-    // 创建建筑（HP 从 BUILDING_DEFS 读取）
-    const bldDef = BUILDING_DEFS[defId];
-    const bldHp = bldDef ? bldDef.hp : 800;
-    const bld = new Building(
-      0, this._playerFaction as any, tileX, tileY, bldHp, 'structure', 'production',
-      defId, cost.providesSupply, cost.providesIndustry,
-    );
-    this.applyTechToBuilding(bld);
-    this.addBuilding(bld);
-
-    // 通知建造者走到建筑旁
-    const builder = this.unitMap.get(this.buildMode.builderId);
-    if (builder && builder.isAlive) {
-      builder.stopAttacking();
-      MovementSystem.navigate(builder, { x: tileX, y: tileY + 1 }, this.world.map);
-    }
-
-    this.cancelBuildMode();
+    this.buildController.confirm(tileX, tileY, this._playerFaction, this.world, this.world.map, this.buildings, (b) => { this.applyTechToBuilding(b); this.addBuilding(b); }, (id) => this.unitMap.get(id));
+    this.buildMode = null;
+    this.buildPreview = null;
   }
 
   /** 每帧更新建造中的建筑进度 */
@@ -1343,39 +1304,6 @@ export class GameScene extends Phaser.Scene {
         sprite.setAlpha(0.9);
       }
     }
-  }
-
-  // 血条缓存：每个单位一个 Graphics
-  private _hpBarCache = new Map<string, Phaser.GameObjects.Graphics>();
-
-  private drawHpBar(unitId: string, x: number, y: number, hpPct: number): void {
-    let bar = this._hpBarCache.get(unitId);
-    if (!bar) {
-      bar = this.add.graphics();
-      bar.setDepth(15);
-      this._hpBarCache.set(unitId, bar);
-    }
-    bar.clear();
-
-    const barW = 16;
-    const barH = 2;
-
-    // 背景
-    bar.fillStyle(0x333333, 0.8);
-    bar.fillRect(x, y, barW, barH);
-
-    // 血量颜色：绿(满血) → 黄(半血) → 红(残血)
-    const r = hpPct < 0.5 ? 255 : Math.floor(255 * (1 - hpPct) * 2);
-    const g = hpPct > 0.5 ? 255 : Math.floor(255 * hpPct * 2);
-    const color = (r << 16) | (g << 8) | 0;
-
-    bar.fillStyle(color, 1);
-    bar.fillRect(x, y, barW * hpPct, barH);
-  }
-
-  private clearHpBar(unitId: string): void {
-    const bar = this._hpBarCache.get(unitId);
-    if (bar) { bar.destroy(); this._hpBarCache.delete(unitId); }
   }
 
   // ============ 声音 ============
