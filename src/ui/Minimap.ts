@@ -7,6 +7,7 @@
 import Phaser from 'phaser';
 import { GameMap } from '../core/GameMap';
 import { FogOfWar } from '../core/FogOfWar';
+import type { CameraController } from '../core/CameraController';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 
@@ -15,10 +16,12 @@ export class Minimap {
   private graphics: Phaser.GameObjects.Graphics;
   private map: GameMap;
   private fog: FogOfWar;
+  private cameraCtrl: CameraController | null = null;
   private x: number;
   private y: number;
   private size: number;
   private scale: number;
+  private hitZone: Phaser.GameObjects.Rectangle | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -37,7 +40,21 @@ export class Minimap {
     this.scale = size / Math.max(map.config.width, map.config.height);
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(200);
-    this.graphics.setScrollFactor(0); // 固定于屏幕上
+    this.graphics.setScrollFactor(0);
+
+    // 点击小地图跳转视角
+    this.hitZone = scene.add.rectangle(x, y, size, size, 0xffffff, 0)
+      .setOrigin(0)
+      .setDepth(201)
+      .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true });
+    this.hitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      const tileX = Math.round((pointer.x - this.x) / this.scale);
+      const tileY = Math.round((pointer.y - this.y) / this.scale);
+      if (this.cameraCtrl) {
+        this.cameraCtrl.centerOn(tileX * 32 + 16, tileY * 32 + 16);
+      }
+    });
   }
 
   /** 每帧调用 */
@@ -94,5 +111,11 @@ export class Minimap {
 
   destroy(): void {
     this.graphics.destroy();
+    this.hitZone?.destroy();
+  }
+
+  /** 注入摄影机控制器，支持点击导航 */
+  setCameraCtrl(ctrl: CameraController): void {
+    this.cameraCtrl = ctrl;
   }
 }

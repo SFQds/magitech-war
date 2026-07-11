@@ -191,7 +191,7 @@ export class GameScene extends Phaser.Scene {
     // 通知 HUDScene 初始化小地图
     const hudScene = this.scene.get('HUDScene') as any;
     if (hudScene && hudScene.initMinimap) {
-      hudScene.initMinimap(this.world.map, this.world.fogOfWar);
+      hudScene.initMinimap(this.world.map, this.world.fogOfWar, this.cameraCtrl);
     }
 
     // 开局跑一次资源计算（让 population/industry 正确反映建筑提供值）
@@ -472,16 +472,43 @@ export class GameScene extends Phaser.Scene {
         f.tileX === tile.x && f.tileY === tile.y
       );
 
+      // 检查点击位置是否有己方运输卡车（装载逻辑）
+      const ownTransportAtTile = selection.length > 0
+        ? this.units.find(u =>
+            u.owner === 0 && u.isAlive && u.spriteKey === 'unit_transport' &&
+            Math.round(u.tileX) === tile.x && Math.round(u.tileY) === tile.y
+          )
+        : null;
+
       for (const id of selection) {
         const unit = this.unitMap.get(id);
         if (!unit || !unit.isAlive) continue;
 
+        // 运输卡车装载：选中步兵右键点击己方运输卡车
+        if (ownTransportAtTile && unit.category === 'infantry' && unit.id !== ownTransportAtTile.id) {
+          if (ownTransportAtTile.cargo.length < 12) {
+            ownTransportAtTile.cargo.push(unit);
+            // 从地图上移除单位进入装载状态
+            const sprite = this.unitSprites.get(unit.id);
+            if (sprite) sprite.setAlpha(0);
+            unit.isActive = false;
+            unit.state = 'idle';
+          }
+          continue;
+        }
+
         if (enemyAtTile) {
-          // 攻击命令：设目标→设路径→强制进入追击状态（覆盖 navigate 的 moving）
+          // 攻击命令
           unit.stopAttacking();
           unit.attackTarget(enemyAtTile.id);
           MovementSystem.navigate(unit, tile, this.world.map);
           unit.state = 'pursuing';
+        } else if (unit.spriteKey === 'unit_transport' && unit.cargo.length > 0) {
+          // 运输卡车卸载：右键地面卸下所有乘员
+          unit.stopAttacking();
+          MovementSystem.navigate(unit, tile, this.world.map);
+          // 到达后卸载（由每帧检查 proximity 触发）
+          (unit as any)._unloadTarget = { x: tile.x, y: tile.y };
         } else if (fieldAtTile && unit.spriteKey === 'unit_worker') {
           // 工人采集 — 先走向资源田，到位后自动切换为采集
           unit.stopAttacking();
@@ -610,19 +637,35 @@ export class GameScene extends Phaser.Scene {
       const wasMoving = unit.state === 'moving';
       MovementSystem.updateMovement(unit, deltaSec, this.world.map);
 
-      // 移动结束 → 如果工人有采集目标，切换到采集状态
-      if (wasMoving && unit.state === 'idle' && unit.targetResourceId) {
-        const field = this.fieldMap.get(unit.targetResourceId);
-        if (field && field.isActive && !field.isDepleted) {
-          // 检查是否在采集点附近（相邻或同一格）
-          const dist = Math.abs(unit.tileX - field.tileX) + Math.abs(unit.tileY - field.tileY);
-          if (dist <= 1.5) {
-            unit.state = 'gathering';
-            (unit as any)._gatherTimer = 0;
-            field.currentGatherers++;
+      // 移动结束 → 运输卡车卸载、工人采集
+      if (wasMoving && unit.state === 'idle') {
+        // 运输卡车卸载
+        const unloadTarget = (unit as any)._unloadTarget;
+        if (unit.spriteKey === 'unit_transport' && unloadTarget) {
+          for (const passenger of unit.cargo) {
+            passenger.tileX = unit.tileX + (Math.random() - 0.5) * 2;
+            passenger.tileY = unit.tileY + (Math.random() - 0.5) * 2;
+            passenger.isActive = true;
+            const sp = this.unitSprites.get(passenger.id);
+            if (sp) sp.setAlpha(1);
           }
-        } else {
-          unit.targetResourceId = null;
+          unit.cargo = [];
+          (unit as any)._unloadTarget = null;
+        }
+        // 工人采集
+        if (unit.targetResourceId) {
+          const field = this.fieldMap.get(unit.targetResourceId);
+          if (field && field.isActive && !field.isDepleted) {
+            // 检查是否在采集点附近（相邻或同一格）
+            const dist = Math.abs(unit.tileX - field.tileX) + Math.abs(unit.tileY - field.tileY);
+            if (dist <= 1.5) {
+              unit.state = 'gathering';
+              (unit as any)._gatherTimer = 0;
+              field.currentGatherers++;
+            }
+          } else {
+            unit.targetResourceId = null;
+          }
         }
       }
     }

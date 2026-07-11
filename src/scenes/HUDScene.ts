@@ -12,6 +12,7 @@ import { SelectionPanel } from '../ui/SelectionPanel';
 import { CommandCard } from '../ui/CommandCard';
 import { ProductionQueueUI } from '../ui/ProductionQueue';
 import { Minimap } from '../ui/Minimap';
+import { CameraController } from '../core/CameraController';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import type { SelectionData } from '../types/events';
@@ -45,8 +46,9 @@ export class HUDScene extends Phaser.Scene {
     this.setupEvents();
   }
 
-  initMinimap(map: GameMap, fog: FogOfWar): void {
+  initMinimap(map: GameMap, fog: FogOfWar, cameraCtrl?: CameraController): void {
     this.minimap = new Minimap(this, map, fog, 1280 - 160, 720 - 80 - 160, 150);
+    if (cameraCtrl) this.minimap.setCameraCtrl(cameraCtrl);
   }
 
   private setupEvents(): void {

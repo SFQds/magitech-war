@@ -119,9 +119,10 @@ export class ResourceSystem {
       player.resources.supplyCap = totalSupply;
       player.resources.industryCap = totalIndustry;
 
-      // 工业产值：缓慢自然增长（1/s 基础 + 建筑提供值的 10% /s）
+      // 工业产值：缓慢自然增长（0.5/s 基础 + 建筑提供值的 3% /s）
+      // 上限100时约3.5/s，29秒回满 → 产生有意义的建造间隔
       if (deltaSec > 0) {
-        const regenRate = 1 + totalIndustry * 0.1; // 每秒恢复量
+        const regenRate = 0.5 + totalIndustry * 0.03;
         player.resources.industry = Math.min(
           totalIndustry,
           player.resources.industry + regenRate * deltaSec,
