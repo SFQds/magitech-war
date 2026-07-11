@@ -16,6 +16,10 @@ import { GuildSystem } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
 import { Hero } from '../entities/Hero';
+import { FogRenderer } from '../rendering/FogRenderer';
+import { HpBarRenderer } from '../rendering/HpBarRenderer';
+import { ProjectileController } from '../controllers/ProjectileController';
+import { BuildController } from '../controllers/BuildController';
 import { getFactionHero } from '../config/heroData';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
@@ -106,8 +110,14 @@ export class GameScene extends Phaser.Scene {
   private attackMoveMode = false;                    // A键攻击移动模式
 
   // 建造系统
+  private buildController!: BuildController;
+  // 向后兼容旧引用
   private buildMode: { buildingDefId: string; builderId: string } | null = null;
   private buildPreview: Phaser.GameObjects.Image | null = null;
+  // 弹射物控制器
+  private projectileController!: ProjectileController;
+  // 血条渲染器
+  private hpBarRenderer!: HpBarRenderer;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -158,6 +168,9 @@ export class GameScene extends Phaser.Scene {
     this.inputCtrl = new InputController(this, 0);
     this.techTree = new TechTreeSystem();
     this.aiController = new AIController(this.world, 1, this._aiDifficulty as 'easy' | 'normal' | 'hard');
+    this.projectileController = new ProjectileController(this);
+    this.buildController = new BuildController(this);
+    this.hpBarRenderer = new HpBarRenderer(this);
 
     // 渲染世界
     this.renderTiles();
@@ -626,7 +639,7 @@ export class GameScene extends Phaser.Scene {
     const deltaSec = delta / 1000;
 
     // 0. 建造预览跟随鼠标
-    if (this.buildMode) this.updateBuildPreviewPosition();
+    if (this.buildController.isActive) this.buildController.updatePreview(this.input.activePointer, this.world.map, this.buildings);
 
     // 1. 摄像机
     this.cameraCtrl.update(this.input.activePointer);
@@ -798,10 +811,9 @@ export class GameScene extends Phaser.Scene {
     // 胜负检测
     this.checkGameOver();
 
-    // 10. 精灵同步
+    // 10. 精灵同步 + 迷雾渲染
     this.syncSprites();
-
-    this.renderFogOfWar();
+    FogRenderer.render(this.fogOverlay, this.world.fogOfWar, this.world.map.config.width, this.world.map.config.height, 32, this.cameras.main);
 
     // 11. HUD 资源更新（每 0.5 秒发一次，减少事件频率）
     this._lastHudTick += deltaSec;
@@ -1383,22 +1395,21 @@ export class GameScene extends Phaser.Scene {
           }
         }
 
-        // 头顶血条（仅受伤时显示）
+        // 头顶血条（仅受伤时显示 — 委托 HpBarRenderer）
         if (unit.hpPercent < 1.0) {
-          this.drawHpBar(unit.id, w.x - 8, w.y - 14, unit.hpPercent);
+          this.hpBarRenderer.draw(unit.id, w.x - 8, w.y - 14, unit.hpPercent);
         } else {
-          this.clearHpBar(unit.id);
+          this.hpBarRenderer.clear(unit.id);
         }
       } else {
         sprite.setAlpha(0);
-        this.clearHpBar(unit.id);
+        this.hpBarRenderer.clear(unit.id);
       }
     }
 
-    // 清理已死亡单位残留的血条
-    for (const [id] of this._hpBarCache) {
-      if (!this.unitMap.has(id) && !this.buildingMap.has(id)) this.clearHpBar(id);
-    }
+    // 清理残留血条
+    const activeIds = new Set([...this.unitMap.keys(), ...this.buildingMap.keys()]);
+    this.hpBarRenderer.cleanup(activeIds);
 
     // === 建筑血条 ===
     for (const bld of this.buildings) {
@@ -1410,9 +1421,9 @@ export class GameScene extends Phaser.Scene {
 
       // 受伤建筑显示血条
       if (bld.hpPercent < 1.0) {
-        this.drawHpBar(bld.id, w.x - 12, w.y - 16, bld.hpPercent);
+        this.hpBarRenderer.draw(bld.id, w.x - 12, w.y - 16, bld.hpPercent);
       } else {
-        this.clearHpBar(bld.id);
+        this.hpBarRenderer.clear(bld.id);
       }
 
       // 建筑闪光（被攻击时）
