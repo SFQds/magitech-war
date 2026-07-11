@@ -13,6 +13,7 @@ import type { UnitAbility } from '../types/entity';
 
 export interface UnitDefData {
   displayName: string;
+  tier?: 'L1' | 'L2' | 'L3';
   cost: { crystal: number; supply: number; time: number };
   stats: {
     hp: number; armor: ArmorType; category: 'infantry' | 'vehicle' | 'aircraft' | 'naval';
@@ -22,6 +23,10 @@ export interface UnitDefData {
   attackEffect: string;
   /** 训练所需科技（空=无限制） */
   techReq?: string[];
+  /** L2倾向兵种：在此阵营/行会享受加成 */
+  favoredBy?: string[];
+  /** L3专属兵种：仅此阵营组合可制造 */
+  exclusiveTo?: { faction?: string; guild?: string };
   abilities?: UnitAbility[];
 }
 

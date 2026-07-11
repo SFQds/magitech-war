@@ -84,7 +84,7 @@ export class GameScene extends Phaser.Scene {
   private heroes: Hero[] = [];
   private buildings: Building[] = [];
   private resourceFields: ResourceField[] = [];
-  private projectiles: Projectile[] = [];
+  // projectiles 已迁移至 ProjectileController
 
   private unitMap = new Map<string, Unit>();
   private buildingMap = new Map<string, Building>();
@@ -94,7 +94,7 @@ export class GameScene extends Phaser.Scene {
   private unitSprites = new Map<string, Phaser.GameObjects.Image>();
   private buildingSprites = new Map<string, Phaser.GameObjects.Image>();
   private resourceSprites = new Map<string, Phaser.GameObjects.Image>();
-  private projectileSprites = new Map<string, Phaser.GameObjects.Image>();
+  // projectileSprites 已迁移至 ProjectileController
 
   // 地图渲染（不再持有 Graphics，改为大量 Image 对象由 Phaser 自动批处理）
   private fogOverlay!: Phaser.GameObjects.Graphics;
@@ -732,7 +732,7 @@ export class GameScene extends Phaser.Scene {
         // 远程：生成弹道，伤害由弹道命中时结算
         const attacker = this.unitMap.get(evt.attackerId);
         if (attacker) {
-          this.spawnProjectile(attacker, evt.targetId, evt.damage, evt.attackEffect);
+          this.projectileController.spawn(attacker, evt.targetId, evt.damage, evt.attackEffect);
         }
       }
     }
@@ -803,7 +803,7 @@ export class GameScene extends Phaser.Scene {
     this.updateResearch(deltaSec);
 
     // 8. 弹射物更新
-    this.updateProjectiles(deltaSec);
+    this.projectileController.update(deltaSec, this.unitMap, this.buildingMap, this.units, this.buildings, this.flashTimers);
 
     // 9. 死亡清理
     this.cleanupDeadEntities();
@@ -1165,115 +1165,6 @@ export class GameScene extends Phaser.Scene {
           buildingId: bld.id, playerIndex: bld.owner, techDefId: techId,
         });
       }
-    }
-  }
-
-  // ============ 弹射物 ============
-
-  private spawnProjectile(attacker: Unit, targetId: string, damage: number, effectKey: string): void {
-    const proj = new Projectile(
-      attacker.owner,
-      attacker.faction,
-      attacker.tileX, attacker.tileY,
-      attacker.id, targetId,
-      15, // 弹速 tiles/s
-      damage,
-      attacker.attackType,
-      true,
-    );
-    this.projectiles.push(proj);
-
-    // 用弹道纹理渲染（AssetGenerator 已生成 proj_* 纹理，fallback 到黄色矩形）
-    const texKey = this.textures.exists(effectKey) ? effectKey : '__DEFAULT';
-    const w = tileToWorld(proj.tileX, proj.tileY);
-    const img = this.add.image(w.x, w.y, texKey);
-    img.setDepth(20);
-    this.projectileSprites.set(proj.id, img);
-  }
-
-  private updateProjectiles(deltaSec: number): void {
-    const toRemove: string[] = [];
-
-    for (const proj of this.projectiles) {
-      if (!proj.isActive) continue;
-
-      // 查找目标
-      const target = this.unitMap.get(proj.targetId) ?? this.buildingMap.get(proj.targetId);
-      if (!target || !target.isAlive) {
-        proj.isActive = false;
-        toRemove.push(proj.id);
-        continue;
-      }
-
-      // 向目标移动
-      const dx = target.tileX - proj.tileX;
-      const dy = target.tileY - proj.tileY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist < 0.3) {
-        // 命中（虚空穿透护甲由 takeDamage 处理）
-        target.takeDamage(proj.damage, proj.damageType);
-        proj.isActive = false;
-        toRemove.push(proj.id);
-
-        // 命中闪光
-        this.flashTimers.set(proj.targetId, 0.12);
-
-        // 掷弹兵AOE：命中后对周围2格内敌人造成溅射伤害
-        const attackerUnit = this.unitMap.get(proj.sourceId);
-        if (attackerUnit && attackerUnit.spriteKey === 'unit_grenadier') {
-          const aoeEvents = CombatSystem.calculateAOE(
-            target.tileX, target.tileY, 2, Math.round(proj.damage * 0.5),
-            proj.damageType, proj.owner, attackerUnit.faction,
-            this.units, this.buildings,
-          );
-          for (const ae of aoeEvents) {
-            this.flashTimers.set(ae.targetId, 0.12);
-            if (ae.targetDied) {
-              this.flashTimers.delete(ae.targetId);
-              EventBus.emit(GameEvent.UNIT_KILLED, {
-                unitId: ae.targetId, killerId: proj.sourceId, playerIndex: 1,
-              });
-            }
-          }
-        }
-
-        if (!target.isAlive) {
-          this.flashTimers.delete(proj.targetId);
-          EventBus.emit(GameEvent.UNIT_KILLED, {
-            unitId: target.id,
-            killerId: proj.sourceId,
-            playerIndex: target.owner,
-          });
-          // 清理所有以此目标为攻击对象的单位（避免 2s 空闲窗口）
-          for (const unit of this.units) {
-            if (unit.targetEntityId === proj.targetId) {
-              unit.stopAttacking();
-            }
-          }
-        }
-      } else {
-        const move = proj.speed * deltaSec;
-        const ratio = move / dist;
-        proj.tileX += dx * ratio;
-        proj.tileY += dy * ratio;
-      }
-
-      // 同步精灵
-      const sprite = this.projectileSprites.get(proj.id);
-      if (sprite) {
-        const w = tileToWorld(proj.tileX, proj.tileY);
-        sprite.setPosition(w.x, w.y);
-        // 弹道朝向目标旋转（纹理默认朝右，atan2(dy,dx) 正对）
-        sprite.setRotation(Math.atan2(dy, dx));
-      }
-    }
-
-    for (const id of toRemove) {
-      const idx = this.projectiles.findIndex(p => p.id === id);
-      if (idx !== -1) this.projectiles.splice(idx, 1);
-      const sprite = this.projectileSprites.get(id);
-      if (sprite) { sprite.destroy(); this.projectileSprites.delete(id); }
     }
   }
 
