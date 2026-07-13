@@ -120,9 +120,16 @@ export class CommandExecutor {
     const aiCC = this.entities.aliveBuildings.find(b => b.owner === cmd.playerIndex);
     if (!aiCC) return fail('没有指挥中心');
 
-    const safePos = this.world.map.findNearbyPassable(aiCC.tileX + 3, aiCC.tileY + 3, 15);
+    // 尝试多个候选位置（避开已有建筑）
+    let safePos: { x: number; y: number } | null = null;
+    for (let radius = 5; radius <= 20; radius += 3) {
+      const pos = this.world.map.findNearbyPassable(aiCC.tileX + 4, aiCC.tileY + 4, radius);
+      if (pos && !this.entities.hasBuildingAt(pos.x, pos.y)) {
+        safePos = pos;
+        break;
+      }
+    }
     if (!safePos) return fail('没有合适的建造位置');
-    if (this.entities.hasBuildingAt(safePos.x, safePos.y)) return fail('该位置已有建筑');
 
     this.world.spend(cmd.playerIndex, { crystal: cost.crystal });
     const bld = createBuilding(cmd.playerIndex, aiFaction, cmd.buildingDefId, safePos.x, safePos.y);

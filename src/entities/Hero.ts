@@ -70,7 +70,7 @@ export class Hero extends Unit {
     this.supplyCost = heroData.cost.supply;
   }
 
-  private reviveCooldown: number = 180;
+  private reviveCooldown!: number;
 
   /** 覆写受伤逻辑：死亡时启动复活冷却 */
   takeDamage(amount: number, damageType?: string): boolean {

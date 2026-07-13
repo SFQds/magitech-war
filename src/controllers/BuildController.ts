@@ -39,6 +39,7 @@ export class BuildController {
   cancel(): void {
     this.mode = null;
     if (this.preview) { this.preview.destroy(); this.preview = null; }
+    EventBus.emit(GameEvent.BUILDING_COMPLETE, {}); // 复用事件通知 HUD 刷新
   }
 
   updatePreview(pointer: Phaser.Input.Pointer, map: GameMap, buildings: Building[]): void {

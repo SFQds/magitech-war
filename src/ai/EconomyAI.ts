@@ -12,6 +12,20 @@ import type { Unit } from '../entities/Unit';
 import type { ResourceField } from '../entities/ResourceField';
 import type { StrategyDirective } from './StrategyManager';
 import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getBuildingCost as getBuildingCostWithDiscount } from '../config/unitData';
+import type { BuildCommand, ResearchCommand, TrainCommand } from '../types/commands';
+
+/** 构造 Build 命令（类型安全，不含 as any） */
+function makeBuildCmd(playerIndex: number, bldId: string): BuildCommand {
+  return { type: 'build', playerIndex, unitIds: [], buildingDefId: bldId, position: { x: 0, y: 0 }, frame: 0 };
+}
+/** 构造 Research 命令 */
+function makeResearchCmd(playerIndex: number, bldId: string, techId: string): ResearchCommand {
+  return { type: 'research', playerIndex, unitIds: [], buildingId: bldId, techDefId: techId, frame: 0 };
+}
+/** 构造 Train 命令 */
+function makeTrainCmd(playerIndex: number, bldId: string, unitId: string): TrainCommand {
+  return { type: 'train', playerIndex, unitIds: [], buildingId: bldId, unitDefId: unitId, count: 1, frame: 0 };
+}
 
 export class EconomyAI {
   private world: GameWorld;
@@ -136,10 +150,7 @@ export class EconomyAI {
     // 1. 工人数量维护
     const targetWorkers = directive.expansion > 0.5 ? 8 : 5;
     if (crystal >= 100 && supply < supplyCap && workerCount < targetWorkers) {
-      commands.push({
-        type: 'train', playerIndex: this.playerIndex,
-        unitIds: [], buildingId: cc.id, unitDefId: 'unit_worker', count: 1, frame: 0,
-      });
+      commands.push(makeTrainCmd(this.playerIndex, cc.id, 'unit_worker'));
     }
 
     // 2. 建造建筑
@@ -147,64 +158,58 @@ export class EconomyAI {
 
     if (directive.aggression < 0.7 || (!hasBarracks && !hasFactory)) {
       if (!hasBarracks && buildCostThreshold(this.getBuildingCost('bld_barracks'))) {
-        commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_barracks', position: { x: 0, y: 0 }, frame: 0 } as any);
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_barracks'));
       }
       if (!hasFactory && buildCostThreshold(this.getBuildingCost('bld_factory'))) {
-        commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_factory', position: { x: 0, y: 0 }, frame: 0 } as any);
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_factory'));
       }
     }
     if (!hasRefinery && buildCostThreshold(this.getBuildingCost('bld_refinery'))) {
-      commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_refinery', position: { x: 0, y: 0 }, frame: 0 } as any);
+      commands.push(makeBuildCmd(this.playerIndex, 'bld_refinery'));
     }
     if (!hasPowerPlant && hasFactory && buildCostThreshold(this.getBuildingCost('bld_power_plant'))) {
-      commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_power_plant', position: { x: 0, y: 0 }, frame: 0 } as any);
+      commands.push(makeBuildCmd(this.playerIndex, 'bld_power_plant'));
     }
     if (!hasTechBuilding && buildCostThreshold(this.getBuildingCost(techBldId))) {
-      commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: techBldId, position: { x: 0, y: 0 }, frame: 0 } as any);
+      commands.push(makeBuildCmd(this.playerIndex, techBldId));
     }
 
-    // 2.5 防御建筑：当战斗单位数>5 或水晶>600 时造墙/炮塔
+    // 2.5 防御建筑
     if (combatCount >= 5 || crystal > 600) {
       if (wallCount < 4 && buildCostThreshold(this.getBuildingCost('bld_wall'))) {
-        commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_wall', position: { x: 0, y: 0 }, frame: 0 } as any);
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_wall'));
       }
       if (!hasTurret && buildCostThreshold(this.getBuildingCost('bld_turret'))) {
-        commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_turret', position: { x: 0, y: 0 }, frame: 0 } as any);
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_turret'));
       }
     }
 
-    // 3. 科技研究：找任意空闲且有科技槽的建筑
+    // 3. 科技研究：找任意空闲且有科技槽的建筑，选择一个未研究的科技
     const techBld = buildings.find(
       b => b.owner === this.playerIndex && b.isAlive && b.state === 'idle' &&
         !b.researchingTechId && BUILDING_DEFS[b.spriteKey]?.researches?.length
     );
-    if (techBld && buildCostThreshold(this.getTechCost('tech:advanced_mining'))) {
-      const techId = directive.expansion > 0.5 ? 'tech:advanced_mining' : 'tech:structure_reinforce';
-      commands.push({
-        type: 'research', playerIndex: this.playerIndex,
-        unitIds: [], buildingId: techBld.id,
-        buildingDefId: '', techDefId: techId,
-        position: { x: 0, y: 0 }, frame: 0,
-      } as any);
+    if (techBld) {
+      const tt = this.world.techTrees.get(this.playerIndex);
+      const availTechs = (BUILDING_DEFS[techBld.spriteKey]?.researches ?? []).filter(
+        tid => !tt?.isResearched(tid) && this.getTechCost(tid) < crystal * aggressMultiplier
+      );
+      if (availTechs.length > 0) {
+        commands.push(makeResearchCmd(this.playerIndex, techBld.id, availTechs[0]));
+      }
     }
 
     // 4. 训练英雄（拥有足够水晶 且 尚未拥有）
     const heroCost = this.getUnitCost(heroId);
     if (!hasHero && crystal >= heroCost && supply < supplyCap - 4) {
-      commands.push({
-        type: 'train', playerIndex: this.playerIndex,
-        unitIds: [], buildingId: cc.id, unitDefId: heroId, count: 1, frame: 0,
-      });
+      commands.push(makeTrainCmd(this.playerIndex, cc.id, heroId));
     }
 
     // 5. 训练侦察摩托（至少 1 辆）
     const scoutCost = this.getUnitCost('unit_scout_bike');
-    if (!hasScout && hasFactory && crystal >= scoutCost && supply < supplyCap) {
-      commands.push({
-        type: 'train', playerIndex: this.playerIndex,
-        unitIds: [], buildingId: ownProductions.find(b => b.spriteKey === 'bld_factory')?.id ?? cc.id,
-        unitDefId: 'unit_scout_bike', count: 1, frame: 0,
-      });
+    const factoryBld = ownProductions.find(b => b.spriteKey === 'bld_factory');
+    if (!hasScout && hasFactory && crystal >= scoutCost && supply < supplyCap && factoryBld) {
+      commands.push(makeTrainCmd(this.playerIndex, factoryBld.id, 'unit_scout_bike'));
     }
 
     // 6. 按 directive.preferredUnits 优先级训练战斗单位

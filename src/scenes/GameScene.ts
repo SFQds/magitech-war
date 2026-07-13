@@ -1097,6 +1097,7 @@ export class GameScene extends Phaser.Scene {
     this.fogRenderer?.destroy();
     this.projectileController?.destroy();
     this.buildController?.destroy();
+    if (this._scoreTimerDisplay) { this._scoreTimerDisplay.destroy(); this._scoreTimerDisplay = null; }
     this.entities.clear();
   }
 

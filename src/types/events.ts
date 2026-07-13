@@ -16,8 +16,6 @@ export enum GameEvent {
   UNIT_ARRIVED = 'unit:arrived',
   /** 单位开始攻击 { unitId, targetId } */
   UNIT_ATTACK_START = 'unit:attack_start',
-  /** 单位死亡 { unitId } */
-  UNIT_DIED = 'unit:died',
 
   // ---- 建筑事件 ----
   BUILDING_COMPLETE = 'building:complete',
@@ -63,7 +61,7 @@ export enum GameEvent {
 export interface UnitCreatedData {
   unitId: string;
   playerIndex: number;
-  defId: string;
+  unitDefId: string;
   position: { x: number; y: number };
 }
 

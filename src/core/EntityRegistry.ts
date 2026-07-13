@@ -34,12 +34,6 @@ export class EntityRegistry {
   private _activeFieldsDirty = true;
   private _activeFieldsCache: ResourceField[] = [];
 
-  private markDirty(): void {
-    this._aliveUnitsDirty = true;
-    this._aliveBuildingsDirty = true;
-    this._activeFieldsDirty = true;
-  }
-
   addUnit(unit: Unit): void {
     this.units.push(unit);
     this.unitMap.set(unit.id, unit);

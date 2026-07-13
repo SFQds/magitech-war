@@ -303,16 +303,6 @@ export class CombatSystem {
     return events;
   }
 
-  /** 在所有实体中查找给定ID的实体（兼容旧按数组查询的调用） */
-  private static findEntity(
-    id: string,
-    units: Unit[],
-    buildings: Building[],
-  ): Entity | null {
-    // O(N) fallback — 建议调用者传 EntityRegistry 以使用 O(1) 查表
-    return units.find(u => u.id === id) ?? buildings.find(b => b.id === id) ?? null;
-  }
-
   /** 查找最近的非己方单位 */
   static findNearestEnemy(
     unit: Unit,

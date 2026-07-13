@@ -9,6 +9,9 @@ import { Unit } from '../entities/Unit';
 import { ResourceField } from '../entities/ResourceField';
 import { Building } from '../entities/Building';
 
+/** 水晶存储上限 */
+const MAX_CRYSTAL = 20000;
+
 export interface GatherEvent {
   workerId: string;
   fieldId: string;
@@ -89,7 +92,7 @@ export class ResourceSystem {
         if (gathered > 0) {
           const player = players[unit.owner];
           if (player) {
-            player.resources.crystal += gathered;
+            player.resources.crystal = Math.min(MAX_CRYSTAL, player.resources.crystal + gathered);
             events.push({
               workerId: unit.id,
               fieldId: field.id,
