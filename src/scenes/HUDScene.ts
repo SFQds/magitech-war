@@ -16,8 +16,8 @@ import { CameraController } from '../core/CameraController';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import type { SelectionData } from '../types/events';
-import { ProductionSystem } from '../systems/ProductionSystem';
-import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getDisplayName, getBuildingCost, getFactionBonuses } from '../config/unitData';
+import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getDisplayName, getBuildingCost } from '../config/unitData';
+import type { CommandResult } from '../controllers/CommandExecutor';
 
 export class HUDScene extends Phaser.Scene {
   private resourceDisplay!: ResourceDisplay;
@@ -44,6 +44,25 @@ export class HUDScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(250).setScrollFactor(0).setAlpha(0);
 
     this.setupEvents();
+
+    // 注册场景关闭清理
+    this.events.on('shutdown', () => {
+      EventBus.offAll(GameEvent.RESOURCE_CHANGED);
+      EventBus.offAll(GameEvent.SELECTION_CHANGED);
+      EventBus.offAll(GameEvent.BUILDING_SELECTED);
+      EventBus.offAll(GameEvent.PRODUCTION_STARTED);
+      EventBus.offAll(GameEvent.PRODUCTION_COMPLETE);
+      EventBus.offAll(GameEvent.UNIT_CREATED);
+      EventBus.offAll(GameEvent.UNIT_KILLED);
+      EventBus.offAll('attackmove:toggle');
+    });
+  }
+
+  /** 每帧刷新进度条 */
+  update(): void {
+    if ((this.game.loop.frame % 8) === 0) {
+      this.updateProductionQueueUI();
+    }
   }
 
   initMinimap(map: GameMap, fog: FogOfWar, cameraCtrl?: CameraController): void {
@@ -52,7 +71,6 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private setupEvents(): void {
-    // 清理上次游戏残留的监听器，防止重复触发
     EventBus.offAll(GameEvent.RESOURCE_CHANGED);
     EventBus.offAll(GameEvent.SELECTION_CHANGED);
     EventBus.offAll(GameEvent.BUILDING_SELECTED);
@@ -93,22 +111,19 @@ export class HUDScene extends Phaser.Scene {
       if (!bld) { this.commandCard.clear(); return; }
       const def = BUILDING_DEFS[bld.spriteKey];
       const btns: any[] = [];
-      // 训练按钮
       if (def?.produces) {
         const gs2 = this.scene.get('GameScene') as any;
         for (const uid of def.produces) {
           const ud = UNIT_DEFS[uid];
-          // 检查科技需求
-          const techsMet = !ud?.techReq?.length || ud.techReq.every((tid: string) => gs2.techTree?.isResearched(tid));
+          const techsMet = !ud?.techReq?.length || ud.techReq.every((tid: string) => gs2.getTechTree?.(0)?.isResearched(tid));
           const label = techsMet ? getDisplayName(uid) : `${getDisplayName(uid)} 🔒`;
           const callback = techsMet ? () => this.issueTrainCommand(bld.id, uid) : () => this.showToast('科技未解锁');
           btns.push({ label, cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback });
         }
       }
-      // 研究按钮
       if (def?.researches) {
         const gs2 = this.scene.get('GameScene') as any;
-        const techTree = gs2.techTree;
+        const techTree = gs2.getTechTree?.(0);
         for (const tid of def.researches) {
           const td = TECH_DEFS[tid];
           if (!td) continue;
@@ -135,7 +150,6 @@ export class HUDScene extends Phaser.Scene {
     });
   }
 
-  /** 屏幕中央短暂浮动提示 */
   private showToast(msg: string): void {
     const { width, height } = this.cameras.main;
     const text = this.add.text(width / 2, height / 2, msg, {
@@ -156,40 +170,20 @@ export class HUDScene extends Phaser.Scene {
 
   private issueTrainCommand(buildingId: string, unitDefId: string): void {
     const gs = this.scene.get('GameScene') as any;
-    const bld = gs.buildings?.find((b: Building) => b.id === buildingId) as Building | undefined;
-    if (!bld || !bld.canEnqueue()) return;
-    const def = UNIT_DEFS[unitDefId];
-    if (!def) return;
-    const { crystal, supply, time } = def.cost;
-    if (!gs.world.canAfford(0, { crystal, supply })) {
-      this.showToast('资源不足');
-      return;
-    }
-    gs.world.spend(0, { crystal, supply });
-    ProductionSystem.startProduction(bld, unitDefId, time);
-    EventBus.emit(GameEvent.PRODUCTION_STARTED, { buildingId: bld.id, playerIndex: 0, unitDefId, totalTime: time });
-    this.refreshResourceDisplay();
+    const result = gs.commandExecutor?.execute({
+      type: 'train', playerIndex: 0, buildingId, unitDefId,
+    }) as CommandResult | undefined;
+    if (result && !result.ok) this.showToast(result.reason);
+    else if (result) this.refreshResourceDisplay();
   }
 
   private issueResearchCommand(buildingId: string, techDefId: string): void {
     const gs = this.scene.get('GameScene') as any;
-    const bld = gs.buildings?.find((b: Building) => b.id === buildingId) as Building | undefined;
-    if (!bld || bld.state !== 'idle') return;
-    const td = TECH_DEFS[techDefId];
-    if (!td) return;
-    if (!gs.world.canAfford(0, { crystal: td.crystal })) {
-      this.showToast('水晶不足');
-      return;
-    }
-    gs.world.spend(0, { crystal: td.crystal });
-    bld.researchingTechId = techDefId;
-    bld.researchProgress = 0;
-    // 应用阵营研究速度加成（帝国 +15%）
-    const bonuses = getFactionBonuses(bld.faction);
-    bld.researchTotalTime = td.time * bonuses.researchSpeedMult;
-    bld.state = 'researching';
-    EventBus.emit(GameEvent.PRODUCTION_STARTED, { buildingId: bld.id, playerIndex: 0, unitDefId: techDefId, totalTime: td.time });
-    this.refreshResourceDisplay();
+    const result = gs.commandExecutor?.execute({
+      type: 'research', playerIndex: 0, buildingId, techDefId,
+    }) as CommandResult | undefined;
+    if (result && !result.ok) this.showToast(result.reason);
+    else if (result) this.refreshResourceDisplay();
   }
 
   private enterBuildMode(builderId: string, buildingDefId: string): void {
@@ -199,11 +193,18 @@ export class HUDScene extends Phaser.Scene {
 
   private updateProductionQueueUI(): void {
     const gs = this.scene.get('GameScene') as any;
-    const queue: { name: string; progress: number }[] = [];
+    const queue: { name: string; progress: number; color?: number }[] = [];
     for (const bld of (gs.buildings ?? []) as Building[]) {
       if (bld.owner !== 0 || !bld.isAlive) continue;
+      if (bld.state === 'constructing') {
+        queue.push({ name: `🏗 ${gs.entities ? (getDisplayName(bld.spriteKey) ?? '建筑') : '建筑'}`, progress: bld.buildProgress, color: 0xf39c12 });
+      }
+      if (bld.state === 'researching' && bld.researchingTechId) {
+        const td = TECH_DEFS[bld.researchingTechId];
+        queue.push({ name: `🔬 ${td?.name ?? '科技'}`, progress: bld.researchProgress, color: 0x9b59b6 });
+      }
       for (const item of bld.productionQueue) {
-        queue.push({ name: getDisplayName(item.unitDefId), progress: item.timeRemaining > 0 ? 1 - item.timeRemaining / item.totalTime : 1 });
+        queue.push({ name: getDisplayName(item.unitDefId), progress: item.timeRemaining > 0 ? 1 - item.timeRemaining / item.totalTime : 1, color: 0x2ecc71 });
       }
     }
     this.productionQueue.update(queue);

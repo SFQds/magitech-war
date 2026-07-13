@@ -8,7 +8,8 @@
 import type { Point } from '../types/entity';
 import { Unit } from '../entities/Unit';
 import { GameMap } from '../core/GameMap';
-import { manhattan } from '../utils/MathUtils';
+import { BinaryHeap } from '../utils/BinaryHeap';
+import { manhattan, tileKey } from '../utils/MathUtils';
 
 /** A* 寻路节点 */
 interface AStarNode {
@@ -29,18 +30,21 @@ export class MovementSystem {
       x: Math.round(unit.tileX),
       y: Math.round(unit.tileY),
     };
-    const path = this.findPath(start, target, map, unit.category);
+    const path = this.findPath(start, target, map, unit.category, unit.id);
     if (path.length > 0) {
       unit.setPath(path);
     }
   }
 
-  /** A* 寻路 */
+  /** A* 寻路
+   * @param excludeUnitId 路径计算时排除此单位的占用（自身不阻挡自己）
+   */
   static findPath(
     start: Point,
     end: Point,
     map: GameMap,
-    _category: string
+    _category: string,
+    excludeUnitId?: string,
   ): Point[] {
     // 座标取整（防御性：防止浮点下标访问 grid）
     const sx = Math.round(start.x);
@@ -57,8 +61,9 @@ export class MovementSystem {
     const w = map.config.width;
     const h = map.config.height;
 
-    const openList: AStarNode[] = [];
-    const closedSet = new Set<string>();
+    const openHeap = new BinaryHeap<AStarNode>((a, b) => a.f - b.f);
+    const closedSet = new Set<number>();
+    const encode = (x: number, y: number) => tileKey(x, y, w);
 
     const startNode: AStarNode = {
       x: sx,
@@ -68,25 +73,17 @@ export class MovementSystem {
       f: manhattan({ x: sx, y: sy }, { x: ex, y: ey }),
       parent: null,
     };
-    openList.push(startNode);
+    openHeap.push(startNode);
 
-    const maxIterations = w * h * 2; // 防止死循环
+    const maxIterations = w * h * 2;
     let iterations = 0;
 
-    while (openList.length > 0 && iterations < maxIterations) {
+    while (!openHeap.isEmpty && iterations < maxIterations) {
       iterations++;
 
-      // 找 openList 中 f 最小的节点
-      let currentIdx = 0;
-      for (let i = 1; i < openList.length; i++) {
-        if (openList[i].f < openList[currentIdx].f) {
-          currentIdx = i;
-        }
-      }
-      const current = openList.splice(currentIdx, 1)[0];
-      const key = `${current.x},${current.y}`;
+      const current = openHeap.pop()!;
+      const key = encode(current.x, current.y);
 
-      // 到达终点
       if (current.x === ex && current.y === ey) {
         return this.reconstructPath(current);
       }
@@ -107,10 +104,12 @@ export class MovementSystem {
         const ny = current.y + dy;
 
         if (!map.inBounds(nx, ny)) continue;
-        if (!grid[ny][nx]) continue; // 不可通过
-        if (closedSet.has(`${nx},${ny}`)) continue;
+        if (!grid[ny][nx]) continue;
+        if (closedSet.has(encode(nx, ny))) continue;
+        // 单位碰撞：跳过被其他单位占用的瓦片（起点和终点除外）
+        if (map.isOccupied(nx, ny) && !(nx === sx && ny === sy) && !(nx === ex && ny === ey)) continue;
 
-        // 对角线检查：必须两个相邻直方向也可通过
+        // 对角线检查
         if (dx !== 0 && dy !== 0) {
           if (!grid[current.y + dy][current.x]) continue;
           if (!grid[current.y][current.x + dx]) continue;
@@ -121,7 +120,7 @@ export class MovementSystem {
         const h = manhattan({ x: nx, y: ny }, { x: ex, y: ey });
         const f = g + h;
 
-        openList.push({ x: nx, y: ny, g, h, f, parent: current });
+        openHeap.push({ x: nx, y: ny, g, h, f, parent: current });
       }
     }
 
@@ -133,9 +132,10 @@ export class MovementSystem {
     const path: Point[] = [];
     let current: AStarNode | null = node;
     while (current) {
-      path.unshift({ x: current.x, y: current.y });
+      path.push({ x: current.x, y: current.y });
       current = current.parent;
     }
+    path.reverse();
     return path;
   }
 

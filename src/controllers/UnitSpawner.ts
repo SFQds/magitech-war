@@ -8,7 +8,7 @@ import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { Hero } from '../entities/Hero';
 import { HeroSystem } from '../systems/HeroSystem';
-import { UNIT_DEFS, FACTION_DEFS } from '../config/unitData';
+import { UNIT_DEFS, FACTION_DEFS, createBuilding } from '../config/unitData';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 
@@ -66,6 +66,11 @@ export class UnitSpawner {
     const s = def.stats;
     const unit = new Unit(owner, faction as any, sx, sy, s.hp, s.armor, s.category,
       s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
+    // 设置基础护甲值
+    unit.armor = s.armorValue ?? 0;
+    unit.baseArmor = s.armorValue ?? 0;
+    // 设置补给消耗（死亡时退还）
+    unit.supplyCost = def.cost.supply;
 
     // 奥术守卫初始护盾
     if (unitDefId === 'unit_arcane_guard') {
@@ -104,9 +109,15 @@ export class UnitSpawner {
       for (let i = 0; i < count; i++) {
         const safe = this.map.findNearbyPassable(nx, ny, 8);
         const ux = safe ? safe.x : nx, uy = safe ? safe.y : ny;
-        const unit = new Unit(owner, factionId as any, ux, uy, s.hp, s.armor, s.category,
-          s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
-        this.onAddUnit(unit);
+const unit = new Unit(owner, factionId as any, ux, uy, s.hp, s.armor, s.category,
+              s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
+            unit.armor = s.armorValue ?? 0;
+            unit.supplyCost = def.cost.supply;
+            // 奥术守卫初始护盾
+            if (unitDefId === 'unit_arcane_guard') {
+              unit.shieldHp = 200; unit.maxShieldHp = 200;
+            }
+            this.onAddUnit(unit);
         nx = ux + 1; ny = uy;
       }
     }

@@ -27,7 +27,15 @@ export class Unit extends Entity {
   /** 坚守位置 — true 时 CombatSystem 不会自动索敌追击 */
   holdPosition: boolean = false;
   /** AI 强制行为标记 — 设置后 CombatSystem 不会覆盖此单位的行为 */
-  aiLockedAction: 'retreat' | 'defend' | 'attack' | 'recover' | null = null;
+  aiLockedAction: 'retreat' | 'defend' | 'attack' | 'recover' | 'building' | null = null;
+  /** 该单位消耗的补给数（死亡时退还） */
+  supplyCost: number = 1;
+  /** 采集计时器（工人使用） */
+  gatherTimer: number = 0;
+  /** 运输卡车卸载目标 */
+  unloadTarget: { x: number; y: number } | null = null;
+  /** 基础护甲值（来自设计数据，科技叠加以此为基准） */
+  baseArmor: number = 0;
 
   constructor(
     owner: number,

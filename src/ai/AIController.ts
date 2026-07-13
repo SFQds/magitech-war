@@ -38,8 +38,8 @@ export class AIController {
     this.world = world;
     this.playerIndex = playerIndex;
     this.tickInterval = DIFFICULTY_MULTIPLIERS[difficulty].tickInterval;
-    this.strategyMgr = new StrategyManager(world, playerIndex);
-    this.economyAI = new EconomyAI(world, playerIndex, DIFFICULTY_MULTIPLIERS[difficulty].resourceBonus);
+    this.strategyMgr = new StrategyManager(world, playerIndex, difficulty);
+    this.economyAI = new EconomyAI(world, playerIndex, difficulty);
     this.militaryAI = new MilitaryAI(world, playerIndex);
   }
 

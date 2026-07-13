@@ -12,6 +12,7 @@ import { MovementSystem } from './MovementSystem';
 import type { GameMap } from '../core/GameMap';
 import type { FogOfWar } from '../core/FogOfWar';
 import { UNIT_DEFS, getFactionBonuses } from '../config/unitData';
+import { EntityRegistry } from '../core/EntityRegistry';
 import { distance } from '../utils/MathUtils';
 
 /** 伤害-护甲 克制矩阵 */
@@ -19,7 +20,7 @@ const DAMAGE_MATRIX: Record<DamageType, Record<ArmorType, number>> = {
   physical:  { light: 1.0, heavy: 0.75, shield: 1.0,  bio: 1.0, structure: 0.5,  mechanical: 0.75 },
   magic:     { light: 1.0, heavy: 1.25, shield: 1.5,  bio: 1.0, structure: 1.0,  mechanical: 1.0  },
   alchemy:   { light: 1.0, heavy: 1.0,  shield: 2.0,  bio: 0.9, structure: 1.5,  mechanical: 1.0  },
-  crystal:   { light: 1.0, heavy: 1.0,  shield: 0.5,  bio: 1.0, structure: 1.0,  mechanical: 1.25 },
+  crystal:   { light: 1.0, heavy: 1.0,  shield: 0.5, bio: 1.0, structure: 0.5, mechanical: 1.25 },
   void:      { light: 1.0, heavy: 1.0,  shield: 1.0,  bio: 1.25, structure: 1.0,  mechanical: 1.0  },
 };
 
@@ -92,23 +93,30 @@ export class CombatSystem {
     map: GameMap,
     deltaSec: number,
     fogOfWar?: FogOfWar,
+    entities?: EntityRegistry,
   ): CombatEvent[] {
     const events: CombatEvent[] = [];
+    // 使用 EntityRegistry 的 Map 索引（O(1) 查表替代 O(N) 遍历）
+    const unitIdx = entities?.unitIndex;
+    const bldIdx = entities?.buildingIndex;
 
     for (const unit of units) {
       if (!unit.isAlive) continue;
 
-      // 递减攻击冷却
       if (unit.attackTimer > 0) {
         unit.attackTimer -= deltaSec;
       }
 
-      // === 主动攻击：已指定目标，尝试造成伤害 ===
-      const hasTarget = unit.targetEntityId && CombatSystem.findEntity(unit.targetEntityId, allUnits, allBuildings);
+      // === 主动攻击：已指定目标，O(1) Map 查表 ===
+      const targetEntity = unit.targetEntityId
+        ? (unitIdx?.get(unit.targetEntityId) ?? bldIdx?.get(unit.targetEntityId))
+        : null;
+      const hasTarget = targetEntity !== undefined && targetEntity !== null && targetEntity.isAlive;
       const wantsToAttack = (unit.state === 'attacking' || unit.state === 'pursuing') && hasTarget;
 
       if (wantsToAttack) {
-        const target = CombatSystem.findEntity(unit.targetEntityId!, allUnits, allBuildings);
+        // 使用 O(1) Map 查表结果（targetEntity），避免再次 O(N) findEntity
+        const target = targetEntity;
         if (!target || !target.isAlive) {
           unit.stopAttacking();
           continue;
@@ -226,19 +234,83 @@ export class CombatSystem {
       }
     }
 
+    // === 防御建筑攻击循环 ===
+    for (const bld of allBuildings) {
+      if (!bld.isAlive || bld.attackDamage <= 0) continue;
+      // 建造中/研究中的建筑不攻击
+      if (bld.state === 'constructing' || bld.state === 'researching') continue;
+      if (bld.attackTimer > 0) { bld.attackTimer -= deltaSec; }
+      if (bld.attackTimer > 0) continue;
+
+      // O(1) 查表验证当前目标
+      const currentTarget = bld.targetEntityId
+        ? (unitIdx?.get(bld.targetEntityId) ?? bldIdx?.get(bld.targetEntityId))
+        : null;
+      if (currentTarget && currentTarget.isAlive) {
+        const dist = distance(
+          { x: bld.tileX, y: bld.tileY },
+          { x: currentTarget.tileX, y: currentTarget.tileY },
+        );
+        if (dist <= bld.attackRange) {
+          const dmgType = bld.attackType as DamageType;
+          const damage = CombatSystem.calculateDamage(bld.attackDamage, dmgType, currentTarget.armorType, bld.faction);
+          bld.attackTimer = bld.attackCooldown;
+          const died = currentTarget.takeDamage(damage, dmgType);
+          events.push({
+            attackerId: bld.id,
+            targetId: currentTarget.id,
+            damage,
+            targetDied: died,
+            attackType: dmgType,
+            attackEffect: 'melee',
+            isMelee: true,
+          });
+          if (died) bld.targetEntityId = null;
+          continue;
+        } else {
+          bld.targetEntityId = null; // 目标跑了
+        }
+      }
+
+      // 自动索敌：找射程内最近敌人
+      let nearest: Entity | null = null;
+      let nearestDist = bld.attackRange;
+      for (const enemy of allUnits) {
+        if (enemy.owner === bld.owner || !enemy.isAlive) continue;
+        if (fogOfWar && bld.owner === 0 && !fogOfWar.isVisible(Math.round(enemy.tileX), Math.round(enemy.tileY))) continue;
+        const d = distance({ x: bld.tileX, y: bld.tileY }, { x: enemy.tileX, y: enemy.tileY });
+        if (d <= nearestDist) { nearestDist = d; nearest = enemy; }
+      }
+      if (nearest) {
+        bld.targetEntityId = nearest.id;
+        const dmgType = bld.attackType as DamageType;
+        const damage = CombatSystem.calculateDamage(bld.attackDamage, dmgType, nearest.armorType, bld.faction);
+        bld.attackTimer = bld.attackCooldown;
+        const died = nearest.takeDamage(damage, dmgType);
+        events.push({
+            attackerId: bld.id,
+            targetId: nearest.id,
+            damage,
+            targetDied: died,
+            attackType: dmgType,
+            attackEffect: 'melee',
+            isMelee: true,
+          });
+        if (died) bld.targetEntityId = null;
+      }
+    }
+
     return events;
   }
 
-  /** 在所有实体中查找给定ID的实体 */
+  /** 在所有实体中查找给定ID的实体（兼容旧按数组查询的调用） */
   private static findEntity(
     id: string,
     units: Unit[],
     buildings: Building[],
   ): Entity | null {
-    const unit = units.find(u => u.id === id);
-    if (unit) return unit;
-    const bld = buildings.find(b => b.id === id);
-    return bld ?? null;
+    // O(N) fallback — 建议调用者传 EntityRegistry 以使用 O(1) 查表
+    return units.find(u => u.id === id) ?? buildings.find(b => b.id === id) ?? null;
   }
 
   /** 查找最近的非己方单位 */

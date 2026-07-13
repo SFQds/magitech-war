@@ -16,7 +16,7 @@ export class ProductionQueueUI {
   }
 
   /** 更新生产队列显示 */
-  update(queue: Array<{ name: string; progress: number }>): void {
+  update(queue: Array<{ name: string; progress: number; color?: number }>): void {
     this.container.removeAll(true);
 
     const { width } = this.scene.cameras.main;
@@ -26,11 +26,12 @@ export class ProductionQueueUI {
     queue.forEach((item, i) => {
       const y = startY + i * 50;
       const bg = this.scene.add.rectangle(startX, y, 170, 40, 0x1a1a2e, 0.85).setOrigin(0);
-      const label = this.scene.add.text(startX + 6, y + 4, item.name, {
-        fontSize: '12px', color: '#c8a2c8', fontFamily: 'Arial, sans-serif',
+      const label = this.scene.add.text(startX + 6, y + 2, item.name, {
+        fontSize: '11px', color: '#c8a2c8', fontFamily: 'Arial, sans-serif',
       });
-      const barBg = this.scene.add.rectangle(startX + 6, y + 26, 158, 8, 0x333333).setOrigin(0);
-      const barFill = this.scene.add.rectangle(startX + 6, y + 26, 158 * item.progress, 8, 0x9b59b6).setOrigin(0);
+      const barBg = this.scene.add.rectangle(startX + 6, y + 22, 158, 10, 0x333333).setOrigin(0);
+      const fillColor = item.color ?? 0x2ecc71;
+      const barFill = this.scene.add.rectangle(startX + 6, y + 22, Math.min(158 * item.progress, 158), 10, fillColor).setOrigin(0);
 
       this.container.add([bg, label, barBg, barFill]);
     });

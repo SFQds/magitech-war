@@ -21,10 +21,19 @@ export interface StrategyDirective {
 export class StrategyManager {
   private world: GameWorld;
   private playerIndex: number;
+  private difficulty: 'easy' | 'normal' | 'hard';
   private elapsed: number = 0;
   private currentPhase: StrategyDirective['phase'] = 'early';
 
-  /** 默认指令（开局至第一次策略评估前使用） */
+  /** 按阵营返回偏好单位列表 */
+  private getFactionUnits(): { rifleman: string; elite: string; tier2: string } {
+    const faction = this.world.players[this.playerIndex]?.faction;
+    if (faction === 'hammer_federation') {
+      return { rifleman: 'unit_rifleman', elite: 'unit_hammer_squad', tier2: 'unit_magitech_mech' };
+    }
+    return { rifleman: 'unit_rifleman', elite: 'unit_arcane_guard', tier2: 'unit_magitech_mech' };
+  }
+
   static readonly DEFAULT_DIRECTIVE: StrategyDirective = {
     phase: 'early',
     aggression: 0.1,
@@ -33,9 +42,10 @@ export class StrategyManager {
     preferredUnits: ['unit_worker'],
   };
 
-  constructor(world: GameWorld, playerIndex: number) {
+  constructor(world: GameWorld, playerIndex: number, difficulty: 'easy' | 'normal' | 'hard' = 'normal') {
     this.world = world;
     this.playerIndex = playerIndex;
+    this.difficulty = difficulty;
   }
 
   /** 每 25s 调用一次，返回当前策略指令 */
@@ -61,30 +71,36 @@ export class StrategyManager {
     this.currentPhase = this.determinePhase(combatUnits.length, hasBarracks, hasFactory);
 
     switch (this.currentPhase) {
-      case 'early':
+      case 'early': {
+        const fu = this.getFactionUnits();
         return {
           phase: 'early',
           aggression: 0.1,
           expansion: 0.8,
           defense: 0.2,
-          preferredUnits: ['unit_worker', 'unit_rifleman'],
+          preferredUnits: ['unit_worker', fu.rifleman],
         };
-      case 'mid':
+      }
+      case 'mid': {
+        const fu = this.getFactionUnits();
         return {
           phase: 'mid',
           aggression: 0.4,
           expansion: 0.5,
           defense: 0.5,
-          preferredUnits: ['unit_battle_mage', 'unit_magitech_mech'],
+          preferredUnits: ['unit_battle_mage', fu.tier2],
         };
-      case 'late':
+      }
+      case 'late': {
+        const fu = this.getFactionUnits();
         return {
           phase: 'late',
           aggression: 0.9,
           expansion: 0.2,
           defense: 0.6,
-          preferredUnits: ['unit_magitech_mech', 'unit_battle_mage', 'unit_rifleman'],
+          preferredUnits: [fu.tier2, fu.elite, 'unit_battle_mage', fu.rifleman],
         };
+      }
     }
   }
 
@@ -95,6 +111,8 @@ export class StrategyManager {
     hasFactory: boolean,
   ): StrategyDirective['phase'] {
     const hasProduction = hasBarracks || hasFactory;
+    // 难度调整：Hard 更快升级
+    const diffMult = this.difficulty === 'hard' ? 0.6 : this.difficulty === 'easy' ? 1.5 : 1.0;
 
     if (this.currentPhase === 'late' && combatCount < 3) {
       return 'mid';
@@ -103,15 +121,13 @@ export class StrategyManager {
       return 'early';
     }
 
-    // 升级判定
-    if (!hasProduction && this.elapsed < 180) {
-      return 'early';
-    }
-    if (hasProduction && combatCount < 6) {
-      return 'mid';
-    }
-    // 无生产建筑时退回早/中期，避免卡在后期发不出兵
+    if (combatCount >= Math.round(12 * diffMult)) return 'late';
+    if (combatCount >= Math.round(6 * diffMult) && hasProduction) return 'mid';
     if (!hasProduction) return 'early';
+
+    // 时间兜底：Hard 90s 必进 mid, Easy 240s
+    if (this.elapsed > 90 / diffMult && !hasProduction) return 'early';
+    if (this.elapsed > 180 / diffMult && hasProduction && combatCount < Math.round(6 * diffMult)) return 'mid';
     return 'late';
   }
 }

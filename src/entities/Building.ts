@@ -23,6 +23,18 @@ export class Building extends Entity {
   researchProgress: number = 0;
   /** 研究总耗时（秒） */
   researchTotalTime: number = 0;
+  /** 建造该建筑的工人 ID（建造期间锁定） */
+  builderId: string | null = null;
+  /** 英雄光环等临时 buff 带来的生产速度加成（0=无加成） */
+  productionSpeedBonus: number = 0;
+
+  // ===== 防御建筑战斗属性 =====
+  attackDamage: number = 0;
+  attackRange: number = 0;
+  attackCooldown: number = 0;
+  attackType: string = 'physical';
+  attackTimer: number = 0;
+  targetEntityId: string | null = null;
 
   constructor(
     owner: number,
@@ -64,7 +76,8 @@ export class Building extends Entity {
     }
 
     const current = this.productionQueue[0];
-    current.timeRemaining -= deltaSec;
+    // 应用英雄光环等临时生产速度加成
+    current.timeRemaining -= deltaSec * (1 + this.productionSpeedBonus);
 
     if (current.timeRemaining <= 0) {
       this.productionQueue.shift();

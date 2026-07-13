@@ -11,9 +11,10 @@ export const HERO_DEFS: Record<string, HeroData> = {
     faction: 'arcane_empire',
     stats: {
       hp: 350, armor: 'light', speed: 2.2,
-      damage: 40, dmgType: 'magic', range: 6,
-      cooldown: 1.2, sight: 8,
+      damage: 40, dmgType: 'magic', range: 7,
+      cooldown: 1.5, sight: 8,
     },
+    armorValue: 8,
     passive: '贤者之石：周围8格友方每秒+2HP',
     active: { name: '默库里合金镀层', cooldown: 30, description: '为目标+200护盾，持续20秒' },
     reviveCooldown: 180,
@@ -26,8 +27,9 @@ export const HERO_DEFS: Record<string, HeroData> = {
     stats: {
       hp: 1000, armor: 'heavy', speed: 1.5,
       damage: 70, dmgType: 'physical', range: 4,
-      cooldown: 2.0, sight: 6,
+      cooldown: 2.5, sight: 6,
     },
+    armorValue: 25,
     passive: '厂长光环：周围12格生产建筑训练速度+20%',
     active: { name: '流水线空投', cooldown: 35, description: '空投3个水晶步枪兵' },
     reviveCooldown: 180,

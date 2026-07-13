@@ -9,12 +9,15 @@ import type { PlayerState } from '../types/entity';
 import type { FactionId } from '../types/data';
 import { GameMap } from './GameMap';
 import { FogOfWar } from './FogOfWar';
+import { TechTreeSystem } from '../systems/TechTreeSystem';
 import { FACTION_DEFS } from '../config/unitData';
 
 export class GameWorld {
   readonly map: GameMap;
   readonly fogOfWar: FogOfWar;
   readonly players: PlayerState[] = [];
+  /** 每玩家独立科技树 */
+  readonly techTrees = new Map<number, TechTreeSystem>();
 
   // 实体注册表（后续由实体的工厂方法填充）
   // unitRegisty / buildingRegistry / resourceFields / projectiles 在 entities 模块完成后挂载
@@ -46,6 +49,8 @@ export class GameWorld {
       },
       isAI,
     });
+    // 每个玩家独立科技树
+    this.techTrees.set(index, new TechTreeSystem());
     return index;
   }
 

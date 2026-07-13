@@ -1,7 +1,8 @@
 /**
- * 经济 AI — 资源管理、建造决策
+ * 经济 AI — 资源管理、建造决策、军事扩张
  *
- * 读取 StrategyDirective 调整建造/训练优先级
+ * 读取 StrategyDirective 调整建造/训练优先级。
+ * 支持难度差异化：Hard 更早出兵、更激进扩张。
  */
 
 import type { GameWorld } from '../core/GameWorld';
@@ -10,28 +11,35 @@ import type { Building } from '../entities/Building';
 import type { Unit } from '../entities/Unit';
 import type { ResourceField } from '../entities/ResourceField';
 import type { StrategyDirective } from './StrategyManager';
-
-/** 单位造价快速查询（从 UNIT_DEFS 同步维护） */
-const UNIT_CRYSTAL_COST: Record<string, number> = {
-  unit_worker: 100,
-  unit_rifleman: 150,
-  unit_battle_mage: 300,
-  unit_magitech_mech: 400,
-  unit_arcane_heavy: 350,
-  unit_arcane_guard: 500,
-  unit_hammer_squad: 350,
-  unit_grenadier: 250,
-};
+import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getBuildingCost as getBuildingCostWithDiscount } from '../config/unitData';
 
 export class EconomyAI {
   private world: GameWorld;
   private playerIndex: number;
-  private resourceMultiplier: number;
+  private playerFaction: string;
+  private difficulty: 'easy' | 'normal' | 'hard';
 
-  constructor(world: GameWorld, playerIndex: number, resourceMultiplier = 1.0) {
+  constructor(world: GameWorld, playerIndex: number, difficulty: 'easy' | 'normal' | 'hard') {
     this.world = world;
     this.playerIndex = playerIndex;
-    this.resourceMultiplier = resourceMultiplier;
+    this.difficulty = difficulty;
+    this.playerFaction = world.getPlayer(playerIndex)?.faction ?? 'hammer_federation';
+  }
+
+  /** 从 UNIT_DEFS 动态读取水晶成本 */
+  private getUnitCost(unitDefId: string): number {
+    return UNIT_DEFS[unitDefId]?.cost?.crystal ?? 999;
+  }
+
+  /** 从 BUILDING_DEFS 动态读取建筑水晶成本（含阵营折扣） */
+  private getBuildingCost(bldDefId: string): number {
+    const cost = getBuildingCostWithDiscount(bldDefId, this.playerFaction);
+    return cost?.crystal ?? 999;
+  }
+
+  /** 从 TECH_DEFS 动态读取科技水晶成本 */
+  private getTechCost(techDefId: string): number {
+    return TECH_DEFS[techDefId]?.crystal ?? 999;
   }
 
   /** 每次 tick 输出建造/训练命令 */
@@ -48,10 +56,20 @@ export class EconomyAI {
     const crystal = player.resources.crystal;
     const { supply, supplyCap } = player.resources;
 
-    // 难度通过 tickInterval 实现，这里直接用实际水晶值（避免与 GameScene 花费验证不一致）
+    const faction = player.faction;
+    const techBldId = faction === 'arcane_empire' ? 'bld_ancient_archive' : 'bld_assembly_workshop';
+    const heroId = faction === 'arcane_empire' ? 'hero:isabelle' : 'hero:marcus';
+
+    // 难度系数：Hard 更激进
+    const aggressMultiplier = this.difficulty === 'hard' ? 0.7
+                           : this.difficulty === 'easy' ? 1.5 : 1.0;
 
     const workerCount = units.filter(
       u => u.owner === this.playerIndex && u.isAlive && u.spriteKey === 'unit_worker'
+    ).length;
+
+    const combatCount = units.filter(
+      u => u.owner === this.playerIndex && u.isAlive && u.spriteKey !== 'unit_worker'
     ).length;
 
     // 0. 指派空闲工人去采集
@@ -77,7 +95,6 @@ export class EconomyAI {
       }
     }
 
-    // 生产建筑列表
     const ownProductions = buildings.filter(
       b => b.owner === this.playerIndex && b.isAlive && b.buildingType === 'production' && b.canEnqueue()
     );
@@ -89,21 +106,6 @@ export class EconomyAI {
     const hasFactory = buildings.some(
       b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_factory'
     );
-    const cc = ownProductions.find(b =>
-      b.spriteKey === 'bld_cc_empire' || b.spriteKey === 'bld_cc_federation'
-    ) ?? ownProductions[0];
-
-    // 1. 工人数量维护（扩张倾向高时目标更多）
-    const targetWorkers = directive.expansion > 0.5 ? 8 : 5;
-    if (crystal >= 100 && supply < supplyCap && workerCount < targetWorkers) {
-      commands.push({
-        type: 'train', playerIndex: this.playerIndex,
-        unitIds: [], buildingId: cc.id, unitDefId: 'unit_worker', count: 1, frame: 0,
-      });
-      // 不 return，继续尝试建造和训练其他单位
-    }
-
-    // 2. 建造建筑（缺什么建什么，不受侵略性限制；但高侵略时优先训练而非新建）
     const hasRefinery = buildings.some(
       b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_refinery'
     );
@@ -114,80 +116,111 @@ export class EconomyAI {
       b => b.owner === this.playerIndex && b.isAlive &&
         (b.spriteKey === 'bld_ancient_archive' || b.spriteKey === 'bld_assembly_workshop')
     );
-    const faction = player.faction;
-    const techBldId = faction === 'arcane_empire' ? 'bld_ancient_archive' : 'bld_assembly_workshop';
+    const hasHero = units.some(
+      u => u.owner === this.playerIndex && u.isAlive && (u.spriteKey === 'hero:isabelle' || u.spriteKey === 'hero:marcus')
+    );
+    const hasScout = units.some(
+      u => u.owner === this.playerIndex && u.isAlive && u.spriteKey === 'unit_scout_bike'
+    );
+    const wallCount = buildings.filter(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_wall'
+    ).length;
+    const hasTurret = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_turret'
+    );
+
+    const cc = ownProductions.find(b =>
+      b.spriteKey === 'bld_cc_empire' || b.spriteKey === 'bld_cc_federation'
+    ) ?? ownProductions[0];
+
+    // 1. 工人数量维护
+    const targetWorkers = directive.expansion > 0.5 ? 8 : 5;
+    if (crystal >= 100 && supply < supplyCap && workerCount < targetWorkers) {
+      commands.push({
+        type: 'train', playerIndex: this.playerIndex,
+        unitIds: [], buildingId: cc.id, unitDefId: 'unit_worker', count: 1, frame: 0,
+      });
+    }
+
+    // 2. 建造建筑
+    const buildCostThreshold = (cost: number) => crystal >= cost * aggressMultiplier;
 
     if (directive.aggression < 0.7 || (!hasBarracks && !hasFactory)) {
-      if (!hasBarracks && crystal >= 300) {
-        commands.push({
-          type: 'build', playerIndex: this.playerIndex,
-          unitIds: [], buildingDefId: 'bld_barracks',
-          position: { x: 0, y: 0 }, frame: 0,
-        } as any);
+      if (!hasBarracks && buildCostThreshold(this.getBuildingCost('bld_barracks'))) {
+        commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_barracks', position: { x: 0, y: 0 }, frame: 0 } as any);
       }
-      if (!hasFactory && crystal >= 500) {
-        commands.push({
-          type: 'build', playerIndex: this.playerIndex,
-          unitIds: [], buildingDefId: 'bld_factory',
-          position: { x: 0, y: 0 }, frame: 0,
-        } as any);
+      if (!hasFactory && buildCostThreshold(this.getBuildingCost('bld_factory'))) {
+        commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_factory', position: { x: 0, y: 0 }, frame: 0 } as any);
       }
     }
-    // 采矿场: 水晶充裕时建造（扩张阶段优先）
-    if (!hasRefinery && crystal >= 400) {
-      commands.push({
-        type: 'build', playerIndex: this.playerIndex,
-        unitIds: [], buildingDefId: 'bld_refinery',
-        position: { x: 0, y: 0 }, frame: 0,
-      } as any);
+    if (!hasRefinery && buildCostThreshold(this.getBuildingCost('bld_refinery'))) {
+      commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_refinery', position: { x: 0, y: 0 }, frame: 0 } as any);
     }
-    // 工业车间: 工厂存在且有富余水晶时建造
-    if (!hasPowerPlant && hasFactory && crystal >= 400) {
-      commands.push({
-        type: 'build', playerIndex: this.playerIndex,
-        unitIds: [], buildingDefId: 'bld_power_plant',
-        position: { x: 0, y: 0 }, frame: 0,
-      } as any);
+    if (!hasPowerPlant && hasFactory && buildCostThreshold(this.getBuildingCost('bld_power_plant'))) {
+      commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_power_plant', position: { x: 0, y: 0 }, frame: 0 } as any);
     }
-    // 科技建筑: 中期水晶充裕时建造
-    if (!hasTechBuilding && crystal >= 500) {
+    if (!hasTechBuilding && buildCostThreshold(this.getBuildingCost(techBldId))) {
+      commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: techBldId, position: { x: 0, y: 0 }, frame: 0 } as any);
+    }
+
+    // 2.5 防御建筑：当战斗单位数>5 或水晶>600 时造墙/炮塔
+    if (combatCount >= 5 || crystal > 600) {
+      if (wallCount < 4 && buildCostThreshold(this.getBuildingCost('bld_wall'))) {
+        commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_wall', position: { x: 0, y: 0 }, frame: 0 } as any);
+      }
+      if (!hasTurret && buildCostThreshold(this.getBuildingCost('bld_turret'))) {
+        commands.push({ type: 'build', playerIndex: this.playerIndex, unitIds: [], buildingDefId: 'bld_turret', position: { x: 0, y: 0 }, frame: 0 } as any);
+      }
+    }
+
+    // 3. 科技研究：找任意空闲且有科技槽的建筑
+    const techBld = buildings.find(
+      b => b.owner === this.playerIndex && b.isAlive && b.state === 'idle' &&
+        !b.researchingTechId && BUILDING_DEFS[b.spriteKey]?.researches?.length
+    );
+    if (techBld && buildCostThreshold(this.getTechCost('tech:advanced_mining'))) {
+      const techId = directive.expansion > 0.5 ? 'tech:advanced_mining' : 'tech:structure_reinforce';
       commands.push({
-        type: 'build', playerIndex: this.playerIndex,
-        unitIds: [], buildingDefId: techBldId,
+        type: 'research', playerIndex: this.playerIndex,
+        unitIds: [], buildingId: techBld.id,
+        buildingDefId: '', techDefId: techId,
         position: { x: 0, y: 0 }, frame: 0,
       } as any);
     }
 
-    // 2.5. 科技研究: 水晶充裕时从科技建筑发起
-    if (hasTechBuilding && crystal >= 500) {
-      const techBld = buildings.find(
-        b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === techBldId
-      );
-      if (techBld && techBld.state === 'idle' && !techBld.researchingTechId) {
-        // 扩张倾向优先采集科技，否则优先建筑加固
-        const techId = directive.expansion > 0.5 ? 'tech:advanced_mining' : 'tech:structure_reinforce';
-        commands.push({
-          type: 'research', playerIndex: this.playerIndex,
-          unitIds: [], buildingId: techBld.id,
-          buildingDefId: '', techDefId: techId,
-          position: { x: 0, y: 0 }, frame: 0,
-        } as any);
-      }
+    // 4. 训练英雄（拥有足够水晶 且 尚未拥有）
+    const heroCost = this.getUnitCost(heroId);
+    if (!hasHero && crystal >= heroCost && supply < supplyCap - 4) {
+      commands.push({
+        type: 'train', playerIndex: this.playerIndex,
+        unitIds: [], buildingId: cc.id, unitDefId: heroId, count: 1, frame: 0,
+      });
     }
 
-    // 3. 按 directive.preferredUnits 优先级训练（每个建筑一次一个）
+    // 5. 训练侦察摩托（至少 1 辆）
+    const scoutCost = this.getUnitCost('unit_scout_bike');
+    if (!hasScout && hasFactory && crystal >= scoutCost && supply < supplyCap) {
+      commands.push({
+        type: 'train', playerIndex: this.playerIndex,
+        unitIds: [], buildingId: ownProductions.find(b => b.spriteKey === 'bld_factory')?.id ?? cc.id,
+        unitDefId: 'unit_scout_bike', count: 1, frame: 0,
+      });
+    }
+
+    // 6. 按 directive.preferredUnits 优先级训练战斗单位
     const trainedBuildings = new Set<string>();
     for (const unitDefId of directive.preferredUnits) {
       if (unitDefId === 'unit_worker') continue;
       if (supply >= supplyCap) continue;
 
-      const unitCost = UNIT_CRYSTAL_COST[unitDefId] ?? 999;
+      const unitCost = this.getUnitCost(unitDefId);
       if (crystal < unitCost) continue;
 
       let producer = ownProductions.find(b => {
         if (trainedBuildings.has(b.id)) return false;
         if (unitDefId === 'unit_magitech_mech') return b.spriteKey === 'bld_factory';
         if (unitDefId === 'unit_hammer_squad') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_scout_bike') return b.spriteKey === 'bld_factory';
         if (unitDefId === 'unit_arcane_guard') return b.spriteKey === 'bld_ancient_archive';
         if (unitDefId === 'unit_battle_mage') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_arcane_heavy') return b.spriteKey === 'bld_barracks';

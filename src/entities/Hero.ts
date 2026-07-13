@@ -33,6 +33,8 @@ export interface HeroData {
   reviveCooldown: number;
   /** 训练消耗 */
   cost: { crystal: number; supply: number; time: number };
+  /** 基础护甲值 */
+  armorValue?: number;
 }
 
 export class Hero extends Unit {
@@ -44,7 +46,7 @@ export class Hero extends Unit {
   xp: number = 0;
   /** 主动技能冷却计时器 */
   skillCooldown: number = 0;
-  /** 复活剩余时间（0=存活） */
+  /** 复活剩余时间（0=存活，>0=倒计时中，-1=就绪待复活） */
   reviveTimer: number = 0;
   /** 被动光环半径（tile） */
   auraRadius: number = 8;
@@ -63,6 +65,20 @@ export class Hero extends Unit {
       spriteKey, []);
     this.heroName = heroData.displayName;
     this.title = heroData.title;
+    this.armor = heroData.armorValue ?? 0;
+    this.reviveCooldown = heroData.reviveCooldown;
+    this.supplyCost = heroData.cost.supply;
+  }
+
+  private reviveCooldown: number = 180;
+
+  /** 覆写受伤逻辑：死亡时启动复活冷却 */
+  takeDamage(amount: number, damageType?: string): boolean {
+    const died = super.takeDamage(amount, damageType);
+    if (died) {
+      this.reviveTimer = this.reviveCooldown;
+    }
+    return died;
   }
 
   /** 获得经验 */

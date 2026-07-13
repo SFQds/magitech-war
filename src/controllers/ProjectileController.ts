@@ -100,7 +100,11 @@ export class ProjectileController {
 
     for (const id of toRemove) {
       const idx = this.projectiles.findIndex(p => p.id === id);
-      if (idx !== -1) this.projectiles.splice(idx, 1);
+      if (idx !== -1) {
+        // swap-with-last O(1) 替代 splice O(N)
+        this.projectiles[idx] = this.projectiles[this.projectiles.length - 1];
+        this.projectiles.pop();
+      }
       const s = this.sprites.get(id);
       if (s) { s.destroy(); this.sprites.delete(id); }
     }

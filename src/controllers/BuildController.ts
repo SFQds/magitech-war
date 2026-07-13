@@ -4,7 +4,7 @@
 import type Phaser from 'phaser';
 import { Building } from '../entities/Building';
 import { MovementSystem } from '../systems/MovementSystem';
-import { BUILDING_DEFS, getBuildingCost } from '../config/unitData';
+import { getBuildingCost, createBuilding } from '../config/unitData';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import type { GameMap } from '../core/GameMap';
@@ -22,9 +22,12 @@ export class BuildController {
 
   get isActive(): boolean { return this.mode !== null; }
 
-  tryEnter(bldId: string, builderId: string, faction: string, world: GameWorld): boolean {
+  tryEnter(bldId: string, builderId: string, faction: string, world: GameWorld, getUnit: (id: string) => Unit | undefined): boolean {
     const cost = getBuildingCost(bldId, faction);
     if (!cost || !world.canAfford(0, { crystal: cost.crystal, industry: cost.industry })) return false;
+    // 检查建造者是否空闲（不在建造其他东西）
+    const builder = getUnit(builderId);
+    if (builder && builder.state === 'building') return false;
     this.mode = { buildingDefId: bldId, builderId };
     if (!this.preview) {
       this.preview = this.scene.add.image(0, 0, bldId);
@@ -59,28 +62,52 @@ export class BuildController {
     if (buildings.some(b => b.isAlive && b.tileX === tileX && b.tileY === tileY)) return false;
     if (!world.canAfford(0, { crystal: cost.crystal, industry: cost.industry })) return false;
     world.spend(0, { crystal: cost.crystal, industry: cost.industry });
-    const bldDef = BUILDING_DEFS[defId];
-    const bld = new Building(0, faction as any, tileX, tileY, bldDef?.hp ?? 800, 'structure', 'production', defId, cost.providesSupply, cost.providesIndustry);
+    const bld = createBuilding(0, faction, defId, tileX, tileY);
     addBld(bld);
     const builder = getUnit(this.mode.builderId);
     if (builder?.isAlive) {
+      // 锁定工人为建造状态：先导航到建筑旁，到达后状态切为 building
       builder.stopAttacking();
+      builder.clearPath();
+      builder.aiLockedAction = 'building';
+      bld.builderId = builder.id;
       MovementSystem.navigate(builder, { x: tileX, y: tileY + 1 }, map);
+      // navigate 会设 state='moving'，到达时 clearPath 重置为 idle。
+      // releaseBuilder 通过 builderId + aiLockedAction 释放，不依赖 state。
     }
     this.cancel();
     return true;
   }
 
-  updateConstruction(deltaSec: number, buildings: Building[]): void {
+  updateConstruction(deltaSec: number, buildings: Building[], getUnit: (id: string) => Unit | undefined): void {
     for (const bld of buildings) {
       if (!bld.isAlive || bld.state !== 'constructing') continue;
+      // 检查建造者是否已到达工地（idle=已到，moving=还在路上）
+      if (bld.builderId) {
+        const builder = getUnit(bld.builderId);
+        if (builder?.isAlive && builder.state === 'idle' && builder.aiLockedAction === 'building') {
+          builder.state = 'building';
+        }
+      }
       const cost = getBuildingCost(bld.spriteKey, bld.faction);
-      if (!cost) { bld.complete(); continue; }
+      if (!cost) { bld.complete(); this.releaseBuilder(bld, getUnit); continue; }
       bld.buildProgress += deltaSec / cost.time;
       if (bld.buildProgress >= 1) {
         bld.complete();
+        this.releaseBuilder(bld, getUnit);
         EventBus.emit(GameEvent.BUILDING_COMPLETE, {});
       }
+    }
+  }
+
+  private releaseBuilder(bld: Building, getUnit: (id: string) => Unit | undefined): void {
+    if (bld.builderId) {
+      const builder = getUnit(bld.builderId);
+      if (builder?.isAlive) {
+        builder.state = 'idle';
+        builder.aiLockedAction = null;
+      }
+      bld.builderId = null;
     }
   }
 

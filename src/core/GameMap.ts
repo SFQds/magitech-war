@@ -38,6 +38,11 @@ export class GameMap {
   private tiles: TerrainType[][];  // [y][x]
   private passableGrid: boolean[][];
   private sightBlocker: boolean[][];
+  /** 单位占用的瓦片（整数key=y*width+x），用于碰撞检测 */
+  private occupiedUnitTiles: Set<number> = new Set();
+
+  /** 将 (x,y) 编码为整数 key */
+  private encodeKey(x: number, y: number): number { return Math.round(y) * this.config.width + Math.round(x); }
 
   constructor(config: MapConfig) {
     this.config = config;
@@ -70,9 +75,34 @@ export class GameMap {
   }
 
   /** 是否可通过（单位移动、建筑放置） */
-  isPassable(x: number, y: number): boolean {
+  isPassable(x: number, y: number, checkUnits: boolean = false): boolean {
     if (!this.inBounds(x, y)) return false;
     return this.passableGrid[y][x];
+  }
+
+  /** 是否可通过（含单位碰撞检测） */
+  isPassableWithUnits(x: number, y: number): boolean {
+    if (!this.inBounds(x, y)) return false;
+    if (!this.passableGrid[y][x]) return false;
+    if (this.occupiedUnitTiles.has(this.encodeKey(x, y))) return false;
+    return true;
+  }
+
+  // ============ 单位碰撞（瓦片占用） ============
+
+  /** 清除所有单位占用并重新计算（每帧调用） */
+  rebuildUnitOccupancy(units: ReadonlyArray<{ tileX: number; tileY: number; isAlive: boolean }>): void {
+    this.occupiedUnitTiles.clear();
+    for (const u of units) {
+      if (u.isAlive) {
+        this.occupiedUnitTiles.add(this.encodeKey(u.tileX, u.tileY));
+      }
+    }
+  }
+
+  /** 查询某瓦片是否被单位占用 */
+  isOccupied(x: number, y: number): boolean {
+    return this.occupiedUnitTiles.has(this.encodeKey(x, y));
   }
 
   /** 是否遮挡视野 */

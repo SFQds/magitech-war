@@ -20,27 +20,15 @@ export class HeroSystem {
   ): AnyCommand[] {
     const commands: AnyCommand[] = [];
 
+    // 每帧重置所有建筑的临时生产加速 buff
+    for (const b of buildings) {
+      b.productionSpeedBonus = 0;
+    }
+
+    // === 被动光环（独立循环，先算完所有英雄的被动） ===
     for (const hero of heroes) {
-      if (!hero.isAlive) {
-        // 复活倒计时
-        hero.reviveTimer -= deltaSec;
-        if (hero.reviveTimer <= 0 && hero.reviveTimer > -999) {
-          hero.reviveTimer = -999; // 已就绪待复活
-        }
-        continue;
-      }
-
-      // 技能冷却
-      if (hero.skillCooldown > 0) {
-        hero.skillCooldown -= deltaSec;
-      }
-
-      const hd = HERO_DEFS[hero.spriteKey];
-      if (!hd) continue;
-
-      // === 被动光环 ===
+      if (!hero.isAlive) continue;
       if (hero.spriteKey === 'hero:isabelle') {
-        // 贤者之石：周围8格友方每秒+2HP
         for (const u of units) {
           if (!u.isAlive || u.owner !== hero.owner) continue;
           const d = Math.abs(hero.tileX - u.tileX) + Math.abs(hero.tileY - u.tileY);
@@ -49,17 +37,37 @@ export class HeroSystem {
           }
         }
       }
-
       if (hero.spriteKey === 'hero:marcus') {
-        // 厂长光环：周围12格生产建筑训练速度+20%
-        // 已通过 PassiveBonus 概念预留，实际由 faction 生产加成覆盖
+        for (const b of buildings) {
+          if (!b.isAlive || b.owner !== hero.owner) continue;
+          const d = Math.abs(hero.tileX - b.tileX) + Math.abs(hero.tileY - b.tileY);
+          if (d <= hero.auraRadius) {
+            b.productionSpeedBonus = 0.20;
+          }
+        }
+      }
+    }
+
+    // === 复活计时器 + 技能冷却 + 主动技能 ===
+    for (const hero of heroes) {
+      if (!hero.isAlive) {
+        hero.reviveTimer -= deltaSec;
+        if (hero.reviveTimer <= 0 && hero.reviveTimer !== -1) {
+          hero.reviveTimer = -1; // 标记为已就绪（GameScene 轮询处理）
+        }
+        continue;
       }
 
-      // === 主动技能自动施放 ===
+      if (hero.skillCooldown > 0) {
+        hero.skillCooldown -= deltaSec;
+      }
+
+      const hd = HERO_DEFS[hero.spriteKey];
+      if (!hd) continue;
+
       if (!hero.canUseSkill) continue;
 
       if (hero.spriteKey === 'hero:isabelle') {
-        // 伊莎贝尔：自动给最低血量的友方单位套护盾
         const allies = units.filter(u => u.isAlive && u.owner === hero.owner && u.id !== hero.id);
         if (allies.length > 0) {
           allies.sort((a, b) => a.hpPercent - b.hpPercent);
@@ -73,8 +81,6 @@ export class HeroSystem {
       }
 
       if (hero.spriteKey === 'hero:marcus') {
-        // 马库斯：自动空投——在英雄位置周围生成3个步枪兵
-        // 由 GameScene 监听 UNIT_CREATED 事件处理
         if (units.filter(u => u.owner === hero.owner && u.isAlive && u.spriteKey === 'unit_rifleman').length < 6) {
           commands.push({
             type: 'spawn',

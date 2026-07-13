@@ -35,9 +35,25 @@ export class ResourceSystem {
     players: PlayerState[],
     deltaSec: number,
     buildings?: Building[],
-    gatherMult?: Map<number, number>,
+    gMultP0?: number,
+    gMultP1?: number,
   ): GatherEvent[] {
     const events: GatherEvent[] = [];
+    // 缓存 fieldIndex 避免每工人 fields.find() O(F) 扫描
+    const fieldMap = new Map<string, ResourceField>();
+    for (const f of fields) fieldMap.set(f.id, f);
+
+    // 缓存"是否有采矿场"状态（建筑完成/摧毁时变化，但在此热路径只读一次）
+    let hasRefineryP0 = false, hasRefineryP1 = false;
+    if (buildings) {
+      for (let i = 0; i < buildings.length; i++) {
+        const b = buildings[i];
+        if (!b.isAlive || b.spriteKey !== 'bld_refinery') continue;
+        if (b.owner === 0) hasRefineryP0 = true;
+        if (b.owner === 1) hasRefineryP1 = true;
+        if (hasRefineryP0 && hasRefineryP1) break;
+      }
+    }
 
     for (const unit of units) {
       if (!unit.isAlive || unit.state !== 'gathering') continue;
@@ -47,7 +63,7 @@ export class ResourceSystem {
         continue;
       }
 
-      const field = fields.find(f => f.id === unit.targetResourceId);
+      const field = fieldMap.get(unit.targetResourceId);
       if (!field || !field.isActive || field.isDepleted) {
         unit.targetResourceId = null;
         unit.state = 'idle';
@@ -55,23 +71,20 @@ export class ResourceSystem {
       }
 
       // 累积采集计时
-      (unit as any)._gatherTimer = ((unit as any)._gatherTimer ?? 0) + deltaSec;
-      if ((unit as any)._gatherTimer >= 1.0) {
-        (unit as any)._gatherTimer -= 1.0;
+      unit.gatherTimer += deltaSec;
+      if (unit.gatherTimer >= 1.0) {
+        unit.gatherTimer -= 1.0;
 
         const amount = ResourceSystem.gather(unit, field);
-        // 采矿场速率检查：无采矿场=3/s，有=10/s
-        let gathered = amount;
-        if (buildings) {
-          const hasRefinery = buildings.some(b => b.owner === unit.owner && b.isAlive && b.spriteKey === 'bld_refinery');
-          gathered = hasRefinery ? amount : 3;
-          // 无采矿场时只采集 3，退还矿场 7
-          if (!hasRefinery) {
-            field.amount += (amount - gathered);
-          }
+        const hasRefinery = unit.owner === 0 ? hasRefineryP0 : hasRefineryP1;
+        let gathered = hasRefinery ? amount : 3;
+        // 无采矿场时只采集 3，退还矿场 7
+        if (!hasRefinery) {
+          field.amount += (amount - gathered);
         }
+
         // 科技采集加成
-        const mult = gatherMult?.get(unit.owner) ?? 1.0;
+        const mult = unit.owner === 0 ? (gMultP0 ?? 1.0) : (gMultP1 ?? 1.0);
         gathered = Math.round(gathered * mult);
         if (gathered > 0) {
           const player = players[unit.owner];
