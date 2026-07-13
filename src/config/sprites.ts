@@ -31,4 +31,6 @@ export const PNG_SPRITE_KEYS = [
   'proj_bullet',
   'proj_magic_bolt',
   'proj_cannon',
+  'unit_void_probe',
+  'unit_assault_worker',
 ] as const;

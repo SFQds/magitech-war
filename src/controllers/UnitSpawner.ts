@@ -112,6 +112,7 @@ export class UnitSpawner {
 const unit = new Unit(owner, factionId as any, ux, uy, s.hp, s.armor, s.category,
               s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
             unit.armor = s.armorValue ?? 0;
+            unit.baseArmor = s.armorValue ?? 0;
             unit.supplyCost = def.cost.supply;
             // 奥术守卫初始护盾
             if (unitDefId === 'unit_arcane_guard') {

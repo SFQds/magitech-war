@@ -133,8 +133,10 @@ export class GameScene extends Phaser.Scene {
   private spriteRenderer!: SpriteRenderer;
 
   /** 获取某玩家科技树 */
-  private getTechTree(playerIndex: number) {
-    return this.world.techTrees.get(playerIndex)!;
+  private getTechTree(playerIndex: number): TechTreeSystem {
+    const tt = this.world.techTrees.get(playerIndex);
+    if (!tt) throw new Error(`TechTree not found for player ${playerIndex}`);
+    return tt;
   }
 
   constructor() {
@@ -475,7 +477,7 @@ export class GameScene extends Phaser.Scene {
       // 攻击移动模式：强制移动（自动索敌会处理沿途攻击）
       if (this.attackMoveMode) {
         this.attackMoveMode = false;
-        EventBus.emit('attackmove:toggle' as any, { active: false });
+        EventBus.emit(GameEvent.ATTACK_MOVE_TOGGLE, { active: false });
         for (const id of selection) {
           const unit = this.entities.getUnit(id);
           if (!unit || !unit.isAlive) continue;
@@ -586,7 +588,7 @@ export class GameScene extends Phaser.Scene {
     // A: 攻击移动模式（切换）
     this.input.keyboard!.on('keydown-A', () => {
       this.attackMoveMode = !this.attackMoveMode;
-      EventBus.emit('attackmove:toggle' as any, { active: this.attackMoveMode });
+      EventBus.emit(GameEvent.ATTACK_MOVE_TOGGLE, { active: this.attackMoveMode });
     });
 
     // F2: 全选作战单位
@@ -611,7 +613,7 @@ export class GameScene extends Phaser.Scene {
       }
       if (this.attackMoveMode) {
         this.attackMoveMode = false;
-        EventBus.emit('attackmove:toggle' as any, { active: false });
+        EventBus.emit(GameEvent.ATTACK_MOVE_TOGGLE, { active: false });
       }
     });
 
@@ -779,7 +781,7 @@ export class GameScene extends Phaser.Scene {
           const spawnPos = this.world.map.findNearbyPassable(
             playerCC.tileX + 1, playerCC.tileY + 2, 8
           ) ?? { x: playerCC.tileX + 1, y: playerCC.tileY + 2 };
-          hero.reviveTimer = 180;
+          hero.reviveTimer = 0; // 0=存活
           hero.hp = hero.maxHp;
           hero.shieldHp = 0;
           hero.tileX = spawnPos.x;

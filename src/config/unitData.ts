@@ -194,14 +194,14 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     cost: { crystal: 300, industry: 20, time: 20 },
     hp: 800,
     provides: { supply: 20, industry: 0 },
-    produces: ['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier'],
+    produces: ['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier', 'unit_assault_worker'],
   },
   bld_factory: {
     displayName: '工厂',
     cost: { crystal: 500, industry: 40, time: 30 },
     hp: 1000,
     provides: { supply: 20, industry: 30 },
-    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport', 'unit_hammer_squad'],
+    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport', 'unit_hammer_squad', 'unit_void_probe'],
   },
   bld_refinery: {
     displayName: '采矿场',

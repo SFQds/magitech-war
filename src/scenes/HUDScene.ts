@@ -54,7 +54,7 @@ export class HUDScene extends Phaser.Scene {
       EventBus.offAll(GameEvent.PRODUCTION_COMPLETE);
       EventBus.offAll(GameEvent.UNIT_CREATED);
       EventBus.offAll(GameEvent.UNIT_KILLED);
-      EventBus.offAll('attackmove:toggle');
+      EventBus.offAll(GameEvent.ATTACK_MOVE_TOGGLE);
     });
   }
 
@@ -78,7 +78,7 @@ export class HUDScene extends Phaser.Scene {
     EventBus.offAll(GameEvent.PRODUCTION_COMPLETE);
     EventBus.offAll(GameEvent.UNIT_CREATED);
     EventBus.offAll(GameEvent.UNIT_KILLED);
-    EventBus.offAll('attackmove:toggle');
+    EventBus.offAll(GameEvent.ATTACK_MOVE_TOGGLE);
 
     EventBus.on(GameEvent.RESOURCE_CHANGED, () => this.refreshResourceDisplay());
 
@@ -118,7 +118,7 @@ export class HUDScene extends Phaser.Scene {
           const techsMet = !ud?.techReq?.length || ud.techReq.every((tid: string) => gs2.getTechTree?.(0)?.isResearched(tid));
           const label = techsMet ? getDisplayName(uid) : `${getDisplayName(uid)} 🔒`;
           const callback = techsMet ? () => this.issueTrainCommand(bld.id, uid) : () => this.showToast('科技未解锁');
-          btns.push({ label, cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback });
+          btns.push({ label, cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback, disabled: !techsMet });
         }
       }
       if (def?.researches) {
@@ -129,9 +129,12 @@ export class HUDScene extends Phaser.Scene {
           if (!td) continue;
           const researched = techTree?.isResearched(tid);
           const researching = bld.researchingTechId === tid;
-          const label = researching ? `${td.name} ⏳` : researched ? `${td.name} ✅` : td.name;
-          const cost = researched ? '完成' : `💎${td.crystal}`;
-          btns.push({ label, cost, callback: () => { if (!researched && !researching) this.issueResearchCommand(bld.id, tid); } });
+          // 检查前置科技
+          const prereqsMet = !td.prerequisites?.length || td.prerequisites.every((p: string) => techTree?.isResearched(p));
+          const canResearch = !researched && !researching && prereqsMet;
+          const label = researching ? `${td.name} ⏳` : researched ? `${td.name} ✅` : !prereqsMet ? `${td.name} 🔒` : td.name;
+          const cost = researched ? '完成' : !prereqsMet ? '🔒' : `💎${td.crystal}`;
+          btns.push({ label, cost, callback: () => { if (canResearch) this.issueResearchCommand(bld.id, tid); }, disabled: !canResearch });
         }
       }
       this.commandCard.setCommands(btns.length > 0 ? btns : []);
@@ -141,7 +144,7 @@ export class HUDScene extends Phaser.Scene {
     EventBus.on(GameEvent.PRODUCTION_COMPLETE, () => this.updateProductionQueueUI());
     EventBus.on(GameEvent.UNIT_CREATED, () => this.scheduleMinimapUpdate());
     EventBus.on(GameEvent.UNIT_KILLED, () => this.scheduleMinimapUpdate());
-    EventBus.on('attackmove:toggle', (data: any) => this.attackMoveText.setAlpha(data.active ? 1 : 0));
+    EventBus.on(GameEvent.ATTACK_MOVE_TOGGLE, (data: any) => this.attackMoveText.setAlpha(data.active ? 1 : 0));
 
     this.time.delayedCall(500, () => {
       this.refreshResourceDisplay();

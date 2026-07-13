@@ -154,6 +154,13 @@ export class CommandExecutor {
 
     const tech = TECH_DEFS[cmd.techDefId];
     if (!tech) return fail('未知科技');
+    // 检查科技前置条件
+    if (tech.prerequisites) {
+      const tt = this.world.techTrees.get(cmd.playerIndex);
+      for (const pid of tech.prerequisites) {
+        if (!tt?.isResearched(pid)) return fail('前置科技未研究');
+      }
+    }
     if (!this.world.canAfford(cmd.playerIndex, { crystal: tech.crystal })) return fail('水晶不足');
     if (this.world.techTrees.get(cmd.playerIndex)?.isResearched(cmd.techDefId)) return fail('科技已研究');
     if (bld.researchingTechId) return fail('正在研究其他科技');

@@ -51,6 +51,9 @@ export enum GameEvent {
   HERO_DIED = 'hero:died',
   HERO_REVIVED = 'hero:revived',
 
+  // ---- 输入/模式 ----
+  ATTACK_MOVE_TOGGLE = 'attackmove:toggle',
+
   // ---- AI ----
   AI_TICK = 'ai:tick',
 }
