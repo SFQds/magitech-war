@@ -93,6 +93,22 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     attackEffect: 'melee',
     favoredBy: ['arcane_empire'],
   },
+  unit_void_probe: {
+    displayName: '虚空探针',
+    tier: 'L2',
+    cost: { crystal: 200, supply: 1, time: 8 },
+    stats: { hp: 60, armor: 'light', armorValue: 0, category: 'vehicle', speed: 4.0, damage: 0, dmgType: 'void', range: 0, cooldown: 0, sight: 15 },
+    attackEffect: 'melee',
+    favoredBy: ['void_institute'],
+  },
+  unit_assault_worker: {
+    displayName: '突击工兵',
+    tier: 'L2',
+    cost: { crystal: 150, supply: 1, time: 8 },
+    stats: { hp: 100, armor: 'light', armorValue: 0, category: 'infantry', speed: 2.2, damage: 10, dmgType: 'physical', range: 3, cooldown: 1.0, sight: 6 },
+    attackEffect: 'proj_bullet',
+    favoredBy: ['hammer_federation'],
+  },
   unit_scout_bike: {
     displayName: '侦察摩托',
     tier: 'L1',
@@ -163,7 +179,7 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     provides: { supply: 50, industry: 50 },
     produces: ['unit_worker', 'hero:isabelle'],
-    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
+    researches: ['tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_cc_federation: {
     displayName: '联邦指挥中心',
@@ -171,7 +187,7 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     provides: { supply: 50, industry: 65 },
     produces: ['unit_worker', 'hero:marcus'],
-    researches: ['tech:advanced_mining', 'tech:infantry_armor', 'tech:structure_reinforce'],
+    researches: ['tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_barracks: {
     displayName: '兵营',
@@ -401,5 +417,18 @@ export const TECH_DEFS: Record<string, TechDefData> = {
     crystal: 350,
     time: 35,
     desc: '解锁魔导机甲制造',
+  },
+  'tech:crystal_smelting': {
+    name: '水晶冶炼 L1',
+    crystal: 150,
+    time: 25,
+    desc: '水晶采集 +15%',
+  },
+  'tech:refining_tech': {
+    name: '精炼技术 L2',
+    crystal: 400,
+    time: 50,
+    desc: '水晶采集 +25%（与L1叠加）',
+    prerequisites: ['tech:crystal_smelting'],
   },
 };

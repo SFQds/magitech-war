@@ -14,6 +14,7 @@ import { ResourceSystem } from '../systems/ResourceSystem';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { GuildSystem } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
+import { TechTreeSystem } from '../systems/TechTreeSystem';
 import { BUILDING_DEFS } from '../config/unitData';
 import { Hero } from '../entities/Hero';
 import { EntityRegistry } from '../core/EntityRegistry';
@@ -44,6 +45,15 @@ export class GameScene extends Phaser.Scene {
 /** 科技效果缓存（per-player，每次研究完成时刷新） */
   private techEffects = new Map<number, { gatherMult: number; infantryArmor: number; buildingHpMult: number }>();
 
+  /** 计算采集倍率（多个科技叠乘） */
+  private calcGatherMult(tt: TechTreeSystem): number {
+    let m = 1.0;
+    if (tt.isResearched('tech:advanced_mining')) m *= 1.2;
+    if (tt.isResearched('tech:crystal_smelting')) m *= 1.15;
+    if (tt.isResearched('tech:refining_tech')) m *= 1.25;
+    return m;
+  }
+
   /** 初始化玩家科技效果缓存 */
   private initTechEffects(): void {
     for (let i = 0; i < this.world.players.length; i++) {
@@ -55,7 +65,7 @@ export class GameScene extends Phaser.Scene {
   private refreshTechEffects(playerIndex: number): void {
     const tt = this.getTechTree(playerIndex);
     this.techEffects.set(playerIndex, {
-      gatherMult: tt.isResearched('tech:advanced_mining') ? 1.2 : 1.0,
+      gatherMult: this.calcGatherMult(tt),
       infantryArmor: tt.isResearched('tech:infantry_armor') ? 5 : 0,
       buildingHpMult: tt.isResearched('tech:structure_reinforce') ? 1.2 : 1.0,
     });
@@ -453,6 +463,12 @@ export class GameScene extends Phaser.Scene {
 
     // 右键智能命令
     this.inputCtrl.onRightClick((tile) => {
+      // 建造模式：右键取消（玩家的直觉操作）
+      if (this.buildController.isActive) {
+        this.buildController.cancel();
+        return;
+      }
+
       const selection = this.inputCtrl.getSelection();
       if (selection.length === 0) return;
 
@@ -645,6 +661,7 @@ export class GameScene extends Phaser.Scene {
     this.stepConstructionResearch(ds);
     this.stepProjectiles(ds);
     this.stepCleanup();
+    this.stepTimer(ds);
     this.stepGameOver();
     this.stepRender(ds);
   }
@@ -981,6 +998,8 @@ export class GameScene extends Phaser.Scene {
   // ============ 胜负检测 ============
 
   private _gameOver = false;
+  private _gameTimer: number = 0;       // 累计游戏时间（秒）
+  private _scoreTimerDisplay: Phaser.GameObjects.Text | null = null;
 
   private checkGameOver(): void {
     if (this._gameOver) return;
@@ -991,28 +1010,69 @@ export class GameScene extends Phaser.Scene {
     const playerDead = !aliveBuildings(0);
     const aiDead = !aliveBuildings(1);
 
-    if (!playerDead && !aiDead) return;
+    // 歼灭胜利
+    if (playerDead || aiDead) {
+      this._gameOver = true;
+      const winner = aiDead ? 0 : 1;
+      EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'annihilated' });
+      const text = winner === 0 ? '🏆 胜利！敌方基地已被摧毁' : '💀 失败…我方基地已被摧毁';
+      const color = winner === 0 ? '#ffd700' : '#ff4444';
+      this.add.text(1280 / 2, 720 / 2 - 20, text, {
+        fontSize: '32px', color, backgroundColor: '#1a1a2ecc',
+        padding: { x: 24, y: 12 },
+      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
+      return;
+    }
 
-    this._gameOver = true;
-    const winner = aiDead ? 0 : 1;
+    // 30分钟限时胜利（按分数）
+    const MAX_TIME = 30 * 60; // 1800秒 = 30分钟
+    if (this._gameTimer >= MAX_TIME) {
+      this._gameOver = true;
+      const p0Score = this.calcScore(0);
+      const p1Score = this.calcScore(1);
+      const winner = p0Score > p1Score ? 0 : p1Score > p0Score ? 1 : -1;
+      EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'timeout' });
+      const resultText = winner === 0 ? '🏆 时间到！你赢了！' : winner === 1 ? '💀 时间到…你输了' : '🤝 平局！';
+      const scoreText = `\n你的分数: ${p0Score}  |  敌方分数: ${p1Score}`;
+      this.add.text(1280 / 2, 720 / 2 - 20, resultText + scoreText, {
+        fontSize: '28px', color: winner === 0 ? '#ffd700' : '#ff6644',
+        backgroundColor: '#1a1a2ecc', padding: { x: 24, y: 12 },
+        align: 'center',
+      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
+    }
+  }
 
-    EventBus.emit(GameEvent.GAME_OVER, {
-      winnerIndex: winner,
-      reason: 'annihilated',
-    });
+  /** 计算玩家分数（用于限时判定） */
+  private calcScore(playerIndex: number): number {
+    const player = this.world.players[playerIndex];
+    let score = player?.resources.crystal ?? 0;
+    for (const u of this.units) {
+      if (u.owner !== playerIndex || !u.isAlive) continue;
+      score += (u.maxHp + u.attackDamage * 10) * 0.5;
+    }
+    for (const b of this.buildings) {
+      if (b.owner !== playerIndex || !b.isAlive) continue;
+      score += b.maxHp * 0.3;
+    }
+    return Math.round(score);
+  }
 
-    // 屏幕中央提示
-    const text = winner === 0 ? '🏆 胜利！敌方基地已被摧毁' : '💀 失败…我方基地已被摧毁';
-    const color = winner === 0 ? '#ffd700' : '#ff4444';
-    this.add.text(1280 / 2, 720 / 2 - 20, text, {
-      fontSize: '32px',
-      color,
-      backgroundColor: '#1a1a2ecc',
-      padding: { x: 24, y: 12 },
-      fontFamily: 'Arial, sans-serif',
-    }).setOrigin(0.5).setDepth(500).setScrollFactor(0);
-
-    // 暂停游戏循环（_gameOver 标记会阻断 update）
+  private stepTimer(ds: number): void {
+    if (this._gameOver) return;
+    this._gameTimer += ds;
+    // HUD 计时器显示
+    const mins = Math.floor(this._gameTimer / 60);
+    const secs = Math.floor(this._gameTimer % 60);
+    const timeStr = `⏱ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    if (!this._scoreTimerDisplay) {
+      this._scoreTimerDisplay = this.add.text(1280 / 2, 10, timeStr, {
+        fontSize: '16px', color: '#ffd700',
+        backgroundColor: '#1a1a2ecc', padding: { x: 12, y: 4 },
+        fontFamily: 'Arial, sans-serif',
+      }).setOrigin(0.5, 0).setDepth(250).setScrollFactor(0);
+    } else {
+      this._scoreTimerDisplay.setText(timeStr);
+    }
   }
 
 // ============ 精灵同步 ============
