@@ -45,6 +45,9 @@ export class GameScene extends Phaser.Scene {
 /** 科技效果缓存（per-player，每次研究完成时刷新） */
   private techEffects = new Map<number, { gatherMult: number; infantryArmor: number; buildingHpMult: number }>();
 
+  // EventBus 监听器引用（供 shutdown 精确移除）
+  private _onUnitKilled: ((data: any) => void) | null = null;
+
   /** 计算采集倍率（多个科技叠乘） */
   private calcGatherMult(tt: TechTreeSystem): number {
     let m = 1.0;
@@ -275,10 +278,9 @@ export class GameScene extends Phaser.Scene {
     // 音效事件监听
     this.setupSoundListeners();
 
-    // 击杀奖励 XP → 英雄
-    EventBus.on(GameEvent.UNIT_KILLED, (data: any) => {
-      this.rewardHeroXp(data.killerId);
-    });
+    // 击杀奖励 XP → 英雄（保存引用以便 shutdown 精确移除）
+    this._onUnitKilled = (data: any) => { this.rewardHeroXp(data.killerId); };
+    EventBus.on(GameEvent.UNIT_KILLED, this._onUnitKilled);
 
     // 注册 Phaser 场景关闭/销毁时的清理
     this.events.on('shutdown', this.shutdown, this);
@@ -1144,6 +1146,11 @@ export class GameScene extends Phaser.Scene {
     this.projectileController?.destroy();
     this.buildController?.destroy();
     if (this._scoreTimerDisplay) { this._scoreTimerDisplay.destroy(); this._scoreTimerDisplay = null; }
+    // 精确移除 EventBus 监听器（防止内存泄漏）
+    if (this._onUnitKilled) {
+      EventBus.off(GameEvent.UNIT_KILLED, this._onUnitKilled);
+      this._onUnitKilled = null;
+    }
     this.entities.clear();
   }
 

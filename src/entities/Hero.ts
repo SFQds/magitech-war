@@ -82,28 +82,36 @@ export class Hero extends Unit {
 
   private reviveCooldown!: number;
 
-  /** 覆写受伤逻辑：死亡时启动复活冷却 */
+  /** 覆写受伤逻辑：死亡时启动复活冷却 + 清理技能冷却 */
   takeDamage(amount: number, damageType?: string): boolean {
     const died = super.takeDamage(amount, damageType);
     if (died) {
       this.reviveTimer = this.reviveCooldown;
+      // P0-1 修复：死亡时重置技能冷却
+      this.skillCooldowns = [0, 0, 0];
+      this.skillCooldown = 0;
     }
     return died;
   }
 
-  /** 获得经验（返回是否升级） */
+  /** 获得经验（返回是否升级，支持连升多级） */
   gainXp(amount: number): boolean {
     if (this.level >= this.maxLevel) return false;
     this.xp += amount;
-    if (this.xp >= this.xpToNextLevel) {
+    let leveled = false;
+    while (this.xp >= this.xpToNextLevel && this.level < this.maxLevel) {
       this.xp -= this.xpToNextLevel;
       this.level++;
       this.maxHp = Math.round(this.maxHp * 1.15);
       this.hp = Math.min(this.hp + 50, this.maxHp);
       this.attackDamage = Math.round(this.attackDamage * 1.1);
-      return true; // 升级了
+      leveled = true;
     }
-    return false;
+    // Lv5后不再积累 XP
+    if (this.level >= this.maxLevel) {
+      this.xp = 0;
+    }
+    return leveled;
   }
 
   /** 是否解锁了某个技能槽位（按等级） */

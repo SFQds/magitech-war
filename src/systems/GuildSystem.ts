@@ -140,6 +140,23 @@ export class GuildSystem {
         GuildSystem._updateAlchemyBuffs(units, player.index, deltaSec);
       }
 
+      // P0-6 修复：无论是否有炼金协会，所有单位的腐蚀弹debuff都需要衰减
+      // （敌方对我方施加的腐蚀弹，我方即使没有炼金协会也要 tick 计时器）
+      if (!guilds.includes('alchemists_society')) {
+        // 只 tick 腐蚀 debuff（type === 'corrosion'），不处理己方的增益 buff
+        for (const unit of units) {
+          if (unit.owner !== player.index || !unit.isAlive) continue;
+          if (unit.alchemyBuffType === 'corrosion' && unit.alchemyBuffTimer > 0) {
+            unit.alchemyBuffTimer -= deltaSec;
+            if (unit.alchemyBuffTimer <= 0) {
+              unit.alchemyBuffTimer = 0;
+              unit.alchemyBuffType = 'none';
+              unit.alchemyBuffValue = 0;
+            }
+          }
+        }
+      }
+
       // === 虚空研究院：过载计时 ===
       if (guilds.includes('void_institute')) {
         GuildSystem._updateVoidOverloads(units, player.index, deltaSec);

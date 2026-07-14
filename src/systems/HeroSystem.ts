@@ -25,6 +25,11 @@ export interface SkillActivationResult {
   spawnCommands?: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[];
 }
 
+/** 将 spriteKey (hero_isabelle) 转换回数据 key (hero:isabelle) */
+function heroDataKey(hero: Hero): string {
+  return hero.spriteKey.replace('_', ':');
+}
+
 export class HeroSystem {
   /** 更新所有英雄：被动光环 + 技能冷却 + 复活计时器 */
   static update(
@@ -43,7 +48,9 @@ export class HeroSystem {
     for (const hero of heroes) {
       if (!hero.isAlive) continue;
 
-      if (hero.spriteKey === 'hero:isabelle') {
+      const heroId = heroDataKey(hero);
+
+      if (heroId === 'hero:isabelle') {
         // 贤者之石：周围8格友方每秒+2HP
         for (const u of units) {
           if (!u.isAlive || u.owner !== hero.owner) continue;
@@ -54,12 +61,12 @@ export class HeroSystem {
         }
       }
 
-      if (hero.spriteKey === 'hero:marcus') {
+      if (heroId === 'hero:marcus') {
         // 厂长光环：周围12格生产建筑训练速度+20%
         for (const b of buildings) {
           if (!b.isAlive || b.owner !== hero.owner) continue;
           const d = Math.abs(hero.tileX - b.tileX) + Math.abs(hero.tileY - b.tileY);
-          if (d <= 12) { // 马库斯光环12格
+          if (d <= hero.auraRadius) {
             b.productionSpeedBonus = 0.20;
           }
         }
@@ -92,16 +99,17 @@ export class HeroSystem {
     for (const hero of heroes) {
       if (!hero.isAlive) continue;
 
-      const hd = HERO_DEFS[hero.spriteKey];
+      const heroId2 = heroDataKey(hero);
+      const hd = HERO_DEFS[heroId2];
       if (!hd || hd.skillTree.length === 0) continue;
 
       // === 伊莎贝尔：自动给最弱友军加护盾 ===
-      if (hero.spriteKey === 'hero:isabelle') {
+      if (heroId2 === 'hero:isabelle') {
         HeroSystem._updateIsabelle(hero, units, hd);
       }
 
       // === 马库斯：自动空投（兵力不足时） ===
-      if (hero.spriteKey === 'hero:marcus') {
+      if (heroId2 === 'hero:marcus') {
         const result = HeroSystem._updateMarcus(hero, units, spawnCommands, hd);
         if (result) spawnCommands.push(...result);
       }
@@ -256,32 +264,132 @@ export class HeroSystem {
     slotIndex: number,
     targets: { units: Unit[]; buildings: Building[] },
   ): SkillActivationResult {
-    const hd = HERO_DEFS[hero.spriteKey];
+    const heroId = heroDataKey(hero);
+    const hd = HERO_DEFS[heroId];
     if (!hd || !hero.canUseSkillSlot(slotIndex)) {
       return { success: false, slotIndex, skillName: 'N/A' };
     }
 
     const skill = hd.skillTree[
-      slotIndex === 0 ? (hero.level >= 2 ? 1 : 0) :  // 槽位0→Lv1或Lv2版本
-      slotIndex === 1 ? (hero.level >= 4 ? 3 : 2) :  // 槽位1→Lv3或Lv4版本
-      4  // 槽位2→Lv5终极
+      slotIndex === 0 ? (hero.level >= 2 ? 1 : 0) :
+      slotIndex === 1 ? (hero.level >= 4 ? 3 : 2) :
+      4
     ];
 
-    const cooldown = skill.cooldown;
-    hero.skillCooldowns[slotIndex] = cooldown;
+    hero.skillCooldowns[slotIndex] = skill.cooldown;
 
     EventBus.emit(GameEvent.ABILITY_USED, {
       unitId: hero.id,
-      abilityId: `${hero.spriteKey}_slot${slotIndex}`,
+      abilityId: `${heroId}_slot${slotIndex}`,
       playerIndex: hero.owner,
     });
+
+    // 执行技能效果
+    const spawnCommands: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] = [];
+    if (heroId === 'hero:isabelle') {
+      if (slotIndex === 0) {
+        this._execIsabelleShield(hero, targets.units);
+      } else if (slotIndex === 1) {
+        this._execIsabelleAlchemy(hero, targets.units);
+      } else if (slotIndex === 2) {
+        this._execIsabelleRain(hero, targets.units);
+      }
+    } else if (heroId === 'hero:marcus') {
+      if (slotIndex === 0) {
+        const cmds = this._execMarcusAirdrop(hero);
+        if (cmds) spawnCommands.push(...cmds);
+      } else if (slotIndex === 1) {
+        this._execMarcusRepair(hero, targets.units);
+      } else if (slotIndex === 2) {
+        this._execMarcusOverdrive(hero, targets.units);
+      }
+    }
 
     return {
       success: true,
       slotIndex,
       skillName: skill.name,
-      spawnCommands: [],
+      spawnCommands: spawnCommands.length > 0 ? spawnCommands : [],
     };
+  }
+
+  // ===== 技能效果执行（自动技能和手动激活共享） =====
+
+  /** 伊莎贝尔 Slot 0: 默库里合金镀层 */
+  static _execIsabelleShield(hero: Hero, units: Unit[]): void {
+    const allies = units.filter(u => u.isAlive && u.owner === hero.owner && u.id !== hero.id);
+    if (allies.length === 0) return;
+    allies.sort((a, b) => a.hpPercent - b.hpPercent);
+    const target = allies[0];
+    const shieldAmount = hero.level >= 2 ? 350 : 200;
+    target.shieldHp = Math.max(target.shieldHp, shieldAmount);
+    target.maxShieldHp = Math.max(target.maxShieldHp, shieldAmount);
+  }
+
+  /** 伊莎贝尔 Slot 1: 炼金转化 */
+  static _execIsabelleAlchemy(hero: Hero, units: Unit[]): void {
+    const nearbyEnemies = units.filter(u =>
+      u.owner !== hero.owner && u.isAlive &&
+      Math.abs(u.tileX - hero.tileX) <= 8 && Math.abs(u.tileY - hero.tileY) <= 8,
+    );
+    for (const enemy of nearbyEnemies) {
+      enemy.attackTimer = Math.max(enemy.attackTimer, 3.0);
+    }
+  }
+
+  /** 伊莎贝尔 Slot 2: 贤者之雨 */
+  static _execIsabelleRain(hero: Hero, units: Unit[]): void {
+    for (const ally of units) {
+      if (!ally.isAlive || ally.owner !== hero.owner) continue;
+      const d = Math.abs(hero.tileX - ally.tileX) + Math.abs(hero.tileY - ally.tileY);
+      if (d <= 10) {
+        ally.hp = Math.min(ally.maxHp, ally.hp + 150);
+      }
+    }
+  }
+
+  /** 马库斯 Slot 0: 流水线空投 */
+  static _execMarcusAirdrop(hero: Hero): { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] {
+    const cmds: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] = [];
+    cmds.push({
+      unitDefId: 'unit_rifleman',
+      count: hero.level >= 2 ? 5 : 3,
+      position: { x: hero.tileX + 1, y: hero.tileY + 1 },
+      playerIndex: hero.owner,
+    });
+    if (hero.level >= 2) {
+      cmds.push({
+        unitDefId: 'unit_assault_worker',
+        count: 1,
+        position: { x: hero.tileX + 2, y: hero.tileY + 1 },
+        playerIndex: hero.owner,
+      });
+    }
+    return cmds;
+  }
+
+  /** 马库斯 Slot 1: 紧急修复协议 */
+  static _execMarcusRepair(hero: Hero, units: Unit[]): void {
+    const healPct = hero.level >= 4 ? 0.08 : 0.05;
+    hero.hp = Math.min(hero.maxHp, hero.hp + Math.round(hero.maxHp * healPct));
+    for (const u of units) {
+      if (!u.isAlive || u.owner !== hero.owner) continue;
+      const d = Math.abs(hero.tileX - u.tileX) + Math.abs(hero.tileY - u.tileY);
+      if (d <= 5 && u.armorType === 'mechanical') {
+        u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * healPct));
+      }
+    }
+  }
+
+  /** 马库斯 Slot 2: 全功率运转 */
+  static _execMarcusOverdrive(hero: Hero, units: Unit[]): void {
+    const nearbyEnemies = units.filter(u =>
+      u.owner !== hero.owner && u.isAlive &&
+      Math.abs(u.tileX - hero.tileX) <= 5 && Math.abs(u.tileY - hero.tileY) <= 5,
+    );
+    for (const enemy of nearbyEnemies) {
+      enemy.takeDamage(150, 'physical');
+    }
   }
 
   /** 获取技能槽位对应的技能信息（供 HUD 显示） */
@@ -293,7 +401,7 @@ export class HeroSystem {
     available: boolean;
     unlocked: boolean;
   } | null {
-    const hd = HERO_DEFS[hero.spriteKey];
+    const hd = HERO_DEFS[heroDataKey(hero)];
     if (!hd || hd.skillTree.length === 0) return null;
 
     const unlocked = hero.hasSkillSlot(slotIndex);

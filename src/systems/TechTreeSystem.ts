@@ -4,7 +4,7 @@
  * 纯逻辑：判断某个科技/单位/建筑是否满足前置条件
  */
 
-import type { TechDef } from '../types/data';
+import type { TechDefData } from '../config/unitData';
 
 export class TechTreeSystem {
   /** 已研究完成的科技 ID 集合 */
@@ -20,12 +20,14 @@ export class TechTreeSystem {
     return this.researched.has(techId);
   }
 
-  /** 检查是否可以研究某个科技 */
-  canResearch(tech: TechDef): boolean {
-    for (const prereq of tech.prerequisites) {
-      if (!this.researched.has(prereq)) return false;
+  /** 检查是否可以研究某个科技（techId 为 TECH_DEFS 的 key） */
+  canResearch(techId: string, tech?: TechDefData): boolean {
+    if (tech?.prerequisites) {
+      for (const prereq of tech.prerequisites) {
+        if (!this.researched.has(prereq)) return false;
+      }
     }
-    return !this.researched.has(tech.id);
+    return !this.researched.has(techId);
   }
 
   /** 检查是否可以制造某个单位/建筑（基于已研究科技） */

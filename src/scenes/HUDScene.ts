@@ -49,14 +49,8 @@ export class HUDScene extends Phaser.Scene {
 
     // 注册场景关闭清理
     this.events.on('shutdown', () => {
-      EventBus.offAll(GameEvent.RESOURCE_CHANGED);
-      EventBus.offAll(GameEvent.SELECTION_CHANGED);
-      EventBus.offAll(GameEvent.BUILDING_SELECTED);
-      EventBus.offAll(GameEvent.PRODUCTION_STARTED);
-      EventBus.offAll(GameEvent.PRODUCTION_COMPLETE);
-      EventBus.offAll(GameEvent.UNIT_CREATED);
-      EventBus.offAll(GameEvent.UNIT_KILLED);
-      EventBus.offAll(GameEvent.ATTACK_MOVE_TOGGLE);
+      // 不调用 EventBus.offAll — 会误杀 SoundBindings/GameScene 的共享监听
+      // Phaser 场景销毁后，闭包自然失效，不会造成功能问题
     });
   }
 
@@ -73,14 +67,7 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private setupEvents(): void {
-    EventBus.offAll(GameEvent.RESOURCE_CHANGED);
-    EventBus.offAll(GameEvent.SELECTION_CHANGED);
-    EventBus.offAll(GameEvent.BUILDING_SELECTED);
-    EventBus.offAll(GameEvent.PRODUCTION_STARTED);
-    EventBus.offAll(GameEvent.PRODUCTION_COMPLETE);
-    EventBus.offAll(GameEvent.UNIT_CREATED);
-    EventBus.offAll(GameEvent.UNIT_KILLED);
-    EventBus.offAll(GameEvent.ATTACK_MOVE_TOGGLE);
+    // 不调用 EventBus.offAll — 会误杀其他模块共享的监听
 
     EventBus.on(GameEvent.RESOURCE_CHANGED, () => this.refreshResourceDisplay());
 

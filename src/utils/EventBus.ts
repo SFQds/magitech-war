@@ -29,12 +29,16 @@ class EventBusImpl {
     this.listeners.delete(event);
   }
 
-  /** 触发事件 */
+  /** 触发事件（单个回调异常不阻断后续回调） */
   emit(event: string, data: unknown): void {
     const callbacks = this.listeners.get(event);
     if (!callbacks) return;
     for (const cb of callbacks) {
-      cb(data);
+      try {
+        cb(data);
+      } catch (e) {
+        console.error(`[EventBus] ${event} handler error:`, e);
+      }
     }
   }
 

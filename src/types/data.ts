@@ -60,27 +60,9 @@ export type TerrainType = 'grass' | 'sand' | 'water' | 'mountain' | 'forest';
 /** 资源类型 */
 export type ResourceType = 'crystal' | 'industry' | 'supply';
 
-// ============ 科技（TechTreeSystem 依赖） ============
-
-/** 科技数据定义（来自 tech_tree.json 契约） */
-export interface TechDef {
-  id: string;
-  name: string;
-  description: string;
-  cost: { crystal: number; industry: number; supply: number };
-  researchTime: number;
-  prerequisites: string[];
-  unlocks: {
-    units?: string[];
-    buildings?: string[];
-    upgrades?: string[];
-    superweapon?: string;
-  };
-  exclusiveTo?: {
-    faction?: FactionId;
-    guild?: string;
-  };
-}
+// ============ 科技（实际由 config/unitData.ts 的 TechDefData 定义） ============
+// 注意：data.ts 中不再定义 TechDef 双接口，tech 数据以 unitData.ts 的 TechDefData 为准
+// TechTreeSystem 消费 TechDefData 而非 TechDef
 
 // ============ 地图 JSON 契约 ============
 

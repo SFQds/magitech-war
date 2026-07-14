@@ -6,6 +6,7 @@ import { Projectile } from '../entities/Projectile';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { CombatSystem } from '../systems/CombatSystem';
+import { GuildSystem } from '../systems/GuildSystem';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import { tileToWorld } from '../utils/MathUtils';

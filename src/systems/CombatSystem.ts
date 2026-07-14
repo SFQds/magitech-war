@@ -157,17 +157,33 @@ export class CombatSystem {
           unit.state = 'attacking';
         }
 
-        // 冷却完毕 → 攻击
+        // 冷却完毕 → 攻击（应用行会buff修正）
         if (unit.attackTimer <= 0) {
-          const damage = CombatSystem.calculateDamage(unit.attackDamage, unit.attackType, target.armorType, unit.faction);
+          // 攻击力：炼金力量药剂 + 虚空过载
+          let effectiveDmg = unit.attackDamage;
+          effectiveDmg = Math.round(effectiveDmg * GuildSystem.getAlchemyDamageMult(unit));
+          effectiveDmg = Math.round(effectiveDmg * GuildSystem.getVoidOverloadDamageMult(unit));
+          // 目标护甲修正：炼金腐蚀弹（扣减目标护甲）
+          const corrosionPenalty = target instanceof Unit
+            ? Math.round((target as Unit).baseArmor * GuildSystem.getAlchemyCorrosionArmorPenalty(target as Unit))
+            : 0;
+          const effectiveArmor = target.armor - corrosionPenalty;
+          // 攻击方护甲增益（铁皮药剂 + 虚空过载护甲仅在攻击方被反击时需要；暂不在此处处理）
+          
+          const damage = CombatSystem.calculateDamage(effectiveDmg, unit.attackType, target.armorType, unit.faction);
           unit.attackTimer = unit.attackCooldown;
 
           const def = UNIT_DEFS[unit.spriteKey];
           const attackEffect = def?.attackEffect ?? 'melee';
 
           if (attackEffect === 'melee') {
-            // 近战：即时伤害（虚空穿透护甲由 takeDamage 处理）
+            // 近战：即时伤害（应用腐蚀护甲扣减）
+            const savedArmor = target.armor;
+            if (corrosionPenalty > 0) {
+              target.armor = Math.max(0, target.armor - corrosionPenalty);
+            }
             const died = target.takeDamage(damage, unit.attackType);
+            target.armor = savedArmor; // 恢复（腐蚀效果应由全局buff管理）
             events.push({
               attackerId: unit.id,
               targetId: target.id,
