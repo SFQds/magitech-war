@@ -6,6 +6,7 @@ import Phaser from 'phaser';
 import { GameMap } from '../core/GameMap';
 import { FogOfWar } from '../core/FogOfWar';
 import { Unit } from '../entities/Unit';
+import { Hero } from '../entities/Hero';
 import { Building } from '../entities/Building';
 import { ResourceDisplay } from '../ui/ResourceDisplay';
 import { SelectionPanel } from '../ui/SelectionPanel';
@@ -18,6 +19,7 @@ import { GameEvent } from '../types/events';
 import type { SelectionData } from '../types/events';
 import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getDisplayName, getBuildingCost } from '../config/unitData';
 import type { CommandResult } from '../controllers/CommandExecutor';
+import { HeroSystem } from '../systems/HeroSystem';
 
 export class HUDScene extends Phaser.Scene {
   private resourceDisplay!: ResourceDisplay;
@@ -90,6 +92,48 @@ export class HUDScene extends Phaser.Scene {
       const gs = this.scene.get('GameScene') as any;
       const units = d.unitIds.map((id: string) => gs.units?.find((u: Unit) => u.id === id)).filter(Boolean) as Unit[];
       this.selectionPanel.showUnits(units);
+
+      // === 英雄技能按钮 ===
+      if (units.length === 1 && units[0] instanceof Hero) {
+        const hero = units[0] as Hero;
+        const btns: { label: string; cost: string; spriteKey?: string; callback: () => void; disabled?: boolean }[] = [];
+        const slots = hero.getAvailableSkillSlots();
+
+        for (const slotIdx of slots) {
+          const info = HeroSystem.getSkillInfo(hero, slotIdx);
+          if (!info) continue;
+          const cdText = info.available ? '' : ` ⏳${Math.ceil(info.currentCooldown)}s`;
+          const label = info.unlocked
+            ? (info.available ? info.name : `${info.name}${cdText}`)
+            : '🔒 Lv' + ([1, 3, 5][slotIdx]);
+          const cost = info.available ? info.name : info.unlocked ? `${Math.ceil(info.currentCooldown)}s` : '未解锁';
+          btns.push({
+            label,
+            cost,
+            callback: () => {
+              if (info.available) {
+                HeroSystem.activateSkill(hero, slotIdx, {
+                  units: gs.units ?? [],
+                  buildings: gs.buildings ?? [],
+                });
+              }
+            },
+            disabled: !info.available,
+          });
+        }
+
+        // 英雄等级和XP条
+        const xpPct = hero.level >= hero.maxLevel ? 100 : Math.round((hero.xp / hero.xpToNextLevel) * 100);
+        btns.push({
+          label: `⭐ Lv ${hero.level}/${hero.maxLevel}`,
+          cost: hero.level < hero.maxLevel ? `XP ${hero.xp}/${hero.xpToNextLevel} (${xpPct}%)` : 'MAX',
+          callback: () => {},
+          disabled: true,
+        });
+
+        this.commandCard.setCommands(btns);
+        return;
+      }
 
       if (units.length === 1 && units[0].spriteKey === 'unit_worker') {
         const btns: { label: string; cost: string; spriteKey?: string; callback: () => void }[] = [];

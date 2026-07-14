@@ -275,6 +275,11 @@ export class GameScene extends Phaser.Scene {
     // 音效事件监听
     this.setupSoundListeners();
 
+    // 击杀奖励 XP → 英雄
+    EventBus.on(GameEvent.UNIT_KILLED, (data: any) => {
+      this.rewardHeroXp(data.killerId);
+    });
+
     // 注册 Phaser 场景关闭/销毁时的清理
     this.events.on('shutdown', this.shutdown, this);
   }
@@ -771,14 +776,42 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** 为击杀者阵营的英雄分配 XP */
+  private rewardHeroXp(killerId: string): void {
+    const killer = this.entities.getUnit(killerId);
+    if (!killer) return;
+    // 查找同阵营的存活英雄
+    const allyHeroes = this.heroes.filter(
+      h => h.owner === killer.owner && h.isAlive,
+    );
+    for (const hero of allyHeroes) {
+      // 单位击杀=20 XP，建筑=50 XP
+      const xpAmount = 20;
+      const leveled = hero.gainXp(xpAmount);
+      if (leveled) {
+        EventBus.emit(GameEvent.HERO_LEVELED, {
+          unitId: hero.id, heroId: hero.spriteKey, newLevel: hero.level, playerIndex: hero.owner,
+        });
+      }
+    }
+  }
+
   private stepGuildAndHero(ds: number): void {
     GuildSystem.update(
       this.world.players, this.units, this.buildings, ds,
       this.world.techTrees,
     );
-    const heroCmds = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds);
-    for (const cmd of heroCmds) {
-      this.executeCommand(cmd);
+    const result = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds);
+    // 处理英雄派生指令（如马库斯空投）
+    for (const spawn of result.spawnCommands) {
+      const faction = this.world.getPlayer(spawn.playerIndex)?.faction ?? 'arcane_empire';
+      for (let i = 0; i < spawn.count; i++) {
+        this.unitSpawner.spawnUnit(
+          spawn.unitDefId,
+          { x: spawn.position.x + i * 0.5, y: spawn.position.y },
+          spawn.playerIndex,
+        );
+      }
     }
   }
 
