@@ -58,6 +58,13 @@ export interface IBuilding extends IEntity {
   productionQueue: ProductionItem[];
   providesSupply: number;
   providesIndustry: number;
+  /** 防御建筑战斗属性（炮塔等） */
+  attackDamage?: number;
+  attackRange?: number;
+  attackCooldown?: number;
+  attackType?: string;
+  attackTimer?: number;
+  targetEntityId?: string | null;
 }
 
 /** 资源采集点 */

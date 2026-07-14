@@ -64,7 +64,7 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     displayName: '水晶步枪兵',
     tier: 'L1',
     cost: { crystal: 150, supply: 1, time: 8 },
-    stats: { hp: 120, armor: 'light', armorValue: 0, category: 'infantry', speed: 2.2, damage: 16, dmgType: 'crystal', range: 5, cooldown: 0.8, sight: 7 },
+    stats: { hp: 120, armor: 'light', armorValue: 0, category: 'infantry', speed: 2.2, damage: 18, dmgType: 'physical', range: 5, cooldown: 0.8, sight: 7 },
     attackEffect: 'proj_bullet',
   },
   unit_battle_mage: {
@@ -137,6 +137,7 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     cost: { crystal: 500, supply: 3, time: 25 },
     stats: { hp: 350, armor: 'shield', armorValue: 15, category: 'infantry', speed: 1.8, damage: 30, dmgType: 'magic', range: 1, cooldown: 1.2, sight: 5 },
     attackEffect: 'melee',
+    techReq: ['tech:arcane_legacy'],
     exclusiveTo: { faction: 'arcane_empire' },
   },
   unit_hammer_squad: {
@@ -238,7 +239,7 @@ bld_ancient_archive: {
     hp: 600,
     provides: { supply: 0, industry: 10 },
     produces: ['unit_arcane_guard'],
-    researches: ['tech:battle_mage_training', 'tech:mech_assembly'],
+    researches: ['tech:arcane_legacy', 'tech:battle_mage_training', 'tech:mech_assembly'],
   },
   bld_assembly_workshop: {
     displayName: '流水线车间',
@@ -420,15 +421,21 @@ export const TECH_DEFS: Record<string, TechDefData> = {
   },
   'tech:crystal_smelting': {
     name: '水晶冶炼 L1',
-    crystal: 150,
-    time: 25,
+    crystal: 300,
+    time: 40,
     desc: '水晶采集 +15%',
   },
   'tech:refining_tech': {
     name: '精炼技术 L2',
-    crystal: 400,
-    time: 50,
+    crystal: 500,
+    time: 60,
     desc: '水晶采集 +25%（与L1叠加）',
     prerequisites: ['tech:crystal_smelting'],
+  },
+  'tech:arcane_legacy': {
+    name: '奥术遗产',
+    crystal: 400,
+    time: 50,
+    desc: '解锁奥术守卫训练',
   },
 };

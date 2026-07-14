@@ -787,9 +787,26 @@ export class GameScene extends Phaser.Scene {
       h => h.owner === killer.owner && h.isAlive,
     );
     for (const hero of allyHeroes) {
-      // 单位击杀=20 XP，建筑=50 XP
-      const xpAmount = 20;
+      // 单位击杀=20 XP，建筑=50 XP（由事件上下文判断）
+      const xpAmount = 20; // 默认单位击杀
       const leveled = hero.gainXp(xpAmount);
+      if (leveled) {
+        EventBus.emit(GameEvent.HERO_LEVELED, {
+          unitId: hero.id, heroId: hero.spriteKey, newLevel: hero.level, playerIndex: hero.owner,
+        });
+      }
+    }
+  }
+
+  /** 建筑被摧毁时为英雄分配额外 XP */
+  private rewardHeroXpBuilding(killerId: string): void {
+    const killer = this.entities.getUnit(killerId);
+    if (!killer) return;
+    const allyHeroes = this.heroes.filter(
+      h => h.owner === killer.owner && h.isAlive,
+    );
+    for (const hero of allyHeroes) {
+      const leveled = hero.gainXp(50);
       if (leveled) {
         EventBus.emit(GameEvent.HERO_LEVELED, {
           unitId: hero.id, heroId: hero.spriteKey, newLevel: hero.level, playerIndex: hero.owner,

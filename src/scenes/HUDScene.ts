@@ -177,6 +177,25 @@ export class HUDScene extends Phaser.Scene {
     EventBus.on(GameEvent.UNIT_KILLED, () => this.scheduleMinimapUpdate());
     EventBus.on(GameEvent.ATTACK_MOVE_TOGGLE, (data: any) => this.attackMoveText.setAlpha(data.active ? 1 : 0));
 
+    // P1-5: 行会和英雄技能事件监听
+    EventBus.on(GameEvent.ABILITY_USED, (data: any) => {
+      this.showToast(`技能已激活: ${data.abilityId}`);
+    });
+    EventBus.on(GameEvent.UNIT_DESTROYED, () => {
+      this.scheduleMinimapUpdate();
+    });
+    EventBus.on(GameEvent.HERO_LEVELED, (data: any) => {
+      this.showToast(`英雄升到 Lv ${data.newLevel}!`);
+      // 刷新命令卡（新技能可能解锁）
+      const gs = this.scene.get('GameScene') as any;
+      const selection = gs.inputCtrl?.getSelection?.() ?? [];
+      if (selection.length > 0) {
+        EventBus.emit(GameEvent.SELECTION_CHANGED, {
+          unitIds: selection, playerIndex: 0,
+        } as SelectionData);
+      }
+    });
+
     this.time.delayedCall(500, () => {
       this.refreshResourceDisplay();
       if (!this.minimap) { const gs = this.scene.get('GameScene') as any; if (gs?.world?.map) this.initMinimap(gs.world.map, gs.world.fogOfWar); }

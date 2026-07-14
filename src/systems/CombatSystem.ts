@@ -21,7 +21,7 @@ const DAMAGE_MATRIX: Record<DamageType, Record<ArmorType, number>> = {
   physical:  { light: 1.0, heavy: 0.75, shield: 1.0,  bio: 1.0, structure: 0.5,  mechanical: 0.75 },
   magic:     { light: 1.0, heavy: 1.25, shield: 1.5,  bio: 1.0, structure: 1.0,  mechanical: 1.0  },
   alchemy:   { light: 1.0, heavy: 1.0,  shield: 2.0,  bio: 0.9, structure: 1.5,  mechanical: 1.0  },
-  crystal:   { light: 1.0, heavy: 1.0,  shield: 0.5, bio: 1.0, structure: 0.5, mechanical: 1.25 },
+  crystal:   { light: 1.0, heavy: 1.0,  shield: 0.5, bio: 1.0, structure: 1.0, mechanical: 1.25 },
   void:      { light: 1.0, heavy: 1.0,  shield: 1.0,  bio: 1.25, structure: 1.0,  mechanical: 1.0  },
 };
 

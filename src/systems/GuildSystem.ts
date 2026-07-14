@@ -209,9 +209,21 @@ export class GuildSystem {
   /** Lv1 单体附加伤害：消耗1层充能，下一次攻击 +50% */
   static magesChargeStrike(unit: Unit): boolean {
     if (!unit.consumeCharge(1)) return false;
-    unit.attackDamage = Math.round(unit.attackDamage * 1.5);
-    // 一帧后恢复（由调用方在 CombatSystem 攻击结算后恢复）
+    // 保存原始攻击力（如未保存过）
+    if (!unit.baseAttackDamage) {
+      (unit as any).baseAttackDamage = unit.attackDamage;
+    }
+    unit.attackDamage = Math.round((unit as any).baseAttackDamage * 1.5);
     return true;
+  }
+
+  /** 恢复充能打击后的攻击力 */
+  static magesChargeStrikeRestore(unit: Unit): void {
+    const base = (unit as any).baseAttackDamage;
+    if (base) {
+      unit.attackDamage = base;
+      (unit as any).baseAttackDamage = undefined;
+    }
   }
 
   /** Lv2 范围友军护盾：消耗2层充能，为周围友军添加护盾 */
@@ -399,20 +411,23 @@ export class GuildSystem {
   }
 
   /** 查询虚空过载的攻击加成（乘法因子） */
-  static getVoidOverloadDamageMult(unit: Unit): number {
+  static getVoidOverloadDamageMult(unit: Unit, hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    return 1.0 + VOID_OVERLOAD_BOOST; // +50%
+    const boost = hasOptimizedTech ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    return 1.0 + boost;
   }
 
   /** 查询虚空过载的移速加成 */
-  static getVoidOverloadSpeedMult(unit: Unit): number {
+  static getVoidOverloadSpeedMult(unit: Unit, hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    return 1.0 + VOID_OVERLOAD_BOOST;
+    const boost = hasOptimizedTech ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    return 1.0 + boost;
   }
 
   /** 查询虚空过载的护甲加成 */
-  static getVoidOverloadArmorMult(unit: Unit): number {
+  static getVoidOverloadArmorMult(unit: Unit, hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    return 1.0 + VOID_OVERLOAD_BOOST;
+    const boost = hasOptimizedTech ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    return 1.0 + boost;
   }
 }
