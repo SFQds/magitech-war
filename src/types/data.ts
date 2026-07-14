@@ -12,6 +12,42 @@
 /** 阵营归属 */
 export type FactionId = 'arcane_empire' | 'hammer_federation' | 'frostridge_kingdom' | 'jade_confederation';
 
+/** 行会 ID */
+export type GuildId = 'mages_guild' | 'mechanists_guild' | 'alchemists_society' | 'void_institute';
+
+/** 行会敌对矩阵：mages↔mechanists 互斥，其余可共存 */
+export const GUILD_HOSTILITY: Record<GuildId, GuildId[]> = {
+  mages_guild: ['mechanists_guild'],
+  mechanists_guild: ['mages_guild'],
+  alchemists_society: [],
+  void_institute: [],
+};
+
+/** 有效行会组合（5种） */
+export const VALID_GUILD_PAIRS: [GuildId, GuildId][] = [
+  ['mages_guild', 'alchemists_society'],
+  ['mages_guild', 'void_institute'],
+  ['mechanists_guild', 'alchemists_society'],
+  ['mechanists_guild', 'void_institute'],
+  ['alchemists_society', 'void_institute'],
+];
+
+/** 行会中文名 */
+export const GUILD_NAMES: Record<GuildId, string> = {
+  mages_guild: '法师公会',
+  mechanists_guild: '机械行会',
+  alchemists_society: '炼金协会',
+  void_institute: '虚空研究院',
+};
+
+/** 行会一句话描述 */
+export const GUILD_DESC: Record<GuildId, string> = {
+  mages_guild: '奥术充能：每30秒充能一层，消耗充能释放强力技能',
+  mechanists_guild: '流水线协议：兵营/工厂可并行训练3个单位',
+  alchemists_society: '炼金调制：消耗水晶给单位施加战斗药剂',
+  void_institute: '水晶过载：30秒全属性+50%，单位过载后损毁',
+};
+
 /** 伤害类型 */
 export type DamageType = 'physical' | 'magic' | 'alchemy' | 'crystal' | 'void';
 

@@ -52,6 +52,10 @@ export enum GameEvent {
   // ---- 输入/模式 ----
   ATTACK_MOVE_TOGGLE = 'attackmove:toggle',
 
+  // ---- 行会技能 ----
+  ABILITY_USED = 'ability:used',
+  UNIT_DESTROYED = 'unit:destroyed',
+
   // ---- AI ----
   AI_TICK = 'ai:tick',
 }

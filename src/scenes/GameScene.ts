@@ -148,11 +148,14 @@ export class GameScene extends Phaser.Scene {
   private _mapId: string = 'map_valley';
   private _playerFaction: string = 'arcane_empire';
   private _aiDifficulty: string = 'normal';
+  /** 玩家所选行会 */
+  private _playerGuilds: string[] = ['mages_guild', 'alchemists_society'];
 
-  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string }): void {
+  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string; playerGuilds?: string[] }): void {
     this._mapId = data?.map ?? 'map_valley';
     this._playerFaction = data?.playerFaction ?? 'arcane_empire';
     this._aiDifficulty = data?.aiDifficulty ?? 'normal';
+    this._playerGuilds = data?.playerGuilds ?? ['mages_guild', 'alchemists_society'];
   }
 
   preload(): void {
@@ -180,8 +183,13 @@ export class GameScene extends Phaser.Scene {
     const playerCC = playerFaction === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
     const aiCC = aiFaction === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
 
-    this.world.addPlayer(playerFaction, ['mages_guild', 'alchemists_society'], false);
-    this.world.addPlayer(aiFaction, ['mechanists_guild', 'alchemists_society'], true);
+    // AI 行会：与玩家组合不同（优先选对立组合）
+    const aiGuilds = this._playerGuilds.includes('mages_guild')
+      ? ['mechanists_guild', 'alchemists_society']  // 机械+炼金 vs 法师+炼金
+      : ['mages_guild', 'alchemists_society'];
+
+    this.world.addPlayer(playerFaction, [...this._playerGuilds], false);
+    this.world.addPlayer(aiFaction, [...aiGuilds], true);
 
     // 初始化 per-player 科技效果缓存
     this.initTechEffects();
@@ -764,7 +772,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stepGuildAndHero(ds: number): void {
-    GuildSystem.update(this.world.players, this.units, this.buildings, ds);
+    GuildSystem.update(
+      this.world.players, this.units, this.buildings, ds,
+      this.world.techTrees,
+    );
     const heroCmds = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds);
     for (const cmd of heroCmds) {
       this.executeCommand(cmd);
@@ -822,7 +833,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stepProduction(ds: number): void {
-    const completed = ProductionSystem.updateProduction(this.buildings, ds);
+    const completed = ProductionSystem.updateProduction(
+      this.buildings, this.world.players, this.world.techTrees, ds,
+    );
     for (const item of completed) {
       const building = this.entities.getBuilding(item.buildingId);
       if (building) {

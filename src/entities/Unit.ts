@@ -37,6 +37,20 @@ export class Unit extends Entity {
   /** 基础护甲值（来自设计数据，科技叠加以此为基准） */
   baseArmor: number = 0;
 
+  // ===== 行会系统 — 炼金协会药剂效果 =====
+  /** 炼金药剂 buff 计时器（秒），0=无效果 */
+  alchemyBuffTimer: number = 0;
+  /** 炼金药剂类型 */
+  alchemyBuffType: 'none' | 'strength' | 'ironskin' | 'swift' | 'corrosion' = 'none';
+  /** 药剂效果数值（攻击倍率增量/护甲增量/移速增量/目标护甲减量%） */
+  alchemyBuffValue: number = 0;
+
+  // ===== 行会系统 — 虚空研究院过载 =====
+  /** 虚空过载是否激活 */
+  isVoidOvercharged: boolean = false;
+  /** 虚空过载剩余时间（秒），0=未过载 */
+  voidOverloadTimer: number = 0;
+
   constructor(
     owner: number,
     faction: FactionId,

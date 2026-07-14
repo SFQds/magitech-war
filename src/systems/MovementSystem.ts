@@ -10,6 +10,7 @@ import { Unit } from '../entities/Unit';
 import { GameMap } from '../core/GameMap';
 import { BinaryHeap } from '../utils/BinaryHeap';
 import { manhattan, tileKey } from '../utils/MathUtils';
+import { GuildSystem } from './GuildSystem';
 
 /** A* 寻路节点 */
 interface AStarNode {
@@ -174,8 +175,11 @@ export class MovementSystem {
       return;
     }
 
-    // 朝目标移动
-    const moveAmount = unit.speed * deltaSec;
+    // 朝目标移动（应用行会 + 虚空过载移速修正）
+    let speed = unit.speed;
+    speed *= GuildSystem.getAlchemySpeedMult(unit);
+    speed *= GuildSystem.getVoidOverloadSpeedMult(unit);
+    const moveAmount = speed * deltaSec;
     const ratio = moveAmount / dist;
     unit.tileX += dx * ratio;
     unit.tileY += dy * ratio;

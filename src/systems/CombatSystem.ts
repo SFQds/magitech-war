@@ -11,6 +11,7 @@ import { Entity } from '../entities/Entity';
 import { MovementSystem } from './MovementSystem';
 import type { GameMap } from '../core/GameMap';
 import type { FogOfWar } from '../core/FogOfWar';
+import { GuildSystem } from './GuildSystem';
 import { UNIT_DEFS, getFactionBonuses } from '../config/unitData';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { distance } from '../utils/MathUtils';
@@ -61,7 +62,7 @@ export class CombatSystem {
     return Math.round(baseDamage * matrixMult * factionMult);
   }
 
-  /** 单位攻击目标 — 检查距禈并计算伤害 */
+  /** 单位攻击目标 — 检查距禈并计算伤害（含行会buff修正） */
   static unitAttackTarget(attacker: Unit, target: Entity): number {
     const dist = distance(
       { x: attacker.tileX, y: attacker.tileY },
@@ -70,8 +71,13 @@ export class CombatSystem {
 
     if (dist > attacker.attackRange) return 0;
 
+    // 行会buff修正攻击力
+    let effectiveDmg = attacker.attackDamage;
+    effectiveDmg = Math.round(effectiveDmg * GuildSystem.getAlchemyDamageMult(attacker));
+    effectiveDmg = Math.round(effectiveDmg * GuildSystem.getVoidOverloadDamageMult(attacker));
+
     const damage = this.calculateDamage(
-      attacker.attackDamage,
+      effectiveDmg,
       attacker.attackType,
       target.armorType,
       attacker.faction,
