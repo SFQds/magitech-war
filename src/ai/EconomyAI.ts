@@ -32,11 +32,14 @@ export class EconomyAI {
   private playerIndex: number;
   private playerFaction: string;
   private difficulty: 'easy' | 'normal' | 'hard';
+  /** 资源倍率 (easy=0.7, normal=1.0, hard=2.0) — 影响AI有效水晶 */
+  private resourceMult: number;
 
-  constructor(world: GameWorld, playerIndex: number, difficulty: 'easy' | 'normal' | 'hard') {
+  constructor(world: GameWorld, playerIndex: number, difficulty: 'easy' | 'normal' | 'hard', resourceMult = 1.0) {
     this.world = world;
     this.playerIndex = playerIndex;
     this.difficulty = difficulty;
+    this.resourceMult = resourceMult;
     this.playerFaction = world.getPlayer(playerIndex)?.faction ?? 'hammer_federation';
   }
 
@@ -68,6 +71,8 @@ export class EconomyAI {
     if (!player) return commands;
 
     const crystal = player.resources.crystal;
+    // 难度资源倍率：hard AI 视水晶为实际×2（更早建造），easy 视水晶为×0.7（更晚建造）
+    const effectiveCrystal = crystal * this.resourceMult;
     const { supply, supplyCap } = player.resources;
 
     const faction = player.faction;
@@ -149,12 +154,12 @@ export class EconomyAI {
 
     // 1. 工人数量维护
     const targetWorkers = directive.expansion > 0.5 ? 8 : 5;
-    if (crystal >= 100 && supply < supplyCap && workerCount < targetWorkers) {
+    if (effectiveCrystal >= 100 && supply < supplyCap && workerCount < targetWorkers) {
       commands.push(makeTrainCmd(this.playerIndex, cc.id, 'unit_worker'));
     }
 
     // 2. 建造建筑
-    const buildCostThreshold = (cost: number) => crystal >= cost * aggressMultiplier;
+    const buildCostThreshold = (cost: number) => effectiveCrystal >= cost * aggressMultiplier;
 
     if (directive.aggression < 0.7 || (!hasBarracks && !hasFactory)) {
       if (!hasBarracks && buildCostThreshold(this.getBuildingCost('bld_barracks'))) {
@@ -192,7 +197,7 @@ export class EconomyAI {
     if (techBld) {
       const tt = this.world.techTrees.get(this.playerIndex);
       const availTechs = (BUILDING_DEFS[techBld.spriteKey]?.researches ?? []).filter(
-        tid => !tt?.isResearched(tid) && this.getTechCost(tid) < crystal * aggressMultiplier
+        tid => !tt?.isResearched(tid) && this.getTechCost(tid) < effectiveCrystal * aggressMultiplier
       );
       if (availTechs.length > 0) {
         commands.push(makeResearchCmd(this.playerIndex, techBld.id, availTechs[0]));
@@ -201,14 +206,14 @@ export class EconomyAI {
 
     // 4. 训练英雄（拥有足够水晶 且 尚未拥有）
     const heroCost = this.getUnitCost(heroId);
-    if (!hasHero && crystal >= heroCost && supply < supplyCap - 4) {
+    if (!hasHero && effectiveCrystal >= heroCost && supply < supplyCap - 4) {
       commands.push(makeTrainCmd(this.playerIndex, cc.id, heroId));
     }
 
     // 5. 训练侦察摩托（至少 1 辆）
     const scoutCost = this.getUnitCost('unit_scout_bike');
     const factoryBld = ownProductions.find(b => b.spriteKey === 'bld_factory');
-    if (!hasScout && hasFactory && crystal >= scoutCost && supply < supplyCap && factoryBld) {
+    if (!hasScout && hasFactory && effectiveCrystal >= scoutCost && supply < supplyCap && factoryBld) {
       commands.push(makeTrainCmd(this.playerIndex, factoryBld.id, 'unit_scout_bike'));
     }
 
@@ -219,7 +224,7 @@ export class EconomyAI {
       if (supply >= supplyCap) continue;
 
       const unitCost = this.getUnitCost(unitDefId);
-      if (crystal < unitCost) continue;
+      if (effectiveCrystal < unitCost) continue;
 
       let producer = ownProductions.find(b => {
         if (trainedBuildings.has(b.id)) return false;

@@ -2,7 +2,7 @@
  * 策略层 — 输出 StrategyDirective 指导运营层行为
  *
  * 每 25s 评估一次游戏阶段和战略倾向。
- * 当前为骨架实现，后续可扩展为多 AI 性格、反制对手等复杂策略。
+ * 支持难度差异化：easy 慢扩张/hard 快进攻。
  */
 
 import type { GameWorld } from '../core/GameWorld';
@@ -70,14 +70,19 @@ export class StrategyManager {
     // 阶段判断（含双向降级）
     this.currentPhase = this.determinePhase(combatUnits.length, hasBarracks, hasFactory);
 
+    // 难度感知的侵略性/扩张/防御偏移
+    const diffAggro = this.difficulty === 'hard' ? 0.15 : this.difficulty === 'easy' ? -0.1 : 0;
+    const diffExpand = this.difficulty === 'hard' ? -0.1 : this.difficulty === 'easy' ? 0.15 : 0;
+    const diffDefend = this.difficulty === 'hard' ? 0.05 : this.difficulty === 'easy' ? -0.1 : 0;
+
     switch (this.currentPhase) {
       case 'early': {
         const fu = this.getFactionUnits();
         return {
           phase: 'early',
-          aggression: 0.1,
-          expansion: 0.8,
-          defense: 0.2,
+          aggression: Math.min(1, Math.max(0, 0.1 + diffAggro)),
+          expansion: Math.min(1, Math.max(0, 0.8 + diffExpand)),
+          defense: Math.min(1, Math.max(0, 0.2 + diffDefend)),
           preferredUnits: ['unit_worker', fu.rifleman],
         };
       }
@@ -85,9 +90,9 @@ export class StrategyManager {
         const fu = this.getFactionUnits();
         return {
           phase: 'mid',
-          aggression: 0.4,
-          expansion: 0.5,
-          defense: 0.5,
+          aggression: Math.min(1, Math.max(0, 0.4 + diffAggro)),
+          expansion: Math.min(1, Math.max(0, 0.5 + diffExpand)),
+          defense: Math.min(1, Math.max(0, 0.5 + diffDefend)),
           preferredUnits: ['unit_battle_mage', fu.tier2],
         };
       }
@@ -95,25 +100,25 @@ export class StrategyManager {
         const fu = this.getFactionUnits();
         return {
           phase: 'late',
-          aggression: 0.9,
-          expansion: 0.2,
-          defense: 0.6,
+          aggression: Math.min(1, Math.max(0, 0.9 + diffAggro)),
+          expansion: Math.min(1, Math.max(0, 0.2 + diffExpand)),
+          defense: Math.min(1, Math.max(0, 0.6 + diffDefend)),
           preferredUnits: [fu.tier2, fu.elite, 'unit_battle_mage', fu.rifleman],
         };
       }
     }
   }
 
-  /** 阶段判定（含降级逻辑：工厂被拆 → 降回 early，军队打光 → 降回 mid） */
+  /** 阶段判定（含降级逻辑 + 难度感知） */
   private determinePhase(
     combatCount: number,
     hasBarracks: boolean,
     hasFactory: boolean,
   ): StrategyDirective['phase'] {
     const hasProduction = hasBarracks || hasFactory;
-    // 难度调整：Hard 更快升级
     const diffMult = this.difficulty === 'hard' ? 0.6 : this.difficulty === 'easy' ? 1.5 : 1.0;
 
+    // 降级逻辑
     if (this.currentPhase === 'late' && combatCount < 3) {
       return 'mid';
     }
@@ -121,13 +126,14 @@ export class StrategyManager {
       return 'early';
     }
 
+    // 升级条件（diffMult 越小越容易升级 → hard 更快）
     if (combatCount >= Math.round(12 * diffMult)) return 'late';
     if (combatCount >= Math.round(6 * diffMult) && hasProduction) return 'mid';
     if (!hasProduction) return 'early';
 
-    // 时间兜底：Hard 90s 必进 mid, Easy 240s
-    if (this.elapsed > 90 / diffMult && !hasProduction) return 'early';
-    if (this.elapsed > 180 / diffMult && hasProduction && combatCount < Math.round(6 * diffMult)) return 'mid';
+    // 时间兜底推进（原 /diffMult 错误导致 hard 停留更久，已修正为 *diffMult）
+    if (this.elapsed > 90 * diffMult && !hasProduction) return 'early';
+    if (this.elapsed > 180 * diffMult && hasProduction && combatCount < Math.round(6 * diffMult)) return 'mid';
     return 'late';
   }
 }

@@ -9,6 +9,7 @@ import type { AnyCommand } from '../types/commands';
 import type { Unit } from '../entities/Unit';
 import type { Building } from '../entities/Building';
 import type { StrategyDirective } from './StrategyManager';
+import type { AIDifficulty } from './AIController';
 
 /** 目标权重基础分 */
 const BUILDING_PRIORITY: Record<string, number> = {
@@ -26,14 +27,42 @@ const RECOVER_HP_TARGET = 0.7;
 export class MilitaryAI {
   private world: GameWorld;
   private playerIndex: number;
+  private difficulty: AIDifficulty;
   /** 风筝检测：unitId → { targetId, distance, unchangedTicks } */
   private kiteTracker = new Map<string, { targetId: string; distance: number; unchangedTicks: number }>();
   /** 撤退冷却：unitId → remaining ticks（防止乒乓效应） */
   private retreatCooldown = new Map<string, number>();
 
-  constructor(world: GameWorld, playerIndex: number) {
+  constructor(world: GameWorld, playerIndex: number, difficulty: AIDifficulty = 'normal') {
     this.world = world;
     this.playerIndex = playerIndex;
+    this.difficulty = difficulty;
+  }
+
+  /** 按难度调整的撤退阈值 */
+  private get retreatThreshold(): number {
+    if (this.difficulty === 'easy') return 0.15;   // easy: HP极低才撤（容易送）
+    if (this.difficulty === 'hard') return 0.45;   // hard: HP低于45%就撤（生存优先）
+    return 0.30; // normal
+  }
+
+  /** 按难度调整的风筝灵敏度（tick数，越低越敏感） */
+  private get kiteTickThreshold(): number {
+    if (this.difficulty === 'easy') return 6;    // 反应慢
+    if (this.difficulty === 'hard') return 2;    // 反应快
+    return 3;
+  }
+
+  /** easy AI 是否不撤退（故意犯错） */
+  private get skipRetreat(): boolean {
+    return this.difficulty === 'easy';
+  }
+
+  /** easy AI 进攻警惕性（低=不主动攻击，让玩家发育） */
+  private get attackThreshold(): number {
+    if (this.difficulty === 'easy') return 6;    // 需要6个空闲单位才进攻
+    if (this.difficulty === 'hard') return 1;    // 有1个就进攻
+    return 1;
   }
 
   evaluate(
@@ -109,9 +138,9 @@ export class MilitaryAI {
         continue;
       }
 
-      // HP 过低 → 开始撤退（有冷却：刚恢复的 3 tick 内不再次撤退）
+      // HP 过低 → 开始撤退（easy AI 不撤退，故意犯错）
       const cooldownRemaining = this.retreatCooldown.get(unit.id) ?? 0;
-      if (unit.hpPercent < 0.3 && cooldownRemaining <= 0) {
+      if (!this.skipRetreat && unit.hpPercent < this.retreatThreshold && cooldownRemaining <= 0) {
         unit.stopAttacking();
         unit.holdPosition = false;
         unit.aiLockedAction = 'retreat';
@@ -149,7 +178,7 @@ export class MilitaryAI {
         if (record && record.targetId === unit.targetEntityId) {
           if (currentDist >= record.distance) {
             record.unchangedTicks++;
-            if (record.unchangedTicks >= 3) {
+            if (record.unchangedTicks >= this.kiteTickThreshold) {
               unit.stopAttacking();
               this.kiteTracker.delete(unit.id);
               const altTarget = this.selectBestTarget(
@@ -232,8 +261,7 @@ export class MilitaryAI {
       u.aiLockedAction === null
     );
 
-    const attackThreshold = 1; // 早期也允许进攻，避免单一单位留守
-    if (unassigned.length >= attackThreshold) {
+    if (unassigned.length >= this.attackThreshold) {
       for (const unit of unassigned) {
         const best = this.selectBestTarget([unit], enemyUnits, enemyBuildings, ownBuildings);
         if (!best) continue;

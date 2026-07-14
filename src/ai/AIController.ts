@@ -31,16 +31,19 @@ export class AIController {
   private strategyMgr: StrategyManager;
   private tickTimer: number = 0;
   private tickInterval: number;
+  private resourceBonus: number;
   private strategyTimer: number = 0;
   private currentDirective: StrategyDirective = StrategyManager.DEFAULT_DIRECTIVE;
 
   constructor(world: GameWorld, playerIndex: number, difficulty: AIDifficulty = 'normal') {
     this.world = world;
     this.playerIndex = playerIndex;
-    this.tickInterval = DIFFICULTY_MULTIPLIERS[difficulty].tickInterval;
+    const mults = DIFFICULTY_MULTIPLIERS[difficulty];
+    this.tickInterval = mults.tickInterval;
+    this.resourceBonus = mults.resourceBonus;
     this.strategyMgr = new StrategyManager(world, playerIndex, difficulty);
-    this.economyAI = new EconomyAI(world, playerIndex, difficulty);
-    this.militaryAI = new MilitaryAI(world, playerIndex);
+    this.economyAI = new EconomyAI(world, playerIndex, difficulty, this.resourceBonus);
+    this.militaryAI = new MilitaryAI(world, playerIndex, difficulty);
   }
 
   /** 每帧调用，返回 AI 决策的命令列表 */
