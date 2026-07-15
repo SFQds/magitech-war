@@ -8,17 +8,18 @@
 /** 所有游戏事件类型 */
 export enum GameEvent {
   // ---- 单位事件 ----
-  /** 单位被创建 { unitId, playerIndex } */
+  /** 单位被创建 { unitId, playerIndex, unitDefId, position } */
   UNIT_CREATED = 'unit:created',
   /** 单位被击杀 { unitId, killerId, playerIndex } */
   UNIT_KILLED = 'unit:killed',
-  /** 单位到达目的地 { unitId, position } */
+  /** 单位到达目的地 { unitId, position } — TODO: Phase 2 补发射 */
   UNIT_ARRIVED = 'unit:arrived',
   /** 单位开始攻击 { unitId, targetId } */
   UNIT_ATTACK_START = 'unit:attack_start',
 
   // ---- 建筑事件 ----
   BUILDING_COMPLETE = 'building:complete',
+  /** 建筑被摧毁 — TODO: Phase 2 补发射 */
   BUILDING_DESTROYED = 'building:destroyed',
   PRODUCTION_STARTED = 'production:started',
   PRODUCTION_COMPLETE = 'production:complete',
@@ -26,26 +27,33 @@ export enum GameEvent {
 
   // ---- 资源事件 ----
   RESOURCE_CHANGED = 'resource:changed',
+  /** 资源枯竭 — TODO: Phase 2 补发射 */
   RESOURCE_DEPLETED = 'resource:depleted',
   RESOURCE_GATHERED = 'resource:gathered',
 
   // ---- 选择/输入事件 ----
   SELECTION_CHANGED = 'selection:changed',
   BUILDING_SELECTED = 'building:selected',
+  /** 命令发出 — TODO: Phase 2 补发射 */
   COMMAND_ISSUED = 'command:issued',
+  /** 右键点击 — TODO: Phase 2 补发射 */
   RIGHT_CLICK = 'input:right_click',
 
   // ---- 游戏状态事件 ----
   GAME_STARTED = 'game:started',
+  /** 暂停 — TODO: Phase 2 */
   GAME_PAUSED = 'game:paused',
+  /** 恢复 — TODO: Phase 2 */
   GAME_RESUMED = 'game:resumed',
   GAME_OVER = 'game:over',
 
   // ---- 战争迷雾 ----
+  /** 迷雾更新 — TODO: Phase 2 补发射 */
   FOG_UPDATED = 'fog:updated',
 
   // ---- 英雄 ----
   HERO_LEVELED = 'hero:leveled',
+  /** 英雄死亡 — TODO: Phase 2 补发射 */
   HERO_DIED = 'hero:died',
   HERO_REVIVED = 'hero:revived',
 
@@ -57,6 +65,7 @@ export enum GameEvent {
   UNIT_DESTROYED = 'unit:destroyed',
 
   // ---- AI ----
+  /** AI tick — TODO: Phase 2 补发射 */
   AI_TICK = 'ai:tick',
 }
 

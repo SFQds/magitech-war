@@ -132,6 +132,9 @@ export class Hero extends Unit {
 
   /** 是否可使用指定槽位的技能 */
   canUseSkillSlot(slotIndex: number): boolean {
-    return this.skillCooldowns[slotIndex] <= 0 && this.isAlive && this.hasSkillSlot(slotIndex);
+    return slotIndex >= 0 && slotIndex < this.skillCooldowns.length
+      && this.skillCooldowns[slotIndex] <= 0
+      && this.isAlive
+      && this.hasSkillSlot(slotIndex);
   }
 }

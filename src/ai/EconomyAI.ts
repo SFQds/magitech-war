@@ -236,8 +236,8 @@ export class EconomyAI {
         if (unitDefId === 'unit_arcane_heavy') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_rifleman') return b.spriteKey === 'bld_barracks';
 if (unitDefId === 'unit_grenadier') return b.spriteKey === 'bld_barracks';
-	        if (unitDefId === 'unit_assault_worker') return b.spriteKey === 'bld_barracks';
-	        if (unitDefId === 'unit_void_probe') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_assault_worker') return b.spriteKey === 'bld_barracks';
+        if (unitDefId === 'unit_void_probe') return b.spriteKey === 'bld_factory';
 	        return false;
       });
       if (!producer) continue;

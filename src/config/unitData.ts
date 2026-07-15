@@ -16,7 +16,7 @@ import type { BuildingCategory } from '../entities/Building';
 export interface UnitDefData {
   displayName: string;
   tier?: 'L1' | 'L2' | 'L3';
-  cost: { crystal: number; supply: number; time: number };
+  cost: { crystal: number; supply: number; time: number; industry?: number };
   stats: {
     hp: number; armor: ArmorType; armorValue: number;
     category: 'infantry' | 'vehicle' | 'aircraft' | 'naval';
@@ -54,7 +54,7 @@ export const STATE_NAMES: Record<string, string> = {
 
 export const UNIT_DEFS: Record<string, UnitDefData> = {
   unit_worker: {
-    displayName: '工兵',
+    displayName: '建造工兵',
     tier: 'L1',
     cost: { crystal: 100, supply: 1, time: 5 },
     stats: { hp: 80, armor: 'light', armorValue: 0, category: 'infantry', speed: 2.0, damage: 5, dmgType: 'physical', range: 3, cooldown: 1.0, sight: 5 },
