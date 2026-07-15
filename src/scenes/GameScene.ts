@@ -588,17 +588,19 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // DELETE: 消灭选中单位（调试）
-    this.input.keyboard!.on('keydown-DELETE', () => {
-      const sel = [...this.inputCtrl.getSelection()];
-      for (const id of sel) {
-        const unit = this.entities.getUnit(id);
-        if (unit) {
-          unit.hp = 0;
-          unit.isActive = false;
+    // DELETE: 消灭选中单位（仅开发环境）
+    if (import.meta.env.DEV) {
+      this.input.keyboard!.on('keydown-DELETE', () => {
+        const sel = [...this.inputCtrl.getSelection()];
+        for (const id of sel) {
+          const unit = this.entities.getUnit(id);
+          if (unit) {
+            unit.hp = 0;
+            unit.isActive = false;
+          }
         }
-      }
-    });
+      });
+    }
 
     // A: 攻击移动模式（切换）
     this.input.keyboard!.on('keydown-A', () => {

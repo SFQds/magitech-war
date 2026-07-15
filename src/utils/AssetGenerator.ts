@@ -20,11 +20,24 @@ export class AssetGenerator {
 
   /** 生成所有占位资源（自动跳过已有 PNG 的 key） */
   generateAll(): void {
+    this.defaultPlaceholder(); // 必须第一个：错误回退纹理
     this.terrainTiles();
     this.units();
     this.buildings();
     this.uiIcons();
     this.projectiles();
+  }
+
+  // ============ 默认占位 ============
+
+  /** 错误回退纹理（洋红色，表示资源缺失） */
+  private defaultPlaceholder(): void {
+    this.draw('__DEFAULT', 32, 32, (g) => {
+      g.fillStyle(0xff00ff);
+      g.fillRect(0, 0, 32, 32);
+      g.fillStyle(0xffffff);
+      g.fillRect(8, 8, 16, 16);
+    });
   }
 
   // ============ 地形瓦片 (32×32) ============

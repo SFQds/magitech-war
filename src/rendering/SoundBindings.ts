@@ -18,7 +18,9 @@ export function registerSoundBindings(): () => void {
   const onProduce = () => SoundManager.play('produce', 0.25);
   const onGameOver = (data: unknown) => {
     const d = data as { winnerIndex: number };
-    SoundManager.play(d.winnerIndex === 0 ? 'victory' : 'defeat', 0.4);
+    // winnerIndex: 0=玩家胜, 1=AI胜, -1=平局
+    const sfx = d.winnerIndex === -1 ? 'defeat' : d.winnerIndex === 0 ? 'victory' : 'defeat';
+    SoundManager.play(sfx, 0.4);
   };
   const onSelect = (data: unknown) => {
     const d = data as { unitIds: string[] };

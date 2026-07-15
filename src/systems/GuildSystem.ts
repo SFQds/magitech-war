@@ -8,7 +8,6 @@
  */
 
 import type { PlayerState } from '../types/entity';
-import type { GuildId } from '../types/data';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { EventBus } from '../utils/EventBus';

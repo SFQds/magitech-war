@@ -12,7 +12,7 @@ import type { HeroData } from '../entities/Hero';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import type { GameWorld } from '../core/GameWorld';
-import { HERO_DEFS, getFactionHero } from '../config/heroData';
+import { HERO_DEFS } from '../config/heroData';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 

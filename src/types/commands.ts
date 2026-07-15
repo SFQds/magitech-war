@@ -100,6 +100,14 @@ export interface HoldPositionCommand extends Command {
   type: 'hold_position';
 }
 
+/** 生成单位命令（马库斯空投等） */
+export interface SpawnCommand extends Command {
+  type: 'spawn';
+  unitDefId: string;
+  count: number;
+  position: Point;
+}
+
 /** 联合命令类型 */
 export type AnyCommand =
   | MoveCommand
@@ -113,14 +121,6 @@ export type AnyCommand =
   | StopCommand
   | HoldPositionCommand
   | SpawnCommand;
-
-/** 生成单位命令（马库斯空投等） */
-export interface SpawnCommand extends Command {
-  type: 'spawn';
-  unitDefId: string;
-  count: number;
-  position: Point;
-}
 
 // ============ 命令队列 ============
 

@@ -91,7 +91,11 @@ export class EntityRegistry {
   addHero(hero: Hero): void {
     if (!this.heroes.includes(hero)) this.heroes.push(hero);
     this.heroMap.set(hero.id, hero);
-    if (!this.units.includes(hero)) { this.units.push(hero); this.unitMap.set(hero.id, hero); }
+    if (!this.units.includes(hero)) {
+      this.units.push(hero);
+      this.unitMap.set(hero.id, hero);
+      this._aliveUnitsDirty = true;  // P0修复：英雄加入时刷新缓存
+    }
   }
 
   getHero(id: string): Hero | undefined { return this.heroMap.get(id); }

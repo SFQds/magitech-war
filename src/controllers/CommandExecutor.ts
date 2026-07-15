@@ -5,7 +5,7 @@
  * 所有命令执行均为纯逻辑，无 Phaser 依赖。
  */
 
-import type { AnyCommand, TrainCommand, MoveCommand, AttackCommand, BuildCommand, GatherCommand, ResearchCommand, SpawnCommand, StopCommand, HoldPositionCommand } from '../types/commands';
+import type { AnyCommand, TrainCommand, MoveCommand, AttackCommand, BuildCommand, GatherCommand, ResearchCommand, SpawnCommand, StopCommand, HoldPositionCommand, AbilityCommand } from '../types/commands';
 import type { GameWorld } from '../core/GameWorld';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { UnitSpawner } from './UnitSpawner';
@@ -56,6 +56,8 @@ export class CommandExecutor {
       case 'gather': return this.execGather(cmd);
       case 'research': return this.execResearch(cmd);
       case 'spawn': return this.execSpawn(cmd);
+      case 'deploy': return this.execBuild(cmd as unknown as BuildCommand);  // deploy = build别名
+      case 'use_ability': return this.execAbility(cmd as AbilityCommand);
       case 'stop':
       case 'hold_position': return this.execStop(cmd);
       default: return fail('未知命令');
@@ -209,5 +211,11 @@ export class CommandExecutor {
       }
     }
     return ok();
+  }
+
+  /** 使用技能命令桩（待英雄/行会 UI 完善后实现完整逻辑） */
+  private execAbility(cmd: AbilityCommand): CommandResult {
+    // Phase 2: 调用 HeroSystem.activateSkill 或 GuildSystem 主动技能
+    return fail('技能系统暂未开放');
   }
 }
