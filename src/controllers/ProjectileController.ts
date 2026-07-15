@@ -77,6 +77,11 @@ export class ProjectileController {
           for (const unit of units) {
             if (unit.targetEntityId === proj.targetId) unit.stopAttacking();
           }
+          // P1-N1 修复：击杀者自身也清除目标（远程单位击杀后应重新索敌，而非卡在 pursuing）
+          const attacker = unitMap.get(proj.sourceId);
+          if (attacker && attacker.targetEntityId === proj.targetId) {
+            attacker.stopAttacking();
+          }
         }
 
         // 掷弹兵AOE溅射

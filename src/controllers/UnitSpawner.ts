@@ -79,6 +79,8 @@ export class UnitSpawner {
     }
 
     this.onAddUnit(unit);
+    // P1-R4 修复：即时标记单位占用，防止同帧批量 spawn 叠放
+    this.map.markOccupied(sx, sy);
     EventBus.emit(GameEvent.UNIT_CREATED, { unitId: unit.id, playerIndex: owner, defId: unitDefId, position: { x: sx, y: sy } });
     return { unitId: unit.id, pos: { x: sx, y: sy } };
   }
@@ -114,7 +116,8 @@ const unit = new Unit(owner, factionId as any, ux, uy, s.hp, s.armor, s.category
               s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
             unit.armor = s.armorValue ?? 0;
             unit.baseArmor = s.armorValue ?? 0;
-            unit.supplyCost = def.cost.supply;
+            // 设置补给消耗（死亡时退还）
+            unit.supplyCost = def.cost.supply ?? 0;
             // 奥术守卫初始护盾
             if (unitDefId === 'unit_arcane_guard') {
               unit.shieldHp = 200; unit.maxShieldHp = 200;

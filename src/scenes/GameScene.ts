@@ -533,6 +533,7 @@ export class GameScene extends Phaser.Scene {
             if (sprite) sprite.setAlpha(0);
             unit.isActive = false;
             unit.state = 'idle';
+            unit.isCargo = true; // P0-NEW-1 修复：标记为 cargo 状态，防止 cleanup 误删
           }
           continue;
         }
@@ -552,12 +553,28 @@ export class GameScene extends Phaser.Scene {
         } else if (fieldAtTile && unit.spriteKey === 'unit_worker') {
           // 工人采集 — 先走向资源田，到位后自动切换为采集
           unit.stopAttacking();
+          // P1-N2 修复：工人接到新命令时，若正在建造中则放弃建造（释放锁定+退款）
+          if (unit.aiLockedAction === 'building') {
+            unit.aiLockedAction = null;
+            this.buildController.cancelBuilderConstructions(
+              unit.id, this.buildings,
+              (cost) => { this.world.refund(0, cost); },
+            );
+          }
           unit.targetResourceId = fieldAtTile.id;
           unit.gatherTimer = 0;
           MovementSystem.navigate(unit, tile, this.world.map);
         } else {
           // 移动命令：先清除攻击目标，再移动
           unit.stopAttacking();
+          // P1-N2 修复：工人接到移动命令时，若正在建造中则放弃建造
+          if (unit.aiLockedAction === 'building') {
+            unit.aiLockedAction = null;
+            this.buildController.cancelBuilderConstructions(
+              unit.id, this.buildings,
+              (cost) => { this.world.refund(0, cost); },
+            );
+          }
           MovementSystem.navigate(unit, tile, this.world.map);
         }
       }
@@ -707,9 +724,10 @@ export class GameScene extends Phaser.Scene {
       MovementSystem.updateMovement(unit, ds, this.world.map);
 
       if (wasMoving && unit.state === 'idle') {
-        // 运输卡车卸载 — P1-17 修复：逐一检查通行性
+        // 运输卡车卸载 — P1-17/P1-R3 修复：逐一检查通行性，失败则保留在 cargo
         const unloadTarget = unit.unloadTarget;
         if (unit.spriteKey === 'unit_transport' && unloadTarget) {
+          const stillInCargo: Unit[] = [];
           for (const passenger of unit.cargo) {
             // 尝试最多5次找到可通行位置
             let placed = false;
@@ -723,18 +741,26 @@ export class GameScene extends Phaser.Scene {
                 break;
               }
             }
-            // 兜底：若始终找不到可通行位置，放在运输车旁最近可通行格
+            // 兜底：找运输车旁最近可通行格
             if (!placed) {
               const safe = this.world.map.findNearbyPassable(unit.tileX, unit.tileY, 3);
-              if (safe) { passenger.tileX = safe.x; passenger.tileY = safe.y; }
-              else { passenger.tileX = unit.tileX; passenger.tileY = unit.tileY; }
+              if (safe) { passenger.tileX = safe.x; passenger.tileY = safe.y; placed = true; }
             }
-            passenger.isActive = true;
-            const sp = this.unitSprites.get(passenger.id);
-            if (sp) sp.setAlpha(1);
+            if (placed) {
+              // P0-NEW-1: 卸载成功才清除 cargo 标记并激活
+              passenger.isCargo = false;
+              passenger.isActive = true;
+              const sp = this.unitSprites.get(passenger.id);
+              if (sp) sp.setAlpha(1);
+              // P1-R4: 即时更新占用，避免同帧后续单位叠放
+              this.world.map.markOccupied(passenger.tileX, passenger.tileY);
+            } else {
+              // P1-R3: 找不到位置则保留在 cargo，下次再试
+              stillInCargo.push(passenger);
+            }
           }
-          unit.cargo = [];
-          unit.unloadTarget = null;
+          unit.cargo = stillInCargo;
+          unit.unloadTarget = stillInCargo.length > 0 ? unloadTarget : null;
         }
         // 工人采集切换
         if (unit.targetResourceId) {
@@ -1044,7 +1070,8 @@ export class GameScene extends Phaser.Scene {
     // 用 for-of 即时处理替代 filter() 新数组分配
     for (let i = this.units.length - 1; i >= 0; i--) {
       const u = this.units[i];
-      if (!u.isAlive && !(u instanceof Hero && (u as Hero).reviveTimer !== 0)) {
+      if (!u.isAlive && !(u instanceof Hero && (u as Hero).reviveTimer !== 0)
+        && !(u as Unit).isCargo) { // P0-NEW-1 修复：跳过 cargo 中的单位
         const player = this.world.players[u.owner];
         if (player) {
           const refund = (u as Unit).supplyCost ?? 1;
@@ -1084,11 +1111,9 @@ export class GameScene extends Phaser.Scene {
             const ud = UNIT_DEFS[item.unitDefId];
             const heroD = HERO_DEFS[item.unitDefId];
             if (ud) {
-              player.resources.crystal += ud.cost.crystal;
-              player.resources.supply = Math.max(0, player.resources.supply - (ud.cost.supply ?? 1));
+              this.world.refund(bld.owner, { crystal: ud.cost.crystal, supply: ud.cost.supply ?? 1 });
             } else if (heroD) {
-              player.resources.crystal += heroD.cost.crystal;
-              player.resources.supply = Math.max(0, player.resources.supply - heroD.cost.supply);
+              this.world.refund(bld.owner, { crystal: heroD.cost.crystal, supply: heroD.cost.supply });
             }
           }
           bld.productionQueue.length = 0;
@@ -1097,7 +1122,7 @@ export class GameScene extends Phaser.Scene {
         if (bld.researchingTechId && player) {
           const tech = TECH_DEFS[bld.researchingTechId];
           if (tech) {
-            player.resources.crystal += tech.crystal;
+            this.world.refund(bld.owner, { crystal: tech.crystal });
           }
           bld.researchingTechId = null;
         }

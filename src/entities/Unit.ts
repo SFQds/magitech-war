@@ -34,10 +34,14 @@ export class Unit extends Entity {
   gatherTimer: number = 0;
   /** 运输卡车卸载目标 */
   unloadTarget: { x: number; y: number } | null = null;
+  /** P0-NEW-1 修复：是否在运输车 cargo 中（防止被 cleanup 误删） */
+  isCargo: boolean = false;
   /** 基础护甲值（来自设计数据，科技叠加以此为基准） */
   baseArmor: number = 0;
   /** 充能打击保存的原始攻击力（法师公会 Lv1） */
   baseAttackDamage: number = 0;
+  /** P1-R1 修复：铁皮药剂是否曾生效（被腐蚀覆盖时用于恢复护甲） */
+  hadIronskin: boolean = false;
 
   // ===== 行会系统 — 炼金协会药剂效果 =====
   /** 炼金药剂 buff 计时器（秒），0=无效果 */

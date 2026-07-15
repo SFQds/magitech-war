@@ -105,6 +105,11 @@ export class GameMap {
     return this.occupiedUnitTiles.has(this.encodeKey(x, y));
   }
 
+  /** P1-R4 修复：即时标记单位占用（同帧批量 spawn/卸载时避免叠放） */
+  markOccupied(x: number, y: number): void {
+    this.occupiedUnitTiles.add(this.encodeKey(x, y));
+  }
+
   /** 是否遮挡视野 */
   blocksSight(x: number, y: number): boolean {
     if (!this.inBounds(x, y)) return true;

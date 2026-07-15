@@ -77,9 +77,10 @@ export abstract class Entity {
     return false;
   }
 
-  /** 恢复生命 */
+  /** 恢复生命 — P2-N4 修复：负数 amount 不扣血 */
   heal(amount: number): void {
     if (!this.isActive) return;
+    if (amount <= 0) return; // 负数或零不处理，防止被滥用扣血
     this.hp = Math.min(this.hp + amount, this.maxHp);
   }
 
@@ -88,8 +89,8 @@ export abstract class Entity {
     return this.isActive && this.hp > 0;
   }
 
-  /** 生命百分比 */
+  /** 生命百分比 — P1-N3 修复：除零保护 */
   get hpPercent(): number {
-    return this.hp / this.maxHp;
+    return this.maxHp > 0 ? this.hp / this.maxHp : 0;
   }
 }

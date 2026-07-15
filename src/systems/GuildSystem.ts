@@ -292,15 +292,17 @@ export class GuildSystem {
 
   // ========== 炼金协会实现 ==========
 
-  /** 为单位施加炼金药剂效果 — P0-5 修复：铁皮药剂实时修改 armor 值 */
+  /** 为单位施加炼金药剂效果 — P0-5/P1-R1 修复：铁皮药剂实时修改 armor 值
+   *  P1-R1: 被腐蚀弹覆盖时也要恢复 ironskin 的护甲加成，防止护甲永久偏高 */
   static applyAlchemyPotion(
     unit: Unit,
     potion: AlchemyPotion,
   ): void {
-    // 先恢复之前 buff 的 stat 修改（如有）
-    if (unit.alchemyBuffType === 'ironskin' && unit.alchemyBuffTimer > 0) {
-      unit.armor = unit.baseArmor; // 恢复基础护甲
+    // P1-R1 修复：无论当前 buffType 是什么，只要单位曾有过 ironskin 且 armor 仍偏高，先恢复
+    if (unit.hadIronskin && unit.armor !== unit.baseArmor) {
+      unit.armor = unit.baseArmor;
     }
+    unit.hadIronskin = false;
 
     // 同类型不叠加（GAME_DATA.md 规则）
     unit.alchemyBuffType = potion.effect;
@@ -310,6 +312,7 @@ export class GuildSystem {
     // 铁皮药剂：立即增加值护甲
     if (potion.effect === 'ironskin') {
       unit.armor = Math.round(unit.baseArmor * (1 + potion.value));
+      unit.hadIronskin = true;
     }
 
     EventBus.emit(GameEvent.ABILITY_USED, {
@@ -335,6 +338,7 @@ export class GuildSystem {
           if (unit.alchemyBuffType === 'ironskin') {
             unit.armor = unit.baseArmor;
           }
+          unit.hadIronskin = false;
           unit.alchemyBuffType = 'none';
           unit.alchemyBuffValue = 0;
         }

@@ -79,4 +79,20 @@ export class GameWorld {
     if (cost.industry) p.resources.industry -= cost.industry;
     if (cost.supply) p.resources.supply += cost.supply; // supply 是占用，不是消耗
   }
+
+  /** P1-N4 修复：退还资源（含 MAX_CRYSTAL 上限保护） */
+  refund(playerIndex: number, cost: { crystal?: number; industry?: number; supply?: number }): void {
+    const p = this.players[playerIndex];
+    if (!p) return;
+    if (cost.crystal) {
+      const MAX_CRYSTAL = 20000;
+      p.resources.crystal = Math.min(MAX_CRYSTAL, p.resources.crystal + cost.crystal);
+    }
+    if (cost.industry) {
+      p.resources.industry = Math.min(p.resources.industryCap, p.resources.industry + cost.industry);
+    }
+    if (cost.supply) {
+      p.resources.supply = Math.max(0, p.resources.supply - cost.supply);
+    }
+  }
 }

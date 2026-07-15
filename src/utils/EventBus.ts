@@ -10,6 +10,9 @@ type EventCallback = (data: unknown) => void;
 
 class EventBusImpl {
   private listeners = new Map<string, Set<EventCallback>>();
+  /** P2-N2 修复：重入深度计数，防止监听器内 emit 导致栈溢出 */
+  private emitDepth = 0;
+  private static MAX_EMIT_DEPTH = 5;
 
   /** 订阅事件 */
   on(event: string, callback: EventCallback): void {
@@ -29,10 +32,15 @@ class EventBusImpl {
     this.listeners.delete(event);
   }
 
-  /** 触发事件（单个回调异常不阻断后续回调） */
+  /** 触发事件（单个回调异常不阻断后续回调）— P2-N2 修复：重入深度保护 */
   emit(event: string, data: unknown): void {
     const callbacks = this.listeners.get(event);
     if (!callbacks) return;
+    if (this.emitDepth >= EventBusImpl.MAX_EMIT_DEPTH) {
+      console.error(`[EventBus] 重入深度超限 (${this.emitDepth})，事件 ${event} 被丢弃，可能存在监听器递归`);
+      return;
+    }
+    this.emitDepth++;
     for (const cb of callbacks) {
       try {
         cb(data);
@@ -40,6 +48,7 @@ class EventBusImpl {
         console.error(`[EventBus] ${event} handler error:`, e);
       }
     }
+    this.emitDepth--;
   }
 
   /** 清除所有监听器（用于场景切换） */

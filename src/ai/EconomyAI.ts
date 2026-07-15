@@ -77,16 +77,13 @@ export class EconomyAI {
     const techBldId = faction === 'arcane_empire' ? 'bld_ancient_archive' : 'bld_assembly_workshop';
     const heroId = faction === 'arcane_empire' ? 'hero:isabelle' : 'hero:marcus';
 
-    // 难度系数：Hard 更激进
+    // 难度系数：Hard 更激进（更早建造），Easy 更保守（更晚建造）
     const aggressMultiplier = this.difficulty === 'hard' ? 0.7
                            : this.difficulty === 'easy' ? 1.5 : 1.0;
 
-    // P1-6 修复：资源阈值 factor 替代 effectiveCrystal
-    // Hard: resourceMult=2.0, aggress=0.7 -> factor=0.35 (更早建造)
-    // Normal: factor=1.0, Easy: resourceMult=0.7, aggress=1.5 -> factor=2.14 (更晚建造)
-    const resourceFactor = this.resourceMult > 0
-      ? aggressMultiplier / this.resourceMult
-      : aggressMultiplier;
+    // P1-R2 修复：直接用 aggressMultiplier 作为资源门槛因子，不再用 resourceMult
+    // （resourceMult 已通过 canAfford 的真实检查体现难度，此处双重应用会导致 Easy 过度保守）
+    const resourceFactor = aggressMultiplier;
 
     const workerCount = units.filter(
       u => u.owner === this.playerIndex && u.isAlive && u.spriteKey === 'unit_worker'

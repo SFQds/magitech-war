@@ -149,5 +149,18 @@ export class BuildController {
     }
   }
 
+  /** P1-N2 修复：放弃指定 builder 的所有在建建筑并退款 */
+  cancelBuilderConstructions(
+    builderId: string,
+    buildings: Building[],
+    refundFn?: (cost: { crystal: number; industry: number }) => void,
+  ): void {
+    for (const bld of buildings) {
+      if (bld.builderId === builderId && bld.state === 'constructing') {
+        this.failConstruction(bld, '建造者被重新指派', refundFn);
+      }
+    }
+  }
+
   destroy(): void { this.stuckTimers.clear(); this.cancel(); }
 }
