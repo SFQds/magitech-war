@@ -15,7 +15,8 @@ import { ProductionSystem } from '../systems/ProductionSystem';
 import { GuildSystem } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
-import { BUILDING_DEFS } from '../config/unitData';
+import { BUILDING_DEFS, UNIT_DEFS, TECH_DEFS } from '../config/unitData';
+import { HERO_DEFS } from '../config/heroData';
 import { Hero } from '../entities/Hero';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { FogRenderer } from '../rendering/FogRenderer';
@@ -1050,6 +1051,37 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.buildings.length - 1; i >= 0; i--) {
       const bld = this.buildings[i];
       if (!bld.isAlive) {
+        const player = this.world.players[bld.owner];
+        // 退还进行中的训练队列（兵营/工厂=训练建造者，它死了→生产过程失败）
+        if (bld.productionQueue.length > 0 && player) {
+          for (const item of bld.productionQueue) {
+            const ud = UNIT_DEFS[item.unitDefId];
+            const heroD = HERO_DEFS[item.unitDefId];
+            if (ud) {
+              player.resources.crystal += ud.cost.crystal;
+              player.resources.supply = Math.max(0, player.resources.supply - (ud.cost.supply ?? 1));
+            } else if (heroD) {
+              player.resources.crystal += heroD.cost.crystal;
+              player.resources.supply = Math.max(0, player.resources.supply - heroD.cost.supply);
+            }
+          }
+          bld.productionQueue.length = 0;
+        }
+        // 退还进行中的科技研究
+        if (bld.researchingTechId && player) {
+          const tech = TECH_DEFS[bld.researchingTechId];
+          if (tech) {
+            player.resources.crystal += tech.crystal;
+          }
+          bld.researchingTechId = null;
+        }
+        // supplyCap/industryCap 由 ResourceSystem 每帧自动重算，此处不手动扣减（避免双重扣除）
+        // 通知 HUD 刷新资源
+        if (player) {
+          EventBus.emit(GameEvent.RESOURCE_CHANGED, {
+            playerIndex: bld.owner, resource: 'crystal', newValue: player.resources.crystal, delta: 0,
+          });
+        }
         // 如果建筑正在建造中，释放工人
         if (bld.builderId) {
           const builder = this.entities.getUnit(bld.builderId);
