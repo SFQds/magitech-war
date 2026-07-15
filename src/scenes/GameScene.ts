@@ -707,12 +707,28 @@ export class GameScene extends Phaser.Scene {
       MovementSystem.updateMovement(unit, ds, this.world.map);
 
       if (wasMoving && unit.state === 'idle') {
-        // 运输卡车卸载
+        // 运输卡车卸载 — P1-17 修复：逐一检查通行性
         const unloadTarget = unit.unloadTarget;
         if (unit.spriteKey === 'unit_transport' && unloadTarget) {
           for (const passenger of unit.cargo) {
-            passenger.tileX = unit.tileX + (Math.random() - 0.5) * 2;
-            passenger.tileY = unit.tileY + (Math.random() - 0.5) * 2;
+            // 尝试最多5次找到可通行位置
+            let placed = false;
+            for (let attempt = 0; attempt < 5; attempt++) {
+              const px = unit.tileX + (Math.random() - 0.5) * 2;
+              const py = unit.tileY + (Math.random() - 0.5) * 2;
+              if (this.world.map.isPassableWithUnits(Math.round(px), Math.round(py))) {
+                passenger.tileX = px;
+                passenger.tileY = py;
+                placed = true;
+                break;
+              }
+            }
+            // 兜底：若始终找不到可通行位置，放在运输车旁最近可通行格
+            if (!placed) {
+              const safe = this.world.map.findNearbyPassable(unit.tileX, unit.tileY, 3);
+              if (safe) { passenger.tileX = safe.x; passenger.tileY = safe.y; }
+              else { passenger.tileX = unit.tileX; passenger.tileY = unit.tileY; }
+            }
             passenger.isActive = true;
             const sp = this.unitSprites.get(passenger.id);
             if (sp) sp.setAlpha(1);
@@ -775,7 +791,7 @@ export class GameScene extends Phaser.Scene {
       } else {
         const attacker = this.entities.getUnit(evt.attackerId);
         if (attacker) {
-          this.projectileController.spawn(attacker, evt.targetId, evt.damage, evt.attackEffect, evt.corrosionPenalty ?? 0);
+          this.projectileController.spawn(attacker, evt.targetId, evt.damage, evt.attackEffect, evt.corrosionPenalty ?? 0, evt.rawDamage);
         }
       }
     }
@@ -802,11 +818,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** 建筑被摧毁时为英雄分配额外 XP */
-  private rewardHeroXpBuilding(killerId: string): void {
-    const killer = this.entities.getUnit(killerId);
-    if (!killer) return;
+  // P1-1 修复：奖励摧毁建筑的一方（对手Hero获XP）
+  private rewardHeroXpBuilding(destroyedOwner: number): void {
+    // 对手 = 1 - 建筑所属方
+    const enemyOwner = 1 - destroyedOwner;
     const allyHeroes = this.heroes.filter(
-      h => h.owner === killer.owner && h.isAlive,
+      h => h.owner === enemyOwner && h.isAlive,
     );
     for (const hero of allyHeroes) {
       const leveled = hero.gainXp(50);
@@ -825,14 +842,14 @@ export class GameScene extends Phaser.Scene {
       this.world.arcaneChargeTimers,
     );
     const result = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds);
-    // 处理英雄派生指令（如马库斯空投）
+    // 处理英雄派生指令（如马库斯空投）— P0-3：标记为免费召唤（不占用补给）
     for (const spawn of result.spawnCommands) {
-      const faction = this.world.getPlayer(spawn.playerIndex)?.faction ?? 'arcane_empire';
       for (let i = 0; i < spawn.count; i++) {
         this.unitSpawner.spawnUnit(
           spawn.unitDefId,
           { x: spawn.position.x + i * 0.5, y: spawn.position.y },
           spawn.playerIndex,
+          true, // freeSpawn: 技能召唤单位不消耗补给
         );
       }
     }
@@ -1052,6 +1069,15 @@ export class GameScene extends Phaser.Scene {
       const bld = this.buildings[i];
       if (!bld.isAlive) {
         const player = this.world.players[bld.owner];
+        // P1-5: 发送建筑摧毁事件（战斗摧毁、建造失败都发）
+        EventBus.emit(GameEvent.BUILDING_DESTROYED, {
+          buildingId: bld.id, playerIndex: bld.owner,
+          reason: bld.state === 'constructing' ? 'construction_failed' : 'destroyed',
+        });
+        // P1-1: 建筑击杀奖励英雄XP (50 XP)
+        if (bld.state !== 'constructing') {
+          this.rewardHeroXpBuilding(bld.owner);
+        }
         // 退还进行中的训练队列（兵营/工厂=训练建造者，它死了→生产过程失败）
         if (bld.productionQueue.length > 0 && player) {
           for (const item of bld.productionQueue) {

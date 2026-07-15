@@ -50,7 +50,8 @@ export abstract class Entity {
     this.spriteKey = spriteKey;
   }
 
-  /** 受到伤害，返回是否死亡。damageType 用于虚空穿透护甲 */
+  /** 受到伤害，返回是否死亡。damageType 用于虚空穿透护甲。
+   * P0-5 修复：有效护甲 = baseArmor + 铁皮药剂加成（减去虚空/腐蚀穿透后） */
   takeDamage(amount: number, damageType?: string): boolean {
     if (!this.isActive) return false;
     let remaining = amount;

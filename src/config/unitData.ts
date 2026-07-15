@@ -239,7 +239,7 @@ bld_ancient_archive: {
     hp: 600,
     provides: { supply: 0, industry: 10 },
     produces: ['unit_arcane_guard'],
-    researches: ['tech:arcane_legacy', 'tech:battle_mage_training', 'tech:mech_assembly'],
+    researches: ['tech:arcane_legacy', 'tech:battle_mage_training', 'tech:mech_assembly', 'tech:production_line_optimized'],
   },
   bld_assembly_workshop: {
     displayName: '流水线车间',
@@ -247,7 +247,7 @@ bld_ancient_archive: {
     hp: 600,
     provides: { supply: 0, industry: 10 },
     produces: ['unit_hammer_squad'],
-    researches: ['tech:mech_assembly'],
+    researches: ['tech:mech_assembly', 'tech:production_line_optimized'],
   },
 };
 
@@ -437,5 +437,12 @@ export const TECH_DEFS: Record<string, TechDefData> = {
     crystal: 400,
     time: 50,
     desc: '解锁奥术守卫训练',
+  },
+  // P0-4 修复：添加虚空过载优化科技（此前缺失，导致优化档位无法解锁）
+  'tech:production_line_optimized': {
+    name: '量产线优化',
+    crystal: 300,
+    time: 35,
+    desc: '机械行会并行训练惩罚-5%；虚空过载时长延长至45秒',
   },
 };

@@ -12,6 +12,8 @@ export class Projectile extends Entity {
   targetId: string;
   speed: number;             // tiles/s
   damage: number;
+  /** AOE 溅射原始伤害（未乘矩阵，用于 calculateAOE 内部矩阵计算）*/
+  rawDamage: number = 0;
   damageType: DamageType;
   isHoming: boolean;         // 是否追踪目标
   /** 炼金腐蚀弹护甲扣减值（命中时应用） */

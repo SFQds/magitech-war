@@ -22,11 +22,13 @@ export class ProjectileController {
 
   get list(): Projectile[] { return this.projectiles; }
 
-  spawn(attacker: Unit, targetId: string, damage: number, effectKey: string, corrosionPenalty = 0): void {
+  spawn(attacker: Unit, targetId: string, damage: number, effectKey: string, corrosionPenalty = 0, rawDamage?: number): void {
     const proj = new Projectile(attacker.owner, attacker.faction,
       attacker.tileX, attacker.tileY, attacker.id, targetId,
       15, damage, attacker.attackType, true);
     proj.corrosionPenalty = corrosionPenalty;
+    // P0-6：保存原始伤害（未乘矩阵），供 AOE 溅射计算使用
+    proj.rawDamage = rawDamage ?? damage;
     this.projectiles.push(proj);
 
     const texKey = this.scene.textures.exists(effectKey) ? effectKey : '__DEFAULT';
@@ -80,14 +82,19 @@ export class ProjectileController {
         // 掷弹兵AOE溅射
         const attackerUnit = unitMap.get(proj.sourceId);
         if (attackerUnit && attackerUnit.spriteKey === 'unit_grenadier') {
+          // P0-6 修复：排除主目标（不被AOE溅射二次伤害）+ 使用原始伤害（避免矩阵二次乘法）
           const aoeEvents = CombatSystem.calculateAOE(
-            target.tileX, target.tileY, 2, Math.round(proj.damage * 0.5),
-            proj.damageType, proj.owner, attackerUnit.faction, units, buildings);
+            target.tileX, target.tileY, 2, Math.round((proj.rawDamage ?? proj.damage) * 0.5),
+            proj.damageType, proj.owner, attackerUnit.faction,
+            units, buildings, target.id);
           for (const ae of aoeEvents) {
             flashTimers.set(ae.targetId, 0.12);
             if (ae.targetDied) {
               flashTimers.delete(ae.targetId);
-              EventBus.emit(GameEvent.UNIT_KILLED, { unitId: ae.targetId, killerId: proj.sourceId, playerIndex: 1 });
+              EventBus.emit(GameEvent.UNIT_KILLED, {
+                unitId: ae.targetId, killerId: proj.sourceId,
+                playerIndex: ae.playerIndex ?? 1,
+              });
             }
           }
         }

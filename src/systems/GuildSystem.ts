@@ -205,23 +205,28 @@ export class GuildSystem {
 
   // ========== 法师公会：主动技能 ==========
 
-  /** Lv1 单体附加伤害：消耗1层充能，下一次攻击 +50% */
+  /** Lv1 单体附加伤害：消耗1层充能，下一次攻击 +50%，攻击后自动恢复 */
   static magesChargeStrike(unit: Unit): boolean {
     if (!unit.consumeCharge(1)) return false;
-    // 保存原始攻击力（如未保存过）
+    // 保存原始攻击力
     if (!unit.baseAttackDamage) {
-      (unit as any).baseAttackDamage = unit.attackDamage;
+      unit.baseAttackDamage = unit.attackDamage;
     }
-    unit.attackDamage = Math.round((unit as any).baseAttackDamage * 1.5);
+    unit.attackDamage = Math.round(unit.baseAttackDamage * 1.5);
+    // P0-7 修复：记录充能打击次数（攻击后由 CombatSystem 自动恢复）
+    ((unit as any)._chargeStrikeUses ?? 0);
+    (unit as any)._chargeStrikeUses = ((unit as any)._chargeStrikeUses ?? 0) + 1;
     return true;
   }
 
-  /** 恢复充能打击后的攻击力 */
-  static magesChargeStrikeRestore(unit: Unit): void {
-    const base = (unit as any).baseAttackDamage;
-    if (base) {
-      unit.attackDamage = base;
-      (unit as any).baseAttackDamage = undefined;
+  /** P0-7 修复：充能打击攻击后自动恢复（CombatSystem 每次攻击后调用） */
+  static magesRestoreAfterAttack(unit: Unit): void {
+    const uses = (unit as any)._chargeStrikeUses ?? 0;
+    if (uses <= 0) return;
+    (unit as any)._chargeStrikeUses = uses - 1;
+    if ((unit as any)._chargeStrikeUses <= 0) {
+      unit.attackDamage = unit.baseAttackDamage || unit.attackDamage;
+      unit.baseAttackDamage = 0;
     }
   }
 
@@ -287,15 +292,25 @@ export class GuildSystem {
 
   // ========== 炼金协会实现 ==========
 
-  /** 为单位施加炼金药剂效果 */
+  /** 为单位施加炼金药剂效果 — P0-5 修复：铁皮药剂实时修改 armor 值 */
   static applyAlchemyPotion(
     unit: Unit,
     potion: AlchemyPotion,
   ): void {
+    // 先恢复之前 buff 的 stat 修改（如有）
+    if (unit.alchemyBuffType === 'ironskin' && unit.alchemyBuffTimer > 0) {
+      unit.armor = unit.baseArmor; // 恢复基础护甲
+    }
+
     // 同类型不叠加（GAME_DATA.md 规则）
     unit.alchemyBuffType = potion.effect;
     unit.alchemyBuffTimer = potion.duration;
     unit.alchemyBuffValue = potion.value;
+
+    // 铁皮药剂：立即增加值护甲
+    if (potion.effect === 'ironskin') {
+      unit.armor = Math.round(unit.baseArmor * (1 + potion.value));
+    }
 
     EventBus.emit(GameEvent.ABILITY_USED, {
       unitId: unit.id,
@@ -304,7 +319,7 @@ export class GuildSystem {
     });
   }
 
-  /** 更新炼金 buff 倒计时 */
+  /** 更新炼金 buff 倒计时 — P0-5 修复：铁皮药剂到期时恢复原始护甲 */
   private static _updateAlchemyBuffs(
     units: Unit[],
     playerIndex: number,
@@ -316,6 +331,10 @@ export class GuildSystem {
         unit.alchemyBuffTimer -= deltaSec;
         if (unit.alchemyBuffTimer <= 0) {
           unit.alchemyBuffTimer = 0;
+          // 铁皮药剂到期 → 恢复原始护甲
+          if (unit.alchemyBuffType === 'ironskin') {
+            unit.armor = unit.baseArmor;
+          }
           unit.alchemyBuffType = 'none';
           unit.alchemyBuffValue = 0;
         }
@@ -332,11 +351,21 @@ export class GuildSystem {
     return 1.0;
   }
 
-  /** 查询单位的炼金 buff 对护甲的修正（加法值） */
+  /** 查询单位的炼金 buff 对护甲的修正（加法值） — P0-5 修复：接入伤害计算 */
   static getAlchemyArmorBonus(unit: Unit): number {
     if (unit.alchemyBuffTimer <= 0) return 0;
     if (unit.alchemyBuffType === 'ironskin') {
       return Math.round(unit.baseArmor * unit.alchemyBuffValue);
+    }
+    return 0;
+  }
+
+  /** P0-5 修复：获取单位当前有效护甲（含铁皮药剂加成），返回修正值 */
+  static getEffectiveAlchemyArmorBonus(target: Unit): number {
+    if (!(target instanceof Unit)) return 0;
+    if (target.alchemyBuffTimer <= 0) return 0;
+    if (target.alchemyBuffType === 'ironskin') {
+      return Math.round(target.baseArmor * target.alchemyBuffValue);
     }
     return 0;
   }
@@ -409,24 +438,24 @@ export class GuildSystem {
     }
   }
 
-  /** 查询虚空过载的攻击加成（乘法因子） */
-  static getVoidOverloadDamageMult(unit: Unit, hasOptimizedTech = false): number {
+  /** 查询虚空过载的攻击加成（乘法因子）— P0-4 修复：从 unit 自身读取优化状态 */
+  static getVoidOverloadDamageMult(unit: Unit, _hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    const boost = hasOptimizedTech ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    const boost = (unit as any).isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
     return 1.0 + boost;
   }
 
   /** 查询虚空过载的移速加成 */
-  static getVoidOverloadSpeedMult(unit: Unit, hasOptimizedTech = false): number {
+  static getVoidOverloadSpeedMult(unit: Unit, _hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    const boost = hasOptimizedTech ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    const boost = (unit as any).isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
     return 1.0 + boost;
   }
 
   /** 查询虚空过载的护甲加成 */
-  static getVoidOverloadArmorMult(unit: Unit, hasOptimizedTech = false): number {
+  static getVoidOverloadArmorMult(unit: Unit, _hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    const boost = hasOptimizedTech ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    const boost = (unit as any).isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
     return 1.0 + boost;
   }
 }

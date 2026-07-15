@@ -39,8 +39,9 @@ export class UnitSpawner {
     this.getFaction = getFaction;
   }
 
-  /** 生成单个单位（英雄或普通单位） */
-  spawnUnit(unitDefId: string, pos: Point, owner: number): SpawnResult {
+  /** 生成单个单位（英雄或普通单位）
+   * @param freeSpawn P0-3：技能召唤等免费单位不应有 supplyCost，防止死亡时"退还"未支付的补给 */
+  spawnUnit(unitDefId: string, pos: Point, owner: number, freeSpawn = false): SpawnResult {
     // 安全出生点
     let sx = pos.x, sy = pos.y;
     if (!this.map.isPassable(sx, sy)) {
@@ -69,8 +70,8 @@ export class UnitSpawner {
     // 设置基础护甲值
     unit.armor = s.armorValue ?? 0;
     unit.baseArmor = s.armorValue ?? 0;
-    // 设置补给消耗（死亡时退还）
-    unit.supplyCost = def.cost.supply;
+    // 设置补给消耗（免费召唤的单位不占用补给，死亡时不退还）
+    unit.supplyCost = freeSpawn ? 0 : (def.cost.supply ?? 0);
 
     // 奥术守卫初始护盾
     if (unitDefId === 'unit_arcane_guard') {

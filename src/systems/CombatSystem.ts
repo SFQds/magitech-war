@@ -45,6 +45,10 @@ export interface CombatEvent {
   targetTileY?: number;
   /** 炼金腐蚀弹对目标的护甲扣减值（远程弹道命中时应用） */
   corrosionPenalty?: number;
+  /** P0-6 修复：受害者 playerIndex（AOE 击杀时正确记录） */
+  playerIndex?: number;
+  /** P0-6 修复：未乘伤害矩阵的原始伤害值（供AOE正确计算溅射伤害） */
+  rawDamage?: number;
 }
 
 export class CombatSystem {
@@ -123,6 +127,11 @@ export class CombatSystem {
       const wantsToAttack = (unit.state === 'attacking' || unit.state === 'pursuing') && hasTarget;
 
       if (wantsToAttack) {
+        // P1-3 修复：零攻击力单位被手动命攻击时，清除攻击状态，不造成伤害
+        if (unit.attackDamage <= 0) {
+          unit.stopAttacking();
+          continue;
+        }
         // 使用 O(1) Map 查表结果（targetEntity），避免再次 O(N) findEntity
         const target = targetEntity;
         if (!target || !target.isAlive) {
@@ -173,6 +182,8 @@ export class CombatSystem {
           
           const damage = CombatSystem.calculateDamage(effectiveDmg, unit.attackType, target.armorType, unit.faction);
           unit.attackTimer = unit.attackCooldown;
+          // P0-7 修复：充能打击为一次性攻击增益，攻击后自动恢复原始攻击力
+          GuildSystem.magesRestoreAfterAttack(unit);
 
           const def = UNIT_DEFS[unit.spriteKey];
           const attackEffect = def?.attackEffect ?? 'melee';
@@ -212,6 +223,7 @@ export class CombatSystem {
               targetTileX: target.tileX,
               targetTileY: target.tileY,
               corrosionPenalty: corrosionPenalty > 0 ? corrosionPenalty : undefined,
+              rawDamage: effectiveDmg, // P0-6：未乘矩阵的原始伤害，供AOE正确计算
             });
           }
         }
@@ -223,7 +235,7 @@ export class CombatSystem {
       // AI 锁定的单位不自动索敌（防止 CombatSystem 覆盖 AI 撤退/防守命令）
       if (unit.targetEntityId) continue;
       if (unit.state !== 'idle' && unit.state !== 'moving') continue;
-      // 工人 + 非战斗单位不自动攻击
+      // 工人 + 非战斗单位不自动攻击，也不应被手动命攻击
       if (unit.attackDamage <= 0) continue;
       if (unit.holdPosition) continue;
       // 仅 retreat 阻止索敌；defend/recover 允许途中自卫
@@ -369,7 +381,8 @@ export class CombatSystem {
     return nearest;
   }
 
-  /** AOE 范围伤害：对中心点 radius 范围内所有敌人造成伤害（掷弹兵等） */
+  /** AOE 范围伤害：对中心点 radius 范围内所有敌人造成伤害（掷弹兵等）
+   * @param excludeTargetId P0-6：排除主目标（避免AOE对直接命中的目标二次伤害）*/
   static calculateAOE(
     centerX: number,
     centerY: number,
@@ -380,11 +393,13 @@ export class CombatSystem {
     sourceFaction: string,
     units: Unit[],
     buildings: Building[],
+    excludeTargetId?: string,
   ): CombatEvent[] {
     const events: CombatEvent[] = [];
     // 对范围内单位
     for (const target of units) {
       if (target.owner === sourceOwner || !target.isAlive) continue;
+      if (excludeTargetId && target.id === excludeTargetId) continue;
       const d = distance({ x: centerX, y: centerY }, { x: target.tileX, y: target.tileY });
       if (d <= radius) {
         const finalDmg = this.calculateDamage(damage, damageType, target.armorType, sourceFaction);
@@ -397,12 +412,14 @@ export class CombatSystem {
           attackType: damageType,
           attackEffect: 'aoe',
           isMelee: false,
+          playerIndex: target.owner,
         });
       }
     }
     // 对范围内建筑
     for (const target of buildings) {
       if (target.owner === sourceOwner || !target.isAlive) continue;
+      if (excludeTargetId && target.id === excludeTargetId) continue;
       const d = distance({ x: centerX, y: centerY }, { x: target.tileX, y: target.tileY });
       if (d <= radius) {
         const finalDmg = this.calculateDamage(damage, damageType, target.armorType, sourceFaction);
@@ -415,6 +432,7 @@ export class CombatSystem {
           attackType: damageType,
           attackEffect: 'aoe',
           isMelee: false,
+          playerIndex: target.owner,
         });
       }
     }

@@ -117,7 +117,8 @@ export class CommandExecutor {
     const aiFaction = this.world.players[cmd.playerIndex]?.faction ?? 'hammer_federation';
     const cost = getBuildingCost(cmd.buildingDefId, aiFaction);
     if (!cost) return fail('建筑数据不存在');
-    if (!this.world.canAfford(cmd.playerIndex, { crystal: cost.crystal })) return fail('资源不足');
+    // P0-1 修复：AI建造必须检查和扣除工业值（此前AI可零工业建造）
+    if (!this.world.canAfford(cmd.playerIndex, { crystal: cost.crystal, industry: cost.industry })) return fail('资源不足');
 
     const aiCC = this.entities.aliveBuildings.find(b => b.owner === cmd.playerIndex);
     if (!aiCC) return fail('没有指挥中心');
@@ -133,7 +134,7 @@ export class CommandExecutor {
     }
     if (!safePos) return fail('没有合适的建造位置');
 
-    this.world.spend(cmd.playerIndex, { crystal: cost.crystal });
+    this.world.spend(cmd.playerIndex, { crystal: cost.crystal, industry: cost.industry });
     const bld = createBuilding(cmd.playerIndex, aiFaction, cmd.buildingDefId, safePos.x, safePos.y);
     this.applyTechToBuilding(bld);
     this.addBuilding(bld);

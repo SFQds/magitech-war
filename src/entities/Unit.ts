@@ -52,6 +52,10 @@ export class Unit extends Entity {
   isVoidOvercharged: boolean = false;
   /** 虚空过载剩余时间（秒），0=未过载 */
   voidOverloadTimer: number = 0;
+  /** P0-4 修复：是否使用了优化科技（影响增益倍率和持续时间） */
+  isVoidOptimized: boolean = false;
+  /** 充能打击使用的次数（用于一攻后自动恢复原始攻击力） */
+  private _chargeStrikeUses: number = 0;
 
   constructor(
     owner: number,

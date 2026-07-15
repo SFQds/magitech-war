@@ -89,14 +89,19 @@ export class Building extends Entity {
     return null;
   }
 
-  /** 取消生产队列 */
-  cancelProduction(index: number): void {
+  /** 取消生产队列 — P1-12 修复：返回被取消项的 unitDefId 供调用方计算退款 */
+  cancelProduction(index: number): string | null {
     if (index >= 0 && index < this.productionQueue.length) {
-      this.productionQueue.splice(index, 1);
+      const item = this.productionQueue.splice(index, 1)[0];
+      if (this.productionQueue.length === 0 && this.state === 'producing') {
+        this.state = 'idle';
+      }
+      return item.unitDefId;
     }
     if (this.productionQueue.length === 0 && this.state === 'producing') {
       this.state = 'idle';
     }
+    return null;
   }
 
   /** 是否可添加更多生产队列 */

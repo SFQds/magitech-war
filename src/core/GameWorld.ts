@@ -31,7 +31,7 @@ export class GameWorld {
       height: mapHeight,
       tileSize,
     });
-    this.fogOfWar = new FogOfWar(mapWidth, mapHeight);
+    this.fogOfWar = new FogOfWar(mapWidth, mapHeight, this.map);
   }
 
   /** 初始化玩家 */

@@ -145,7 +145,8 @@ export class GameMap {
     return this.passableGrid;
   }
 
-  /** 在坐标附近搜索最近可通过瓦片（用于安全放置单位） */
+  /** 在坐标附近搜索最近可通过瓦片（用于安全放置单位）
+   * P1-18 修复：同时检查地形和单位占用 */
   findNearbyPassable(startX: number, startY: number, maxRadius: number = 10): { x: number; y: number } | null {
     for (let r = 0; r <= maxRadius; r++) {
       for (let dy = -r; dy <= r; dy++) {
@@ -153,7 +154,7 @@ export class GameMap {
           if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // 只检查外圈
           const tx = startX + dx;
           const ty = startY + dy;
-          if (this.isPassable(tx, ty)) {
+          if (this.isPassableWithUnits(tx, ty)) {
             return { x: tx, y: ty };
           }
         }

@@ -145,7 +145,13 @@ export class MilitaryAI {
         unit.holdPosition = false;
         unit.aiLockedAction = 'retreat';
 
-        if (ownBuildings.length === 0) continue; // 无己方建筑，无法撤退
+        if (ownBuildings.length === 0) {
+            // P1-7 修复：无建筑时退出撤退→转为进攻模式，避免永久锁定
+            unit.aiLockedAction = null;
+            unit.holdPosition = false;
+            unit.stopAttacking();
+            continue;
+          }
 
         // 撤退到离敌人平均位置最远的己方建筑（避免退到交战区）
         // 计算所有敌方单位的平均位置

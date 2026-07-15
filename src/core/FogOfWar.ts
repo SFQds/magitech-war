@@ -3,7 +3,11 @@
  *
  * 每个 tile 有三个状态：visible（当前可见）、explored（曾可见但当前不可见）、hidden（从未可见）
  * 使用整数 tile key（y*width+x）零GC。渲染增量：仅更新 changedKeys 中的瓦片。
+ *
+ * P1-15 修复：接入地形视线阻挡（山脉/森林阻断视线）
  */
+
+import type { GameMap } from './GameMap';
 
 export enum FogState {
   Hidden = 0,    // 从未探索
@@ -24,6 +28,9 @@ export class FogOfWar {
   private height: number;
   private fog: FogState[][];
 
+  /** P1-15: 地形引用（用于视线阻挡检查） */
+  private map: GameMap | null = null;
+
   /** 上一帧可见（本帧需重置为Explored）的瓦片key */
   private prevVisibleKeys: number[] = [];
   /** 本帧状态变更的所有瓦片key（供渲染器增量更新） */
@@ -31,13 +38,19 @@ export class FogOfWar {
 
   private encodeKey(x: number, y: number): number { return y * this.width + x; }
 
-  constructor(width: number, height: number) {
+  constructor(width: number, height: number, map?: GameMap) {
     this.width = width;
     this.height = height;
+    this.map = map ?? null;
     this.fog = [];
     for (let y = 0; y < height; y++) {
       this.fog[y] = new Array(width).fill(FogState.Hidden);
     }
+  }
+
+  /** P1-15: 设置地形引用（延迟注入） */
+  setMap(map: GameMap): void {
+    this.map = map;
   }
 
   /** 每帧调用：将上一帧可见瓦片重置为 Explored，然后照亮当前视野 */
@@ -54,7 +67,7 @@ export class FogOfWar {
     }
     this.prevVisibleKeys = [];
 
-    // 根据友方单位视野照亮（新Visible key 记录到 prevVisibleKeys 供下帧用 + changedKeys 供渲染用）
+    // 根据友方单位视野照亮
     for (const unit of units) {
       if (unit.owner !== playerIndex) continue;
       this.revealCircle(unit.tileX, unit.tileY, unit.sight);
@@ -63,6 +76,41 @@ export class FogOfWar {
 
   private decodeKey(key: number): { x: number; y: number } {
     return { x: key % this.width, y: (key / this.width) | 0 };
+  }
+
+  /** P1-15: 判断两点之间视线是否被地形阻挡（Bresenham 线检测） */
+  private hasLineOfSight(sx: number, sy: number, tx: number, ty: number): boolean {
+    if (!this.map) return true; // 无地形数据时默认通视
+
+    const dx = Math.abs(tx - sx);
+    const dy = Math.abs(ty - sy);
+    const stepX = sx < tx ? 1 : -1;
+    const stepY = sy < ty ? 1 : -1;
+
+    let x = sx;
+    let y = sy;
+
+    if (dx > dy) {
+      let err = dx / 2;
+      for (let i = 0; i < dx; i++) {
+        x += stepX;
+        err -= dy;
+        if (err < 0) { y += stepY; err += dx; }
+        // 跳过起点和终点
+        if (x === tx && y === ty) break;
+        if (this.map.blocksSight(x, y)) return false;
+      }
+    } else {
+      let err = dy / 2;
+      for (let i = 0; i < dy; i++) {
+        y += stepY;
+        err -= dx;
+        if (err < 0) { x += stepX; err += dy; }
+        if (x === tx && y === ty) break;
+        if (this.map.blocksSight(x, y)) return false;
+      }
+    }
+    return true;
   }
 
   /** 以 (cx, cy) 为中心，半径 r tiles 的圆形区域设为 Visible */
@@ -80,6 +128,9 @@ export class FogOfWar {
         const dx = x - cx;
         const dy = y - cy;
         if (dx * dx + dy * dy <= r2) {
+          // P1-15: 检查视线是否被地形阻挡
+          if (!this.hasLineOfSight(icx, icy, x, y)) continue;
+
           const key = this.encodeKey(x, y);
           if (this.fog[y][x] !== FogState.Visible) {
             this.fog[y][x] = FogState.Visible;
