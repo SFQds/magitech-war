@@ -774,7 +774,7 @@ export class GameScene extends Phaser.Scene {
       } else {
         const attacker = this.entities.getUnit(evt.attackerId);
         if (attacker) {
-          this.projectileController.spawn(attacker, evt.targetId, evt.damage, evt.attackEffect);
+          this.projectileController.spawn(attacker, evt.targetId, evt.damage, evt.attackEffect, evt.corrosionPenalty ?? 0);
         }
       }
     }

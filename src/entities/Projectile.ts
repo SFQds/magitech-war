@@ -14,6 +14,8 @@ export class Projectile extends Entity {
   damage: number;
   damageType: DamageType;
   isHoming: boolean;         // 是否追踪目标
+  /** 炼金腐蚀弹护甲扣减值（命中时应用） */
+  corrosionPenalty: number = 0;
 
   constructor(
     owner: number,

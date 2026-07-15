@@ -22,10 +22,11 @@ export class ProjectileController {
 
   get list(): Projectile[] { return this.projectiles; }
 
-  spawn(attacker: Unit, targetId: string, damage: number, effectKey: string): void {
+  spawn(attacker: Unit, targetId: string, damage: number, effectKey: string, corrosionPenalty = 0): void {
     const proj = new Projectile(attacker.owner, attacker.faction,
       attacker.tileX, attacker.tileY, attacker.id, targetId,
       15, damage, attacker.attackType, true);
+    proj.corrosionPenalty = corrosionPenalty;
     this.projectiles.push(proj);
 
     const texKey = this.scene.textures.exists(effectKey) ? effectKey : '__DEFAULT';
@@ -57,7 +58,13 @@ export class ProjectileController {
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist < 0.3) {
+        // 应用腐蚀弹护甲扣减（远程弹道）
+        const savedArmor = target.armor;
+        if (proj.corrosionPenalty > 0 && target instanceof Unit) {
+          target.armor = Math.max(0, target.armor - proj.corrosionPenalty);
+        }
         target.takeDamage(proj.damage, proj.damageType);
+        if (savedArmor !== target.armor) target.armor = savedArmor; // 恢复
         proj.isActive = false; toRemove.push(proj.id);
         flashTimers.set(proj.targetId, 0.12);
 

@@ -43,6 +43,8 @@ export interface CombatEvent {
   attackerTileY?: number;
   targetTileX?: number;
   targetTileY?: number;
+  /** 炼金腐蚀弹对目标的护甲扣减值（远程弹道命中时应用） */
+  corrosionPenalty?: number;
 }
 
 export class CombatSystem {
@@ -167,7 +169,6 @@ export class CombatSystem {
           const corrosionPenalty = target instanceof Unit
             ? Math.round((target as Unit).baseArmor * GuildSystem.getAlchemyCorrosionArmorPenalty(target as Unit))
             : 0;
-          const effectiveArmor = target.armor - corrosionPenalty;
           // 攻击方护甲增益（铁皮药剂 + 虚空过载护甲仅在攻击方被反击时需要；暂不在此处处理）
           
           const damage = CombatSystem.calculateDamage(effectiveDmg, unit.attackType, target.armorType, unit.faction);
@@ -210,6 +211,7 @@ export class CombatSystem {
               attackerTileY: unit.tileY,
               targetTileX: target.tileX,
               targetTileY: target.tileY,
+              corrosionPenalty: corrosionPenalty > 0 ? corrosionPenalty : undefined,
             });
           }
         }
