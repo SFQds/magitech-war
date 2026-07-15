@@ -821,6 +821,7 @@ export class GameScene extends Phaser.Scene {
     GuildSystem.update(
       this.world.players, this.units, this.buildings, ds,
       this.world.techTrees,
+      this.world.arcaneChargeTimers,
     );
     const result = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds);
     // 处理英雄派生指令（如马库斯空投）
@@ -902,7 +903,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stepConstructionResearch(ds: number): void {
-    this.buildController.updateConstruction(ds, this.buildings, (id) => this.entities.getUnit(id));
+    this.buildController.updateConstruction(
+      ds, this.buildings, (id) => this.entities.getUnit(id),
+      (cost) => {
+        // 建造失败退款
+        const p = this.world.players[0];
+        p.resources.crystal += cost.crystal;
+        p.resources.industry += cost.industry;
+        EventBus.emit(GameEvent.RESOURCE_CHANGED, {
+          playerIndex: 0, resource: 'crystal', newValue: p.resources.crystal, delta: cost.crystal,
+        });
+      },
+    );
     this.updateResearch(ds);
   }
 

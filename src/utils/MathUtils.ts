@@ -24,14 +24,6 @@ export function tileToWorld(tileX: number, tileY: number, tileSize = 32): Point 
   };
 }
 
-/** tile→world 原地写入（零分配，替代 tileToWorld 热路径） */
-export function tileToWorldXY(tileX: number, tileY: number, tileSize = 32): { x: number; y: number } {
-  return {
-    x: tileX * tileSize + tileSize / 2,
-    y: tileY * tileSize + tileSize / 2,
-  };
-}
-
 /** 世界像素转瓦片坐标 */
 export function worldToTile(worldX: number, worldY: number, tileSize = 32): Point {
   return {

@@ -17,8 +17,6 @@ import { GameEvent } from '../types/events';
 // 法师公会：奥术充能
 // ============================================================
 
-/** 全局充能计时器（per-player，秒） */
-const arcaneChargeTimers = new Map<number, number>();
 const CHARGE_INTERVAL = 30;       // 充能间隔 30s
 const MAX_CHARGES = 3;            // 最大充能层数
 const CHARGE_SHIELD_HP = 150;     // Lv2 临时护盾值
@@ -122,13 +120,14 @@ export class GuildSystem {
     buildings: Building[],
     deltaSec: number,
     techTrees: Map<number, { isResearched(id: string): boolean }>,
+    chargeTimers: Map<number, number>,
   ): void {
     for (const player of players) {
       const guilds: string[] = player.guilds;
 
       // === 法师公会：奥术充能 ===
       if (guilds.includes('mages_guild')) {
-        GuildSystem._updateMagesGuild(player.index, units, deltaSec);
+        GuildSystem._updateMagesGuild(player.index, units, deltaSec, chargeTimers);
       }
 
       // === 机械行会：流水线协议 ===
@@ -170,8 +169,9 @@ export class GuildSystem {
     playerIndex: number,
     units: Unit[],
     deltaSec: number,
+    chargeTimers: Map<number, number>,
   ): void {
-    let timer = arcaneChargeTimers.get(playerIndex) ?? 0;
+    let timer = chargeTimers.get(playerIndex) ?? 0;
     timer += deltaSec;
 
     if (timer >= CHARGE_INTERVAL) {
@@ -183,7 +183,7 @@ export class GuildSystem {
         unit.abilityCharges = Math.min(unit.abilityCharges + 1, MAX_CHARGES);
       }
     }
-    arcaneChargeTimers.set(playerIndex, timer);
+    chargeTimers.set(playerIndex, timer);
 
     // Lv2 自动激活：HP<50% 时消耗2层充能激活临时护盾
     for (const unit of units) {

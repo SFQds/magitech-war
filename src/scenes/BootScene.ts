@@ -26,6 +26,10 @@ export class BootScene extends Phaser.Scene {
       progressBox.destroy();
     });
 
+    this.load.on('loaderror', (file: any) => {
+      console.warn(`[BootScene] 资源加载失败: ${file.key ?? file.url ?? file}`);
+    });
+
     // === PNG 精灵列表（和 config/sprites.ts 保持一致） ===
     for (const key of PNG_SPRITE_KEYS) {
       this.load.image(key, `assets/sprites/${key}.png`);

@@ -75,7 +75,7 @@ export class GameMap {
   }
 
   /** 是否可通过（单位移动、建筑放置） */
-  isPassable(x: number, y: number, checkUnits: boolean = false): boolean {
+  isPassable(x: number, y: number): boolean {
     if (!this.inBounds(x, y)) return false;
     return this.passableGrid[y][x];
   }

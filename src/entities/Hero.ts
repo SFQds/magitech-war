@@ -48,9 +48,9 @@ export class Hero extends Unit {
   maxLevel: number = 5;
   /** 经验值 */
   xp: number = 0;
-  /** 每级所需 XP（level*80） */
+  /** 每级所需 XP（level*80），Lv5 返回 0 表示已满级 */
   get xpToNextLevel(): number {
-    return this.level * 80;
+    return this.level < this.maxLevel ? this.level * 80 : 0;
   }
   /** 主动技能冷却计时器（秒） */
   skillCooldown: number = 0;

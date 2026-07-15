@@ -18,6 +18,8 @@ export class GameWorld {
   readonly players: PlayerState[] = [];
   /** 每玩家独立科技树 */
   readonly techTrees = new Map<number, TechTreeSystem>();
+  /** 行会机制状态：法师公会充能计时器（每玩家，秒） */
+  readonly arcaneChargeTimers = new Map<number, number>();
 
   // 实体注册表（后续由实体的工厂方法填充）
   // unitRegisty / buildingRegistry / resourceFields / projectiles 在 entities 模块完成后挂载

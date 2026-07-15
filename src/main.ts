@@ -11,11 +11,9 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#1a1a2e',
   parent: document.body,
   scene: [BootScene, MenuScene, GameScene, HUDScene],
-  physics: {
-    default: 'arcade',
-    arcade: {
-      debug: false,
-    },
+  render: {
+    pixelArt: true,
+    roundPixels: true,
   },
   scale: {
     mode: Phaser.Scale.FIT,
