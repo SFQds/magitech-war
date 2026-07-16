@@ -24,6 +24,12 @@ export enum GameEvent {
   PRODUCTION_STARTED = 'production:started',
   PRODUCTION_COMPLETE = 'production:complete',
   RESEARCH_COMPLETE = 'research:complete',
+  /** 科技研究被取消 { buildingId, playerIndex, techDefId, refundAmount } */
+  RESEARCH_CANCELED = 'research:canceled',
+  /** 寻路失败 { unitId, playerIndex, reason } */
+  PATH_FAILED = 'path:failed',
+  /** 建筑全失宽限期警告 { playerIndex, secondsLeft } */
+  GRACE_WARNING = 'grace:warning',
 
   // ---- 资源事件 ----
   RESOURCE_CHANGED = 'resource:changed',
@@ -125,6 +131,24 @@ export interface ResearchCompleteData {
   buildingId: string;
   playerIndex: number;
   techDefId: string;
+}
+
+export interface ResearchCanceledData {
+  buildingId: string;
+  playerIndex: number;
+  techDefId: string;
+  refundAmount: number;
+}
+
+export interface PathFailedData {
+  unitId: string;
+  playerIndex: number;
+  reason: 'target_unreachable' | 'start_blocked' | 'no_path';
+}
+
+export interface GraceWarningData {
+  playerIndex: number;
+  secondsLeft: number;
 }
 
 export interface SelectionData {

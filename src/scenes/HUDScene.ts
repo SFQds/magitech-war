@@ -30,6 +30,10 @@ export class HUDScene extends Phaser.Scene {
   private attackMoveText!: Phaser.GameObjects.Text;
   /** P1-10 修复：保存所有 EventBus 监听器引用，shutdown 时逐个 off */
   private _eventHandlers: { event: string; handler: (data: unknown) => void }[] = [];
+  /** P2-3：PATH_FAILED toast 节流 — 单位 id → 上次 toast 的时间戳(ms)，400ms 内去重 */
+  private _lastPathFailToast = new Map<string, number>();
+  /** P1-5：GRACE_WARNING toast 节流 — playerIndex → 上次 toast 秒值，秒数变化才再播 */
+  private _lastGraceWarnSec = new Map<number, number>();
 
   constructor() { super({ key: 'HUDScene' }); }
 
@@ -173,9 +177,17 @@ export class HUDScene extends Phaser.Scene {
           // 检查前置科技
           const prereqsMet = !td.prerequisites?.length || td.prerequisites.every((p: string) => techTree?.isResearched(p));
           const canResearch = !researched && !researching && prereqsMet;
-          const label = researching ? `${td.name} ⏳` : researched ? `${td.name} ✅` : !prereqsMet ? `${td.name} 🔒` : td.name;
-          const cost = researched ? '完成' : !prereqsMet ? '🔒' : `💎${td.crystal}`;
-          btns.push({ label, cost, callback: () => { if (canResearch) this.issueResearchCommand(bld.id, tid); }, disabled: !canResearch });
+          // P1-14：研究中的科技显示「取消」按钮并可点击，触发 cancel_research 命令退款
+          const label = researching ? `${td.name} ✖ 取消` : researched ? `${td.name} ✅` : !prereqsMet ? `${td.name} 🔒` : td.name;
+          const cost = researching
+            ? `${Math.floor(td.crystal * (1 - bld.researchProgress))}↩`
+            : researched ? '完成' : !prereqsMet ? '🔒' : `💎${td.crystal}`;
+          const callback = researching
+            ? () => this.issueCancelResearchCommand(bld.id)
+            : () => { if (canResearch) this.issueResearchCommand(bld.id, tid); };
+          // 研究中按钮置为可用，允许点击取消
+          const disabled = researching ? false : !canResearch;
+          btns.push({ label, cost, callback, disabled });
         }
       }
       this.commandCard.setCommands(btns.length > 0 ? btns : []);
@@ -203,6 +215,45 @@ export class HUDScene extends Phaser.Scene {
         EventBus.emit(GameEvent.SELECTION_CHANGED, {
           unitIds: selection, playerIndex: 0,
         } as SelectionData);
+      }
+    });
+
+    // P2-3：玩家发起的寻路失败 toast（400ms 同单位去重；AI 失败不提示）
+    this._on(GameEvent.PATH_FAILED, (data: any) => {
+      if (data?.playerIndex !== 0) return;
+      const now = Date.now();
+      const last = this._lastPathFailToast.get(data.unitId) ?? 0;
+      if (now - last < 400) return;
+      this._lastPathFailToast.set(data.unitId, now);
+      const tip = data.reason === 'start_blocked'
+        ? '⚠ 部队当前位置不可通行'
+        : '⚠ 部队无法到达目标点';
+      this.showToast(tip);
+    });
+
+    // P1-14：科技取消反馈
+    this._on(GameEvent.RESEARCH_CANCELED, (data: any) => {
+      if (data?.playerIndex !== 0) return;
+      const msg = data.refundAmount > 0
+        ? `已取消研究，退还 💎${data.refundAmount}`
+        : '已取消研究（无可退款）';
+      this.showToast(msg);
+      this.refreshResourceDisplay();
+      // 选中的建筑研究面板需要刷新
+      EventBus.emit(GameEvent.PRODUCTION_STARTED, { buildingId: data.buildingId } as any);
+    });
+
+    // P1-5：建筑全失宽限期警告（按秒值变化节流）
+    this._on(GameEvent.GRACE_WARNING, (data: any) => {
+      const pi: number = data?.playerIndex ?? -1;
+      if (pi !== 0) return;
+      const sec = Math.ceil(data.secondsLeft);
+      const last = this._lastGraceWarnSec.get(pi) ?? Number.MAX_SAFE_INTEGER;
+      if (sec === last) return;
+      this._lastGraceWarnSec.set(pi, sec);
+      // 只在关键节点提示（60、30、10 内每秒），避免一直刷屏
+      if (sec === 60 || sec === 30 || sec <= 10) {
+        this.showToast(`⚠ 基地全失！${sec} 秒内重建，否则失败`);
       }
     });
 
@@ -247,6 +298,16 @@ export class HUDScene extends Phaser.Scene {
     }) as CommandResult | undefined;
     if (result && !result.ok) this.showToast(result.reason);
     else if (result) this.refreshResourceDisplay();
+  }
+
+  /** P1-14：取消研究中的科技，按剩余进度退款 */
+  private issueCancelResearchCommand(buildingId: string): void {
+    const gs = this.scene.get('GameScene') as any;
+    const result = gs.commandExecutor?.execute({
+      type: 'cancel_research', playerIndex: 0, buildingId,
+    }) as CommandResult | undefined;
+    if (result && !result.ok) this.showToast(result.reason);
+    // 成功提示由 RESEARCH_CANCELED 监听器统一处理并刷新资源
   }
 
   private enterBuildMode(builderId: string, buildingDefId: string): void {

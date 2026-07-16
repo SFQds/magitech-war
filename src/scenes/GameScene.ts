@@ -501,7 +501,7 @@ export class GameScene extends Phaser.Scene {
           const unit = this.entities.getUnit(id);
           if (!unit || !unit.isAlive) continue;
           unit.stopAttacking();
-          MovementSystem.navigate(unit, tile, this.world.map);
+          MovementSystem.navigate(unit, tile, this.world.map, 0);
         }
         return;
       }
@@ -545,19 +545,19 @@ export class GameScene extends Phaser.Scene {
           // 攻击命令
           unit.stopAttacking();
           unit.attackTarget(enemyAtTile.id);
-          MovementSystem.navigate(unit, tile, this.world.map);
+          MovementSystem.navigate(unit, tile, this.world.map, 0);
           unit.state = 'pursuing';
         } else if (unit.spriteKey === 'unit_transport' && unit.cargo.length > 0) {
           // P1-3 修复：运输车仅在单独选中时才卸载（混编时跟随大部队移动，避免静默卸货）
           if (selection.length === 1) {
             unit.stopAttacking();
-            MovementSystem.navigate(unit, tile, this.world.map);
+            MovementSystem.navigate(unit, tile, this.world.map, 0);
             // 到达后卸载（由每帧检查 proximity 触发）
             unit.unloadTarget = { x: tile.x, y: tile.y };
           } else {
             // 混编：运输车随大部队移动，不卸载
             unit.stopAttacking();
-            MovementSystem.navigate(unit, tile, this.world.map);
+            MovementSystem.navigate(unit, tile, this.world.map, 0);
           }
         } else if (fieldAtTile && unit.spriteKey === 'unit_worker') {
           // 工人采集 — 先走向资源田，到位后自动切换为采集
@@ -572,7 +572,7 @@ export class GameScene extends Phaser.Scene {
           }
           unit.targetResourceId = fieldAtTile.id;
           unit.gatherTimer = 0;
-          MovementSystem.navigate(unit, tile, this.world.map);
+          MovementSystem.navigate(unit, tile, this.world.map, 0);
         } else {
           // 移动命令：先清除攻击目标，再移动
           unit.stopAttacking();
@@ -584,7 +584,7 @@ export class GameScene extends Phaser.Scene {
               (cost) => { this.world.refund(0, cost); },
             );
           }
-          MovementSystem.navigate(unit, tile, this.world.map);
+          MovementSystem.navigate(unit, tile, this.world.map, 0);
         }
       }
     });
@@ -1199,20 +1199,33 @@ export class GameScene extends Phaser.Scene {
   private _gameTimer: number = 0;       // 累计游戏时间（秒）
   private _scoreTimerDisplay: Phaser.GameObjects.Text | null = null;
 
+  // P1-5：建筑全失宽限机制 — 建筑为 0 时开始累计，超过 GRACE_LIMIT 秒才判负
+  // 重建任一己方建筑即清零（由 checkGameOver 内 aliveBuildings 检测完成）
+  private static readonly GRACE_LIMIT = 60; // 秒
+  private _graceTimers: [number, number] = [0, 0];
+  private _prevGraceWarnSecond: [number, number] = [-1, -1]; // 每方上次通知的秒值（按 1s 节流）
+
   private checkGameOver(): void {
     if (this._gameOver) return;
 
     const aliveBuildings = (owner: number) =>
       this.buildings.some(b => b.owner === owner && b.isAlive);
 
-    const playerDead = !aliveBuildings(0);
-    const aiDead = !aliveBuildings(1);
+    const playerHasBld = aliveBuildings(0);
+    const aiHasBld = aliveBuildings(1);
 
-    // 歼灭胜利
-    if (playerDead || aiDead) {
+    // P1-5：建筑存在即立刻清零宽限计时；建筑不存在则（由 stepTimer 推进累计）
+    if (playerHasBld) this._graceTimers[0] = 0;
+    if (aiHasBld) this._graceTimers[1] = 0;
+
+    // 任一方宽限期满才判歼灭
+    const playerExpired = !playerHasBld && this._graceTimers[0] >= GameScene.GRACE_LIMIT;
+    const aiExpired = !aiHasBld && this._graceTimers[1] >= GameScene.GRACE_LIMIT;
+
+    if (playerExpired || aiExpired) {
       this._gameOver = true;
       // P1-4 修复：双方同帧互毁 → 平局
-      const winner = playerDead && aiDead ? -1 : aiDead ? 0 : 1;
+      const winner = playerExpired && aiExpired ? -1 : aiExpired ? 0 : 1;
       EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'annihilated' });
       const text = winner === -1 ? '🤝 同归于尽！平局' : winner === 0 ? '🏆 胜利！敌方基地已被摧毁' : '💀 失败…我方基地已被摧毁';
       const color = winner === -1 ? '#aaaaaa' : winner === 0 ? '#ffd700' : '#ff4444';
@@ -1271,6 +1284,22 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5, 0).setDepth(250).setScrollFactor(0);
     } else {
       this._scoreTimerDisplay.setText(timeStr);
+    }
+
+    // P1-5：推进建筑全失宽限计时器并按整秒广播警告
+    const aliveBldFn = (owner: number) =>
+      this.buildings.some(b => b.owner === owner && b.isAlive);
+    for (let pi = 0 as 0 | 1; pi <= 1; pi = (pi + 1) as 0 | 1) {
+      if (aliveBldFn(pi)) continue; // 有建筑不累计
+      this._graceTimers[pi] += ds;
+      // 每秒广播一次剩余秒（取整秒值，节流避免每帧高频触发）
+      const secondsLeft = Math.max(0, Math.ceil(GameScene.GRACE_LIMIT - this._graceTimers[pi]));
+      if (secondsLeft !== this._prevGraceWarnSecond[pi]) {
+        this._prevGraceWarnSecond[pi] = secondsLeft;
+        EventBus.emit(GameEvent.GRACE_WARNING, {
+          playerIndex: pi, secondsLeft,
+        } as any);
+      }
     }
   }
 

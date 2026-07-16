@@ -11,6 +11,8 @@ import { GameMap } from '../core/GameMap';
 import { BinaryHeap } from '../utils/BinaryHeap';
 import { manhattan, tileKey } from '../utils/MathUtils';
 import { GuildSystem } from './GuildSystem';
+import { EventBus } from '../utils/EventBus';
+import { GameEvent } from '../types/events';
 
 /** A* 寻路节点 */
 interface AStarNode {
@@ -24,8 +26,17 @@ interface AStarNode {
 
 /** A* 寻路结果 */
 export class MovementSystem {
+  /** P2-3：推断寻路失败原因，供 navigate 上层 emit；保持 findPath 自身纯逻辑 */
+  private static inferPathFailReason(
+    start: Point, end: Point, map: GameMap,
+  ): 'start_blocked' | 'no_path' {
+    if (!map.isPassable(Math.round(start.x), Math.round(start.y))) return 'start_blocked';
+    if (!map.isPassable(Math.round(end.x), Math.round(end.y))) return 'start_blocked'; // 终点不可通行也归到入口侧
+    return 'no_path';
+  }
+
   /** 为单个单位计算路径并设置 */
-  static navigate(unit: Unit, target: Point, map: GameMap): void {
+  static navigate(unit: Unit, target: Point, map: GameMap, playerIndex?: number): void {
     // 取整坐标，防止浮点下标访问 grid
     const start = {
       x: Math.round(unit.tileX),
@@ -34,6 +45,12 @@ export class MovementSystem {
     const path = this.findPath(start, target, map, unit.category, unit.id);
     if (path.length > 0) {
       unit.setPath(path);
+    } else if (playerIndex !== undefined) {
+      // P2-3：玩家发起的寻路失败才上 toast，AI/系统内部调用静默
+      const reason = this.inferPathFailReason(start, target, map);
+      EventBus.emit(GameEvent.PATH_FAILED, {
+        unitId: unit.id, playerIndex, reason,
+      } as any);
     }
   }
 

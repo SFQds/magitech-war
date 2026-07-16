@@ -5,7 +5,7 @@
  * 所有命令执行均为纯逻辑，无 Phaser 依赖。
  */
 
-import type { AnyCommand, TrainCommand, MoveCommand, AttackCommand, BuildCommand, GatherCommand, ResearchCommand, SpawnCommand, StopCommand, HoldPositionCommand, AbilityCommand } from '../types/commands';
+import type { AnyCommand, TrainCommand, MoveCommand, AttackCommand, BuildCommand, GatherCommand, ResearchCommand, CancelResearchCommand, SpawnCommand, StopCommand, HoldPositionCommand, AbilityCommand } from '../types/commands';
 import type { GameWorld } from '../core/GameWorld';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { UnitSpawner } from './UnitSpawner';
@@ -55,6 +55,7 @@ export class CommandExecutor {
       case 'build': return this.execBuild(cmd);
       case 'gather': return this.execGather(cmd);
       case 'research': return this.execResearch(cmd);
+      case 'cancel_research': return this.execCancelResearch(cmd as CancelResearchCommand);
       case 'spawn': return this.execSpawn(cmd);
       case 'deploy': return this.execBuild(cmd as unknown as BuildCommand);  // deploy = build别名
       case 'use_ability': return this.execAbility(cmd as AbilityCommand);
@@ -102,7 +103,7 @@ export class CommandExecutor {
     for (const id of cmd.unitIds) {
       const unit = this.entities.getUnit(id);
       if (unit && unit.isAlive) {
-        MovementSystem.navigate(unit, cmd.target, this.world.map);
+        MovementSystem.navigate(unit, cmd.target, this.world.map, cmd.playerIndex);
         if (cmd.type === 'attack_move' && unit.targetEntityId) {
           unit.state = 'pursuing';
         }
@@ -159,7 +160,7 @@ export class CommandExecutor {
           unit.state = 'gathering';
           unit.targetResourceId = field.id;
           unit.gatherTimer = 0;
-          MovementSystem.navigate(unit, { x: field.tileX, y: field.tileY }, this.world.map);
+          MovementSystem.navigate(unit, { x: field.tileX, y: field.tileY }, this.world.map, cmd.playerIndex);
         }
       }
     }
@@ -194,6 +195,37 @@ export class CommandExecutor {
       buildingId: bld.id, playerIndex: cmd.playerIndex,
       unitDefId: cmd.techDefId, totalTime: tech.time,
     });
+    return ok();
+  }
+
+  /** P1-14：取消进行中的科技研究，按剩余进度线性退款 */
+  private execCancelResearch(cmd: CancelResearchCommand): CommandResult {
+    const bld = this.entities.getBuilding(cmd.buildingId);
+    if (!bld || bld.owner !== cmd.playerIndex) return fail('建筑不存在');
+    if (!bld.researchingTechId) return fail('该建筑未在研究科技');
+    if (bld.state !== 'researching') return fail('建筑当前不在研究状态');
+
+    const techId = bld.researchingTechId;
+    const tech = TECH_DEFS[techId];
+    if (!tech) return fail('未知科技');
+
+    // 按研究进度线性退款：剩余比例 * 总成本，floor 避免多退
+    const progress = Math.max(0, Math.min(1, bld.researchProgress));
+    const refundAmount = Math.floor(tech.crystal * (1 - progress));
+    if (refundAmount > 0) {
+      this.world.refund(cmd.playerIndex, { crystal: refundAmount });
+    }
+
+    // 清理研究状态，释放建筑
+    bld.researchingTechId = null;
+    bld.researchProgress = 0;
+    bld.researchTotalTime = 0;
+    bld.state = 'idle';
+
+    EventBus.emit(GameEvent.RESEARCH_CANCELED, {
+      buildingId: bld.id, playerIndex: cmd.playerIndex,
+      techDefId: techId, refundAmount,
+    } as any);
     return ok();
   }
 

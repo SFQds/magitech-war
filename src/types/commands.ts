@@ -17,6 +17,7 @@ export type CommandType =
   | 'build'
   | 'train'
   | 'research'
+  | 'cancel_research'
   | 'gather'
   | 'deploy'
   | 'use_ability'
@@ -69,6 +70,12 @@ export interface ResearchCommand extends Command {
   techDefId: string;
 }
 
+/** 取消研究命令 — P1-14：允许玩家放弃进行中的科技并按剩余进度退款 */
+export interface CancelResearchCommand extends Command {
+  type: 'cancel_research';
+  buildingId: string;
+}
+
 /** 采集命令 */
 export interface GatherCommand extends Command {
   type: 'gather';
@@ -115,6 +122,7 @@ export type AnyCommand =
   | BuildCommand
   | TrainCommand
   | ResearchCommand
+  | CancelResearchCommand
   | GatherCommand
   | DeployCommand
   | AbilityCommand
