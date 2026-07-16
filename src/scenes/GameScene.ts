@@ -156,7 +156,10 @@ export class GameScene extends Phaser.Scene {
   private _playerGuilds: string[] = ['mages_guild', 'alchemists_society'];
 
   init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string; playerGuilds?: string[] }): void {
-    this._mapId = data?.map ?? 'map_valley';
+    // P2-7 修复：mapId 白名单校验，防止路径穿越
+    const VALID_MAPS = ['map_valley', 'map_river', 'map_islands'];
+    const rawMap = data?.map ?? 'map_valley';
+    this._mapId = VALID_MAPS.includes(rawMap) ? rawMap : 'map_valley';
     this._playerFaction = data?.playerFaction ?? 'arcane_empire';
     this._aiDifficulty = data?.aiDifficulty ?? 'normal';
     this._playerGuilds = data?.playerGuilds ?? ['mages_guild', 'alchemists_society'];
@@ -545,11 +548,17 @@ export class GameScene extends Phaser.Scene {
           MovementSystem.navigate(unit, tile, this.world.map);
           unit.state = 'pursuing';
         } else if (unit.spriteKey === 'unit_transport' && unit.cargo.length > 0) {
-          // 运输卡车卸载：右键地面卸下所有乘员
-          unit.stopAttacking();
-          MovementSystem.navigate(unit, tile, this.world.map);
-          // 到达后卸载（由每帧检查 proximity 触发）
-          unit.unloadTarget = { x: tile.x, y: tile.y };
+          // P1-3 修复：运输车仅在单独选中时才卸载（混编时跟随大部队移动，避免静默卸货）
+          if (selection.length === 1) {
+            unit.stopAttacking();
+            MovementSystem.navigate(unit, tile, this.world.map);
+            // 到达后卸载（由每帧检查 proximity 触发）
+            unit.unloadTarget = { x: tile.x, y: tile.y };
+          } else {
+            // 混编：运输车随大部队移动，不卸载
+            unit.stopAttacking();
+            MovementSystem.navigate(unit, tile, this.world.map);
+          }
         } else if (fieldAtTile && unit.spriteKey === 'unit_worker') {
           // 工人采集 — 先走向资源田，到位后自动切换为采集
           unit.stopAttacking();
@@ -682,7 +691,8 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this._gameOver) return;
-    const ds = delta / 1000;
+    // P0-1 修复：钳制 deltaSec，防止标签页回后台再切回时 delta 爆炸导致瞬移/一帧多结算
+    const ds = Math.min(delta / 1000, 0.1); // 上限 100ms，超出视为卡顿/后台
 
     this.stepBuildPreview();
     this.stepCamera();
@@ -950,10 +960,9 @@ export class GameScene extends Phaser.Scene {
     this.buildController.updateConstruction(
       ds, this.buildings, (id) => this.entities.getUnit(id),
       (cost) => {
-        // 建造失败退款
+        // P1-8 修复：建造失败退款走 world.refund()（含 MAX_CRYSTAL + industryCap 上限保护）
+        this.world.refund(0, cost);
         const p = this.world.players[0];
-        p.resources.crystal += cost.crystal;
-        p.resources.industry += cost.industry;
         EventBus.emit(GameEvent.RESOURCE_CHANGED, {
           playerIndex: 0, resource: 'crystal', newValue: p.resources.crystal, delta: cost.crystal,
         });
@@ -1089,6 +1098,31 @@ export class GameScene extends Phaser.Scene {
           EventBus.emit(GameEvent.SELECTION_CHANGED, { unitIds: [], playerIndex: 0 });
         }
         this.removeUnit(u.id);
+
+        // P0-2 修复：运输车被摧毁时释放 cargo 内单位（退还 supply + 清除 isCargo）
+        const deadTransport = u as Unit;
+        if (deadTransport.cargo && deadTransport.cargo.length > 0) {
+          const cargoPlayer = this.world.players[deadTransport.owner];
+          for (const passenger of deadTransport.cargo) {
+            passenger.isCargo = false;
+            // 退还 cargo 内单位占用的 supply
+            if (cargoPlayer) {
+              const cargoRefund = passenger.supplyCost ?? 0;
+              cargoPlayer.resources.supply = Math.max(0, cargoPlayer.resources.supply - cargoRefund);
+            }
+            // 从选中集移除
+            const sel = this.inputCtrl.getSelection();
+            if (sel.includes(passenger.id)) {
+              this.inputCtrl.clearSelection();
+              this.updateSelectionHighlight();
+            }
+            // 从实体注册表移除（cargo 单位仍在 units 数组中，需清理）
+            this.entities.removeUnit(passenger.id);
+            const sprite = this.unitSprites.get(passenger.id);
+            if (sprite) { sprite.destroy(); this.unitSprites.delete(passenger.id); }
+          }
+          deadTransport.cargo = [];
+        }
       }
     }
 
@@ -1177,10 +1211,11 @@ export class GameScene extends Phaser.Scene {
     // 歼灭胜利
     if (playerDead || aiDead) {
       this._gameOver = true;
-      const winner = aiDead ? 0 : 1;
+      // P1-4 修复：双方同帧互毁 → 平局
+      const winner = playerDead && aiDead ? -1 : aiDead ? 0 : 1;
       EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'annihilated' });
-      const text = winner === 0 ? '🏆 胜利！敌方基地已被摧毁' : '💀 失败…我方基地已被摧毁';
-      const color = winner === 0 ? '#ffd700' : '#ff4444';
+      const text = winner === -1 ? '🤝 同归于尽！平局' : winner === 0 ? '🏆 胜利！敌方基地已被摧毁' : '💀 失败…我方基地已被摧毁';
+      const color = winner === -1 ? '#aaaaaa' : winner === 0 ? '#ffd700' : '#ff4444';
       this.add.text(1280 / 2, 720 / 2 - 20, text, {
         fontSize: '32px', color, backgroundColor: '#1a1a2ecc',
         padding: { x: 24, y: 12 },

@@ -71,12 +71,12 @@ export class GameWorld {
     return true;
   }
 
-  /** 扣除资源 */
+  /** 扣除资源 — P1-9 修复：加下限守卫防止负数 */
   spend(playerIndex: number, cost: { crystal?: number; industry?: number; supply?: number }): void {
     const p = this.players[playerIndex];
     if (!p) return;
-    if (cost.crystal) p.resources.crystal -= cost.crystal;
-    if (cost.industry) p.resources.industry -= cost.industry;
+    if (cost.crystal) p.resources.crystal = Math.max(0, p.resources.crystal - cost.crystal);
+    if (cost.industry) p.resources.industry = Math.max(0, p.resources.industry - cost.industry);
     if (cost.supply) p.resources.supply += cost.supply; // supply 是占用，不是消耗
   }
 

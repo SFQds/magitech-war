@@ -62,6 +62,11 @@ export class MovementSystem {
     const w = map.config.width;
     const h = map.config.height;
 
+    // P1-2 修复：excludeUnitId 实际生效 — 寻路时暂时清除自身占用
+    if (excludeUnitId) {
+      map.removeOccupancy(sx, sy); // 自身起点不阻挡自己
+    }
+
     const openHeap = new BinaryHeap<AStarNode>((a, b) => a.f - b.f);
     const closedSet = new Set<number>();
     const encode = (x: number, y: number) => tileKey(x, y, w);
@@ -110,10 +115,13 @@ export class MovementSystem {
         // 单位碰撞：跳过被其他单位占用的瓦片（起点和终点除外）
         if (map.isOccupied(nx, ny) && !(nx === sx && ny === sy) && !(nx === ex && ny === ey)) continue;
 
-        // 对角线检查
+        // 对角线检查 — P2-1 修复：同时检查地形和单位占用
         if (dx !== 0 && dy !== 0) {
           if (!grid[current.y + dy][current.x]) continue;
           if (!grid[current.y][current.x + dx]) continue;
+          // 对角线穿过的两个正交邻格不能被单位占用
+          if (map.isOccupied(current.x, current.y + dy) && !(current.x === sx && current.y + dy === sy)) continue;
+          if (map.isOccupied(current.x + dx, current.y) && !(current.x + dx === sx && current.y === sy)) continue;
         }
 
         const moveCost = (dx !== 0 && dy !== 0) ? 1.414 : 1;
@@ -161,14 +169,23 @@ export class MovementSystem {
       unit.tileY = target.y;
       unit.pathIndex++;
 
-      if (unit.pathIndex >= unit.path.length) {
-        // 到达终点：根据之前的状态切换
-        if (unit.state === 'pursuing' && unit.targetEntityId) {
-          // 追击到达 → 准备攻击
-          unit.state = 'attacking';
-        } else {
-          unit.clearPath();
-        }
+if (unit.pathIndex >= unit.path.length) {
+          // P2-2 修复：到达终点时若该格已被其他单位占用，散开到邻近可通行格
+          const occupiedByOther = map.isOccupied(Math.round(unit.tileX), Math.round(unit.tileY));
+          if (occupiedByOther) {
+            const safe = map.findNearbyPassable(unit.tileX, unit.tileY, 2);
+            if (safe) {
+              unit.tileX = safe.x;
+              unit.tileY = safe.y;
+            }
+          }
+          // 到达终点：根据之前的状态切换
+          if (unit.state === 'pursuing' && unit.targetEntityId) {
+            // 追击到达 → 准备攻击
+            unit.state = 'attacking';
+          } else {
+            unit.clearPath();
+          }
         unit.path = [];
         unit.pathIndex = 0;
       }
@@ -183,5 +200,12 @@ export class MovementSystem {
     const ratio = moveAmount / dist;
     unit.tileX += dx * ratio;
     unit.tileY += dy * ratio;
+    // P2-4 修复：坐标边界钳制，防止越界导致寻路/渲染异常
+    const maxX = map.config.width - 1;
+    const maxY = map.config.height - 1;
+    if (unit.tileX < 0) unit.tileX = 0;
+    else if (unit.tileX > maxX) unit.tileX = maxX;
+    if (unit.tileY < 0) unit.tileY = 0;
+    else if (unit.tileY > maxY) unit.tileY = maxY;
   }
 }

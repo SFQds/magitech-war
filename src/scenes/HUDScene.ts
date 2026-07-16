@@ -28,6 +28,8 @@ export class HUDScene extends Phaser.Scene {
   private productionQueue!: ProductionQueueUI;
   private minimap!: Minimap;
   private attackMoveText!: Phaser.GameObjects.Text;
+  /** P1-10 修复：保存所有 EventBus 监听器引用，shutdown 时逐个 off */
+  private _eventHandlers: { event: string; handler: (data: unknown) => void }[] = [];
 
   constructor() { super({ key: 'HUDScene' }); }
 
@@ -47,11 +49,19 @@ export class HUDScene extends Phaser.Scene {
 
     this.setupEvents();
 
-    // 注册场景关闭清理
+    // P1-10 修复：注册场景关闭清理 — 逐个 off 所有 EventBus 监听器
     this.events.on('shutdown', () => {
-      // 不调用 EventBus.offAll — 会误杀 SoundBindings/GameScene 的共享监听
-      // Phaser 场景销毁后，闭包自然失效，不会造成功能问题
+      for (const { event, handler } of this._eventHandlers) {
+        EventBus.off(event, handler);
+      }
+      this._eventHandlers = [];
     });
+  }
+
+  /** P1-10 修复：注册 EventBus 监听器并保存引用供 shutdown 清理 */
+  private _on(event: string, handler: (data: unknown) => void): void {
+    EventBus.on(event, handler);
+    this._eventHandlers.push({ event, handler });
   }
 
   /** 每帧刷新进度条 */
@@ -67,11 +77,11 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private setupEvents(): void {
-    // 不调用 EventBus.offAll — 会误杀其他模块共享的监听
+    // P1-10 修复：使用 _on 注册监听器，shutdown 时逐个 off
 
-    EventBus.on(GameEvent.RESOURCE_CHANGED, () => this.refreshResourceDisplay());
+    this._on(GameEvent.RESOURCE_CHANGED, () => this.refreshResourceDisplay());
 
-    EventBus.on(GameEvent.SELECTION_CHANGED, (data: unknown) => {
+    this._on(GameEvent.SELECTION_CHANGED, (data: unknown) => {
       const d = data as SelectionData;
       if (d.playerIndex !== 0) return;
       if (d.unitIds.length === 0) { this.selectionPanel.showUnits([]); this.commandCard.clear(); return; }
@@ -135,7 +145,7 @@ export class HUDScene extends Phaser.Scene {
       }
     });
 
-    EventBus.on(GameEvent.BUILDING_SELECTED, (data: any) => {
+    this._on(GameEvent.BUILDING_SELECTED, (data: any) => {
       if (data.playerIndex !== 0) return;
       const gs = this.scene.get('GameScene') as any;
       const bld = gs.buildings?.find((b: Building) => b.id === data.buildingId) as Building | undefined;
@@ -171,20 +181,20 @@ export class HUDScene extends Phaser.Scene {
       this.commandCard.setCommands(btns.length > 0 ? btns : []);
     });
 
-    EventBus.on(GameEvent.PRODUCTION_STARTED, () => this.updateProductionQueueUI());
-    EventBus.on(GameEvent.PRODUCTION_COMPLETE, () => this.updateProductionQueueUI());
-    EventBus.on(GameEvent.UNIT_CREATED, () => this.scheduleMinimapUpdate());
-    EventBus.on(GameEvent.UNIT_KILLED, () => this.scheduleMinimapUpdate());
-    EventBus.on(GameEvent.ATTACK_MOVE_TOGGLE, (data: any) => this.attackMoveText.setAlpha(data.active ? 1 : 0));
+    this._on(GameEvent.PRODUCTION_STARTED, () => this.updateProductionQueueUI());
+    this._on(GameEvent.PRODUCTION_COMPLETE, () => this.updateProductionQueueUI());
+    this._on(GameEvent.UNIT_CREATED, () => this.scheduleMinimapUpdate());
+    this._on(GameEvent.UNIT_KILLED, () => this.scheduleMinimapUpdate());
+    this._on(GameEvent.ATTACK_MOVE_TOGGLE, (data: any) => this.attackMoveText.setAlpha(data.active ? 1 : 0));
 
     // P1-5: 行会和英雄技能事件监听
-    EventBus.on(GameEvent.ABILITY_USED, (data: any) => {
+    this._on(GameEvent.ABILITY_USED, (data: any) => {
       this.showToast(`技能已激活: ${data.abilityId}`);
     });
-    EventBus.on(GameEvent.UNIT_DESTROYED, () => {
+    this._on(GameEvent.UNIT_DESTROYED, () => {
       this.scheduleMinimapUpdate();
     });
-    EventBus.on(GameEvent.HERO_LEVELED, (data: any) => {
+    this._on(GameEvent.HERO_LEVELED, (data: any) => {
       this.showToast(`英雄升到 Lv ${data.newLevel}!`);
       // 刷新命令卡（新技能可能解锁）
       const gs = this.scene.get('GameScene') as any;

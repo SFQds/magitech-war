@@ -110,6 +110,11 @@ export class GameMap {
     this.occupiedUnitTiles.add(this.encodeKey(x, y));
   }
 
+  /** P1-2 修复：移除指定 tile 的单位占用（寻路时排除自身） */
+  removeOccupancy(x: number, y: number): void {
+    this.occupiedUnitTiles.delete(this.encodeKey(x, y));
+  }
+
   /** 是否遮挡视野 */
   blocksSight(x: number, y: number): boolean {
     if (!this.inBounds(x, y)) return true;

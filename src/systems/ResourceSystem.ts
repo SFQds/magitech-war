@@ -132,17 +132,23 @@ export class ResourceSystem {
         totalIndustry += building.providesIndustry;
       }
 
-      player.resources.supplyCap = totalSupply;
-      player.resources.industryCap = totalIndustry;
+      player.resources.supplyCap = Math.max(0, totalSupply);
+      player.resources.industryCap = Math.max(0, totalIndustry);
 
-      // 工业产值：缓慢自然增长（0.5/s 基础 + 建筑提供值的 3% /s）
-      // 上限100时约3.5/s，29秒回满 → 产生有意义的建造间隔
+      // P1-6/P1-7 修复：cap 下降时不截断已积累值（避免资源蒸发）
+      // 仅在 cap 上升时允许 industry 跟随增长（初始化/建新建筑场景）
+      // 工业值保持在 [0, industryCap] 之间但不强制截断已超出的部分
       if (deltaSec > 0) {
         const regenRate = 0.5 + totalIndustry * 0.03;
-        player.resources.industry = Math.min(
-          totalIndustry,
-          player.resources.industry + regenRate * deltaSec,
-        );
+        // 仅当当前工业低于 cap 时再生，不强制截断超出部分
+        if (player.resources.industry < totalIndustry) {
+          player.resources.industry = Math.min(
+            totalIndustry,
+            player.resources.industry + regenRate * deltaSec,
+          );
+        }
+        // P1-9 修复：工业值下限保护
+        if (player.resources.industry < 0) player.resources.industry = 0;
       } else {
         // 初始化时直接填满（游戏开始）
         if (player.resources.industry < 0) player.resources.industry = 0;

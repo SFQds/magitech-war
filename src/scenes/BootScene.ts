@@ -27,7 +27,9 @@ export class BootScene extends Phaser.Scene {
     });
 
     this.load.on('loaderror', (file: any) => {
-      console.warn(`[BootScene] 资源加载失败: ${file.key ?? file.url ?? file}`);
+      const key = file.key ?? file.url ?? file;
+      console.warn(`[BootScene] 资源加载失败: ${key}（将使用占位纹理降级）`);
+      // P2-8 修复：记录失败 key 供 create 时检查（AssetGenerator 的 __DEFAULT 会兜底）
     });
 
     // === PNG 精灵列表（和 config/sprites.ts 保持一致） ===

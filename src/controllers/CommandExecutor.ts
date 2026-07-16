@@ -69,6 +69,14 @@ export class CommandExecutor {
     if (!bld || bld.owner !== cmd.playerIndex) return fail('建筑不存在');
     if (!bld.canEnqueue()) return fail('训练队列已满');
 
+    // P1-1 修复：英雄唯一性检查（每阵营同英雄只能存在1个）
+    if (cmd.unitDefId.startsWith('hero:')) {
+      const heroExists = this.entities.aliveUnits.some(
+        u => u.owner === cmd.playerIndex && u.isAlive && u.spriteKey === cmd.unitDefId.replace(':', '_')
+      );
+      if (heroExists) return fail('已有同名英雄');
+    }
+
     const cost = UNIT_COSTS[cmd.unitDefId];
     if (!cost) return fail('未知单位');
     // 检查科技前置
