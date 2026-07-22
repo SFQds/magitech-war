@@ -84,16 +84,17 @@ export class MilitaryAI {
     const ownBuildings = buildings.filter(
       b => b.owner === this.playerIndex && b.isAlive
     );
-    // P1-AI3: AI respects fog of war (units real-time visible, buildings explored/visible memory)
-    const fog = this.world.fogOfWar;
-    const enemyUnits = units.filter(
-      u => u.owner !== this.playerIndex && u.isAlive &&
-        fog.isVisible(Math.round(u.tileX), Math.round(u.tileY))
-    );
-    const enemyBuildings = buildings.filter(
-      b => b.owner !== this.playerIndex && b.isAlive &&
-        (fog.isExplored(Math.round(b.tileX), Math.round(b.tileY)) || fog.isVisible(Math.round(b.tileX), Math.round(b.tileY)))
-    );
+    // P1-质疑17: AI 不依赖玩家(0)的迷雾，用自己单位的 sight 范围作为视野限制
+    // AI 的敌情感知 = 任意己方单位/建筑 sight 范围内能看到的敌人
+    const enemyUnits = units.filter(u => {
+      if (u.owner === this.playerIndex || !u.isAlive) return false;
+      // 检查是否有己方单位/建筑在 sight 范围内能看到该敌人
+      return this._canAiSee(u.tileX, u.tileY, units, buildings);
+    });
+    const enemyBuildings = buildings.filter(b => {
+      if (b.owner === this.playerIndex || !b.isAlive) return false;
+      return this._canAiSee(b.tileX, b.tileY, units, buildings);
+    });
 
     if (ownCombat.length === 0) {
       this.kiteTracker.clear();
@@ -179,11 +180,14 @@ export class MilitaryAI {
           return dToEnemy > bestD ? b : best;
         });
 
+        // P1-质疑10 修复：撤退目标用 findNearbyPassable 确保可达，不再硬编码 tileY+1
+        const retreatTarget = this.world.map.findNearbyPassable(safestBld.tileX, safestBld.tileY + 1, 3)
+          ?? { x: safestBld.tileX, y: safestBld.tileY + 1 };
         commands.push({
           type: 'move',
           playerIndex: this.playerIndex,
           unitIds: [unit.id],
-          target: { x: safestBld.tileX, y: safestBld.tileY + 1 },
+          target: { x: retreatTarget.x, y: retreatTarget.y },
           frame: 0,
         });
         this.kiteTracker.delete(unit.id);
@@ -323,6 +327,21 @@ export class MilitaryAI {
     }
 
     return commands;
+  }
+
+  /** P1-质疑17: AI 独立视野 - 检查己方单位/建筑是否在 sight 范围内看到目标 */
+  private _canAiSee(tx: number, ty: number, units: Unit[], buildings: Building[]): boolean {
+    for (const u of units) {
+      if (u.owner !== this.playerIndex || !u.isAlive) continue;
+      const d = Math.abs(u.tileX - tx) + Math.abs(u.tileY - ty);
+      if (d <= u.sight) return true;
+    }
+    for (const b of buildings) {
+      if (b.owner !== this.playerIndex || !b.isAlive) continue;
+      const d = Math.abs(b.tileX - tx) + Math.abs(b.tileY - ty);
+      if (d <= b.sight) return true;
+    }
+    return false;
   }
 
   // ============ P1-AI: 行会技能使用 ============

@@ -10,7 +10,7 @@ import type { FactionId } from '../types/data';
 import { GameMap } from './GameMap';
 import { FogOfWar } from './FogOfWar';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
-import { FACTION_DEFS } from '../config/unitData';
+import { FACTION_DEFS, BUILDING_DEFS } from '../config/unitData';
 import { MAX_CRYSTAL } from '../config/balance';
 
 export class GameWorld {
@@ -47,7 +47,8 @@ export class GameWorld {
         crystal: fd?.startingCrystal ?? 2000,
         industry: fd?.startingIndustry ?? 50,
         supply: 0,
-        supplyCap: 20,
+        // P2-质疑19: 从 CC 配置读取初始 supplyCap，不再硬编码 20
+        supplyCap: BUILDING_DEFS['bld_cc_empire']?.provides?.supply ?? 50,
         industryCap: fd?.startingIndustry ?? 50,
       },
       isAI,

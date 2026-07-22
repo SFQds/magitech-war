@@ -51,18 +51,6 @@ export class ResourceSystem {
     const fieldMap = new Map<string, ResourceField>();
     for (const f of fields) fieldMap.set(f.id, f);
 
-    // 缓存"是否有采矿场"状态（建筑完成/摧毁时变化，但在此热路径只读一次）
-    let hasRefineryP0 = false, hasRefineryP1 = false;
-    if (buildings) {
-      for (let i = 0; i < buildings.length; i++) {
-        const b = buildings[i];
-        if (!b.isAlive || b.spriteKey !== 'bld_refinery') continue;
-        if (b.owner === 0) hasRefineryP0 = true;
-        if (b.owner === 1) hasRefineryP1 = true;
-        if (hasRefineryP0 && hasRefineryP1) break;
-      }
-    }
-
     for (const unit of units) {
       if (!unit.isAlive || unit.state !== 'gathering') continue;
 
@@ -87,7 +75,13 @@ export class ResourceSystem {
         unit.gatherTimer -= GATHER_TICK_INTERVAL;
 
         const amount = ResourceSystem.gather(unit, field);
-        const hasRefinery = unit.owner === 0 ? hasRefineryP0 : hasRefineryP1;
+        // P2-质疑6: 精炼厂按距离生效 — 矿点 15 格内有己方精炼厂才满速采集
+        const refineries = buildings?.filter(b =>
+          b.isAlive && b.spriteKey === 'bld_refinery' && b.owner === unit.owner
+        ) ?? [];
+        const hasRefinery = refineries.some(r =>
+          Math.abs(r.tileX - field.tileX) + Math.abs(r.tileY - field.tileY) <= 15
+        );
         // P0-A1 修复：无精炼厂时最多采 3，但不能超过实际采集量 amount，
         // 否则 amount - gathered 为负会回填负数把 field.amount 推到 -1/-2
         let gathered = hasRefinery ? amount : Math.min(GATHER_NO_REFINERY_CAP, amount);
@@ -145,16 +139,20 @@ export class ResourceSystem {
       player.resources.supplyCap = Math.max(0, totalSupply);
       player.resources.industryCap = Math.max(0, totalIndustry);
 
-      // P1-6/P1-7 修复：cap 下降时不截断已积累值（避免资源蒸发）
-      // 仅在 cap 上升时允许 industry 跟随增长（初始化/建新建筑场景）
-      // 工业值保持在 [0, industryCap] 之间但不强制截断已超出的部分
+      // P1-6/P1-7 修复：cap 下降时允许缓慢衰减但不瞬间蒸发
+      // P2-质疑17 修复：工业值超出 cap 时按 10%/秒 衰减回 cap（拆工业建筑后逐步削弱）
       if (deltaSec > 0) {
         const regenRate = INDUSTRY_REGEN_BASE + totalIndustry * INDUSTRY_REGEN_PER_OUTPUT;
-        // 仅当当前工业低于 cap 时再生，不强制截断超出部分
         if (player.resources.industry < totalIndustry) {
           player.resources.industry = Math.min(
             totalIndustry,
             player.resources.industry + regenRate * deltaSec,
+          );
+        } else if (player.resources.industry > totalIndustry) {
+          // 超出 cap 时按 10%/秒衰减，而非永久保留
+          player.resources.industry = Math.max(
+            totalIndustry,
+            player.resources.industry - player.resources.industry * 0.1 * deltaSec,
           );
         }
         // P1-9 修复：工业值下限保护

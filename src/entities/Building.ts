@@ -73,26 +73,7 @@ export class Building extends Entity {
     }
   }
 
-  /** 推进生产进度（由 ProductionSystem 每帧调用） */
-  tickProduction(deltaSec: number): ProductionItem | null {
-    if (this.productionQueue.length === 0) {
-      if (this.state === 'producing') this.state = 'idle';
-      return null;
-    }
-
-    const current = this.productionQueue[0];
-    // 应用英雄光环等临时生产速度加成
-    current.timeRemaining -= deltaSec * (1 + this.productionSpeedBonus);
-
-    if (current.timeRemaining <= 0) {
-      this.productionQueue.shift();
-      if (this.productionQueue.length === 0 && this.state === 'producing') {
-        this.state = 'idle';
-      }
-      return current; // 返回已完成项
-    }
-    return null;
-  }
+  /** P2-质疑12: 删除 tickProduction 死代码，生产推进由 ProductionSystem.updateProduction 统一处理 */
 
   /** 取消生产队列 — P1-12 修复：返回被取消项的 unitDefId 供调用方计算退款
    *  P2-C2 标注：方法已实现但当前无调用方，待训练取消 UI 接入后调用，暂保留。 */

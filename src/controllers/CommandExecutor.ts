@@ -17,6 +17,7 @@ import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import { UNIT_DEFS, TECH_DEFS, BUILDING_DEFS, getBuildingCost, getFactionBonuses, createBuilding, getUnitCostWithFaction } from '../config/unitData';
 import { HERO_DEFS } from '../config/heroData';
+import { HeroSystem } from '../systems/HeroSystem';
 
 /** 命令执行结果 */
 export type CommandResult = { ok: true } | { ok: false; reason: string };
@@ -354,8 +355,34 @@ export class CommandExecutor {
     return ok();
   }
 
-  /** 使用技能命令桩（HUD 按钮绕过此处直接调 HeroSystem.activateSkill） */
-  private execAbility(_cmd: AbilityCommand): CommandResult {
-    return fail('技能系统暂未开放');
+  /** P1-AI23: 使用技能命令 - AI 和 HUD 均可通过命令路径激活英雄技能 */
+  private execAbility(cmd: AbilityCommand): CommandResult {
+    // abilityId 格式: heroId_slot{N}，如 hero_isabelle_slot0
+    const parts = cmd.abilityId.split('_slot');
+    if (parts.length !== 2) return fail('无效的技能ID');
+    const heroId = parts[0];
+    const slotIndex = parseInt(parts[1], 10);
+    if (isNaN(slotIndex) || slotIndex < 0 || slotIndex > 2) return fail('无效的技能槽位');
+
+    const hero = this.entities.getUnit(cmd.unitIds[0] ?? '');
+    if (!hero || !hero.isAlive || hero.owner !== cmd.playerIndex || hero.spriteKey !== heroId) {
+      return fail('英雄不存在或不属于该玩家');
+    }
+
+    const result = HeroSystem.activateSkill(hero as any, slotIndex, {
+      units: this.entities.aliveUnits,
+      buildings: this.entities.aliveBuildings,
+    });
+    if (!result.success) return fail('技能不可用');
+    // 处理技能产生的 spawn 命令
+    if (result.spawnCommands) {
+      for (const sc of result.spawnCommands) {
+        this.execSpawn({
+          type: 'spawn', playerIndex: sc.playerIndex, unitIds: [],
+          unitDefId: sc.unitDefId, count: sc.count, position: sc.position, frame: 0,
+        });
+      }
+    }
+    return ok();
   }
 }

@@ -860,7 +860,13 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (this._gameOver) return;
     // P1-C8: tab hidden = explicit pause (avoid rAF throttle causing inconsistent game time)
-    if (typeof document !== 'undefined' && document.hidden) return;
+    // P2-质疑28: 但宽限期/游戏计时器仍需用墙钟时间推进，防止切标签暂停作弊
+    if (typeof document !== 'undefined' && document.hidden) {
+      // hidden 时仅推进宽限计时器，不跑完整模拟
+      const hiddenDs = Math.min(delta / 1000, 1.0);
+      this._advanceGraceTimers(hiddenDs);
+      return;
+    }
     // P0-1 修复：钳制 deltaSec，防止标签页回后台再切回时 delta 爆炸导致瞬移/一帧多结算
     const ds = Math.min(delta / 1000, 0.1); // 上限 100ms，超出视为卡顿/后台
 
@@ -1149,6 +1155,14 @@ export class GameScene extends Phaser.Scene {
 
   private stepResources(ds: number): void {
     ResourceSystem.updateResources(this.world.players, this.units, this.buildings, ds);
+    // P2-质疑30: 玩家经济安全网 - 0 工人且水晶<100 时被动回血(每秒+5)
+    const p0 = this.world.players[0];
+    if (p0) {
+      const workerCount = this.units.some(u => u.owner === 0 && u.isAlive && u.spriteKey === 'unit_worker');
+      if (!workerCount && p0.resources.crystal < 100) {
+        p0.resources.crystal = Math.min(100, p0.resources.crystal + 5 * ds);
+      }
+    }
   }
 
   private stepProduction(ds: number): void {
@@ -1482,6 +1496,17 @@ export class GameScene extends Phaser.Scene {
         fontSize: '28px', color: winner === 0 ? '#ffd700' : '#ff6644',
         backgroundColor: '#1a1a2ecc', padding: { x: 24, y: 12 },
         align: 'center',      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);      this.addRestartButton();    }
+  }
+
+  /** P2-质疑28: 标签页隐藏时仍推进宽限期，防止暂停作弊 */
+  private _advanceGraceTimers(ds: number): void {
+    const aliveBldFn = (owner: number) =>
+      this.buildings.some(b => b.owner === owner && b.isAlive);
+    for (let pi = 0 as 0 | 1; pi <= 1; pi = (pi + 1) as 0 | 1) {
+      if (aliveBldFn(pi)) continue;
+      this._graceTimers[pi] += ds;
+    }
+    this.checkGameOver();
   }
 
   /** P1-C7: 游戏结束后显示重开按钮 */

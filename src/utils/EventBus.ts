@@ -12,7 +12,9 @@ class EventBusImpl {
   private listeners = new Map<string, Set<EventCallback>>();
   /** P2-N2 修复：重入深度计数，防止监听器内 emit 导致栈溢出 */
   private emitDepth = 0;
-  private static MAX_EMIT_DEPTH = 5;
+  /** P2-质疑29: 超出深度时入队延迟派发，不再丢弃 */
+  private static MAX_EMIT_DEPTH = 16;
+  private pendingQueue: { event: string; data: unknown }[] = [];
 
   /** 订阅事件 */
   on(event: string, callback: EventCallback): void {
@@ -37,7 +39,8 @@ class EventBusImpl {
     const callbacks = this.listeners.get(event);
     if (!callbacks) return;
     if (this.emitDepth >= EventBusImpl.MAX_EMIT_DEPTH) {
-      console.error(`[EventBus] 重入深度超限 (${this.emitDepth})，事件 ${event} 被丢弃，可能存在监听器递归`);
+      // P2-质疑29: 入队延迟派发，不再静默丢弃
+      this.pendingQueue.push({ event, data });
       return;
     }
     this.emitDepth++;
@@ -51,11 +54,20 @@ class EventBusImpl {
       }
     }
     this.emitDepth--;
+    // 栈底时 flush 延迟队列
+    if (this.emitDepth === 0 && this.pendingQueue.length > 0) {
+      const queued = this.pendingQueue;
+      this.pendingQueue = [];
+      for (const item of queued) {
+        this.emit(item.event, item.data);
+      }
+    }
   }
 
   /** 清除所有监听器（用于场景切换） */
   clear(): void {
     this.listeners.clear();
+    this.pendingQueue = [];
   }
 }
 
