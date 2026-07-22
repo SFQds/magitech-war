@@ -19,7 +19,7 @@ export enum GameEvent {
 
   // ---- 建筑事件 ----
   BUILDING_COMPLETE = 'building:complete',
-  /** 建筑被摧毁 — TODO: Phase 2 补发射 */
+  /** 建筑被摧毁 — 已由 BuildController.emit；HUDScene 暂未消费（异步通知用预留） */
   BUILDING_DESTROYED = 'building:destroyed',
   PRODUCTION_STARTED = 'production:started',
   PRODUCTION_COMPLETE = 'production:complete',
@@ -59,7 +59,7 @@ export enum GameEvent {
 
   // ---- 英雄 ----
   HERO_LEVELED = 'hero:leveled',
-  /** 英雄死亡 — TODO: Phase 2 补发射 */
+  /** 英雄死亡 — 已由 GameScene._onUnitKilled 集中 emit；SoundBindings/HUDScene 应消费 */
   HERO_DIED = 'hero:died',
   HERO_REVIVED = 'hero:revived',
 

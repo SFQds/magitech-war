@@ -11,6 +11,7 @@ import { GameMap } from './GameMap';
 import { FogOfWar } from './FogOfWar';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
 import { FACTION_DEFS } from '../config/unitData';
+import { MAX_CRYSTAL } from '../config/balance';
 
 export class GameWorld {
   readonly map: GameMap;
@@ -85,7 +86,6 @@ export class GameWorld {
     const p = this.players[playerIndex];
     if (!p) return;
     if (cost.crystal) {
-      const MAX_CRYSTAL = 20000;
       p.resources.crystal = Math.min(MAX_CRYSTAL, p.resources.crystal + cost.crystal);
     }
     if (cost.industry) {

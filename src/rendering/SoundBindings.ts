@@ -14,7 +14,13 @@ import { SoundManager } from '../utils/SoundManager';
 export function registerSoundBindings(): () => void {
   const onAttack = () => SoundManager.play('attack', 0.15);
   const onBuild = () => SoundManager.play('build', 0.25);
-  const onDeath = () => SoundManager.play('death', 0.2);
+  const onDeath = (data: unknown) => {
+    const d = data as { isBuilding?: boolean };
+    // P2-A7: buildings emit UNIT_KILLED but should not play unit death sound
+    if (d.isBuilding) return;
+    SoundManager.play('death', 0.2);
+  };
+  const onHeroDied = () => SoundManager.play('heroDeath', 0.35);
   const onProduce = () => SoundManager.play('produce', 0.25);
   const onGameOver = (data: unknown) => {
     const d = data as { winnerIndex: number };
@@ -30,6 +36,7 @@ export function registerSoundBindings(): () => void {
   EventBus.on(GameEvent.UNIT_ATTACK_START, onAttack);
   EventBus.on(GameEvent.BUILDING_COMPLETE, onBuild);
   EventBus.on(GameEvent.UNIT_KILLED, onDeath);
+  EventBus.on(GameEvent.HERO_DIED, onHeroDied);
   EventBus.on(GameEvent.PRODUCTION_COMPLETE, onProduce);
   EventBus.on(GameEvent.GAME_OVER, onGameOver);
   EventBus.on(GameEvent.SELECTION_CHANGED, onSelect);
@@ -38,6 +45,7 @@ export function registerSoundBindings(): () => void {
     EventBus.off(GameEvent.UNIT_ATTACK_START, onAttack);
     EventBus.off(GameEvent.BUILDING_COMPLETE, onBuild);
     EventBus.off(GameEvent.UNIT_KILLED, onDeath);
+    EventBus.off(GameEvent.HERO_DIED, onHeroDied);
     EventBus.off(GameEvent.PRODUCTION_COMPLETE, onProduce);
     EventBus.off(GameEvent.GAME_OVER, onGameOver);
     EventBus.off(GameEvent.SELECTION_CHANGED, onSelect);

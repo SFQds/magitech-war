@@ -25,10 +25,6 @@ export interface SkillActivationResult {
   spawnCommands?: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[];
 }
 
-/** 将 spriteKey (hero_isabelle) 转换回数据 key (hero:isabelle) */
-function heroDataKey(hero: Hero): string {
-  return hero.spriteKey.replace('_', ':');
-}
 
 export class HeroSystem {
   /** 更新所有英雄：被动光环 + 技能冷却 + 复活计时器 */
@@ -48,9 +44,9 @@ export class HeroSystem {
     for (const hero of heroes) {
       if (!hero.isAlive) continue;
 
-      const heroId = heroDataKey(hero);
+      const heroId = hero.spriteKey;
 
-      if (heroId === 'hero:isabelle') {
+      if (heroId === 'hero_isabelle') {
         // 贤者之石：周围8格友方每秒+2HP
         for (const u of units) {
           if (!u.isAlive || u.owner !== hero.owner) continue;
@@ -61,13 +57,13 @@ export class HeroSystem {
         }
       }
 
-      if (heroId === 'hero:marcus') {
+      if (heroId === 'hero_marcus') {
         // 厂长光环：周围12格生产建筑训练速度+20%
         for (const b of buildings) {
           if (!b.isAlive || b.owner !== hero.owner) continue;
           const d = Math.abs(hero.tileX - b.tileX) + Math.abs(hero.tileY - b.tileY);
           if (d <= hero.auraRadius) {
-            b.productionSpeedBonus = 0.20;
+            b.productionSpeedBonus += 0.20; // P2-H3: accumulate instead of overwrite
           }
         }
       }
@@ -99,17 +95,19 @@ export class HeroSystem {
     for (const hero of heroes) {
       if (!hero.isAlive) continue;
 
-      const heroId2 = heroDataKey(hero);
+      const heroId2 = hero.spriteKey;
       const hd = HERO_DEFS[heroId2];
       if (!hd || hd.skillTree.length === 0) continue;
+      // P2-H2: holdPosition hero skips auto-skills (hold means hold, no proactive casting)
+      if (hero.holdPosition) continue;
 
       // === 伊莎贝尔：自动给最弱友军加护盾 ===
-      if (heroId2 === 'hero:isabelle') {
+      if (heroId2 === 'hero_isabelle') {
         HeroSystem._updateIsabelle(hero, units, hd);
       }
 
       // === 马库斯：自动空投（兵力不足时） ===
-      if (heroId2 === 'hero:marcus') {
+      if (heroId2 === 'hero_marcus') {
         const result = HeroSystem._updateMarcus(hero, units, spawnCommands, hd);
         if (result) spawnCommands.push(...result);
       }
@@ -264,7 +262,7 @@ export class HeroSystem {
     slotIndex: number,
     targets: { units: Unit[]; buildings: Building[] },
   ): SkillActivationResult {
-    const heroId = heroDataKey(hero);
+    const heroId = hero.spriteKey;
     const hd = HERO_DEFS[heroId];
     if (!hd || !hero.canUseSkillSlot(slotIndex)) {
       return { success: false, slotIndex, skillName: 'N/A' };
@@ -286,7 +284,7 @@ export class HeroSystem {
 
     // 执行技能效果
     const spawnCommands: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] = [];
-    if (heroId === 'hero:isabelle') {
+    if (heroId === 'hero_isabelle') {
       if (slotIndex === 0) {
         this._execIsabelleShield(hero, targets.units);
       } else if (slotIndex === 1) {
@@ -294,7 +292,7 @@ export class HeroSystem {
       } else if (slotIndex === 2) {
         this._execIsabelleRain(hero, targets.units);
       }
-    } else if (heroId === 'hero:marcus') {
+    } else if (heroId === 'hero_marcus') {
       if (slotIndex === 0) {
         const cmds = this._execMarcusAirdrop(hero);
         if (cmds) spawnCommands.push(...cmds);
@@ -401,7 +399,7 @@ export class HeroSystem {
     available: boolean;
     unlocked: boolean;
   } | null {
-    const hd = HERO_DEFS[heroDataKey(hero)];
+    const hd = HERO_DEFS[hero.spriteKey];
     if (!hd || hd.skillTree.length === 0) return null;
 
     const unlocked = hero.hasSkillSlot(slotIndex);
@@ -430,7 +428,7 @@ export class HeroSystem {
   ): Hero | null {
     const hd = HERO_DEFS[heroId];
     if (!hd) return null;
-    const spriteKey = heroId.replace(':', '_');
+    const spriteKey = heroId;
     return new Hero(owner, faction as any, tileX, tileY, hd, spriteKey);
   }
 }

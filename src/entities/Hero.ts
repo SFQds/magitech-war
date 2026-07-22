@@ -39,6 +39,8 @@ export interface HeroData {
   cost: { crystal: number; supply: number; time: number };
   /** 基础护甲值 */
   armorValue?: number;
+  /** P1-D11 修复：被动光环半径（tile），由 heroData 配置，不再硬编码 */
+  auraRadius?: number;
 }
 
 export class Hero extends Unit {
@@ -78,6 +80,8 @@ export class Hero extends Unit {
     this.armor = heroData.armorValue ?? 0;
     this.reviveCooldown = heroData.reviveCooldown;
     this.supplyCost = heroData.cost.supply;
+    // P1-D11 修复：从 heroData 读取光环半径，两英雄可分别配置（马库斯12格、伊莎贝尔8格）
+    this.auraRadius = heroData.auraRadius ?? 8;
   }
 
   private reviveCooldown!: number;

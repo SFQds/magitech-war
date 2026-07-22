@@ -44,6 +44,13 @@ export function manhattan(a: Point, b: Point): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
+/** P4-B2: octile distance for 8-directional grids (admissible with 1.414 diagonal cost) */
+export function octile(a: Point, b: Point): number {
+  const dx = Math.abs(a.x - b.x);
+  const dy = Math.abs(a.y - b.y);
+  return (dx + dy) + (Math.SQRT2 - 2) * Math.min(dx, dy);
+}
+
 /** 限制值在范围内 */
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));

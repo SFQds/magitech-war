@@ -40,6 +40,8 @@ export class GameMap {
   private sightBlocker: boolean[][];
   /** 单位占用的瓦片（整数key=y*width+x），用于碰撞检测 */
   private occupiedUnitTiles: Set<number> = new Set();
+  /** 资源矿点格（非工人单位不可进入） */
+  private resourceTiles: Set<number> = new Set();
 
   /** 将 (x,y) 编码为整数 key */
   private encodeKey(x: number, y: number): number { return Math.round(y) * this.config.width + Math.round(x); }
@@ -115,6 +117,21 @@ export class GameMap {
     this.occupiedUnitTiles.delete(this.encodeKey(x, y));
   }
 
+  /** 注册资源矿点格（非工人单位不可进入此格） */
+  registerResourceTile(x: number, y: number): void {
+    this.resourceTiles.add(this.encodeKey(x, y));
+  }
+
+  /** 注销资源矿点格（矿枯竭移除时） */
+  unregisterResourceTile(x: number, y: number): void {
+    this.resourceTiles.delete(this.encodeKey(x, y));
+  }
+
+  /** 是否为资源矿点格 */
+  isResourceTile(x: number, y: number): boolean {
+    return this.resourceTiles.has(this.encodeKey(x, y));
+  }
+
   /** 是否遮挡视野 */
   blocksSight(x: number, y: number): boolean {
     if (!this.inBounds(x, y)) return true;
@@ -170,6 +187,35 @@ export class GameMap {
         }
       }
     }
+    return null;
+  }
+
+  /**
+   * 为采集工人寻找终点 tile：从资源点的 8 邻格中选一个可通过且未被单位占用的格。
+   *
+   * P2-采矿散开 修复：派发采集命令时改用此 tile 作为寻路终点，避免多个工人
+   * 都被引向矿点本身、后到者到点被散开到离矿点很远的旁格（曼哈顿 >1.5 进不了采集状态）。
+   * 放让先到者占一格、后到者自然落别的相邻空格。若 8 邻格全被占则回退到矿点 tile，
+   * 由 MovementSystem 的散开兜底处理。
+   *
+   * @param fieldX 资源点 tile 坐标
+   * @param fieldY 资源点 tile 坐标
+   * @returns 选中的终点 tile；若邻格全不可通行回退为 (fieldX, fieldY)
+   */
+  findGatherApproachTile(fieldX: number, fieldY: number): { x: number; y: number } | null {
+    // 8 邻格，正交(上下左右)优先，距离资源点曼哈顿=1，可保证到点 dist≤1.5 切采集
+    const offsets: Array<{ dx: number; dy: number }> = [
+      { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 },
+      { dx: 1, dy: -1 }, { dx: 1, dy: 1 }, { dx: -1, dy: 1 }, { dx: -1, dy: -1 },
+    ];
+    for (const o of offsets) {
+      const tx = fieldX + o.dx;
+      const ty = fieldY + o.dy;
+      if (this.isPassableWithUnits(tx, ty)) {
+        return { x: tx, y: ty };
+      }
+    }
+    // 邻格全占满：回退矿点 tile 本身（散开兜底处理）
     return null;
   }
 }

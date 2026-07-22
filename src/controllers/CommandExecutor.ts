@@ -10,11 +10,12 @@ import type { GameWorld } from '../core/GameWorld';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { UnitSpawner } from './UnitSpawner';
 import { Building } from '../entities/Building';
+import type { Unit } from '../entities/Unit';
 import { MovementSystem } from '../systems/MovementSystem';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
-import { UNIT_DEFS, TECH_DEFS, getBuildingCost, getFactionBonuses, createBuilding } from '../config/unitData';
+import { UNIT_DEFS, TECH_DEFS, BUILDING_DEFS, getBuildingCost, getFactionBonuses, createBuilding, getUnitCostWithFaction } from '../config/unitData';
 import { HERO_DEFS } from '../config/heroData';
 
 /** 命令执行结果 */
@@ -68,17 +69,33 @@ export class CommandExecutor {
   private execTrain(cmd: TrainCommand): CommandResult {
     const bld = this.entities.getBuilding(cmd.buildingId);
     if (!bld || bld.owner !== cmd.playerIndex) return fail('建筑不存在');
+    if (bld.state === 'constructing') return fail('建筑尚未完工');
     if (!bld.canEnqueue()) return fail('训练队列已满');
+    // P0-C1: researching 状态禁止训练，避免 startProduction 覆盖 state 致研究冻结不退款
+    // P1-CC 修复：CC 可同时训练工兵/英雄和研究（CC 是唯一工兵产地，阻塞会经济雪崩）
+    const isCC = bld.spriteKey === 'bld_cc_empire' || bld.spriteKey === 'bld_cc_federation';
+    if (bld.state === 'researching' && !isCC) return fail('建筑正在研究中');
+    const playerState = this.world.players[cmd.playerIndex];
+    const faction = playerState?.faction;
+    const guilds = playerState?.guilds;
 
-    // P1-1 修复：英雄唯一性检查（每阵营同英雄只能存在1个）
-    if (cmd.unitDefId.startsWith('hero:')) {
+    // P1-1 fix: hero uniqueness check (one of each hero per player)
+    if (cmd.unitDefId.startsWith('hero_')) {
       const heroExists = this.entities.aliveUnits.some(
-        u => u.owner === cmd.playerIndex && u.isAlive && u.spriteKey === cmd.unitDefId.replace(':', '_')
+        u => u.owner === cmd.playerIndex && u.isAlive && u.spriteKey === cmd.unitDefId
       );
       if (heroExists) return fail('已有同名英雄');
+      // P1-H1: hero must match player faction (prevent cross-faction hero training)
+      const heroDef = HERO_DEFS[cmd.unitDefId];
+      if (heroDef && heroDef.faction && heroDef.faction !== faction) {
+        return fail('hero faction mismatch');
+      }
     }
 
-    const cost = UNIT_COSTS[cmd.unitDefId];
+    // P1-D2: use getUnitCostWithFaction to apply favoredBy discount (faction + guild)
+    const cost = cmd.unitDefId.startsWith('hero_')
+      ? UNIT_COSTS[cmd.unitDefId]
+      : getUnitCostWithFaction(cmd.unitDefId, faction, guilds) ?? UNIT_COSTS[cmd.unitDefId];
     if (!cost) return fail('未知单位');
     // 检查科技前置
     const unitDef = UNIT_DEFS[cmd.unitDefId];
@@ -87,6 +104,10 @@ export class CommandExecutor {
       for (const tid of unitDef.techReq) {
         if (!tt?.isResearched(tid)) return fail('科技未解锁');
       }
+    }
+    // P1-BUILD2: enforce exclusiveTo.faction - prevent cross-faction unit training.
+    if (unitDef?.exclusiveTo?.faction && unitDef.exclusiveTo.faction !== faction) {
+      return fail('exclusive faction mismatch');
     }
     if (!this.world.canAfford(cmd.playerIndex, { crystal: cost.crystal, supply: cost.supply })) return fail('资源不足');
 
@@ -100,13 +121,28 @@ export class CommandExecutor {
   }
 
   private execMove(cmd: MoveCommand): CommandResult {
-    for (const id of cmd.unitIds) {
-      const unit = this.entities.getUnit(id);
-      if (unit && unit.isAlive) {
-        MovementSystem.navigate(unit, cmd.target, this.world.map, cmd.playerIndex);
-        if (cmd.type === 'attack_move' && unit.targetEntityId) {
-          unit.state = 'pursuing';
-        }
+    // 多单位移动：给每个单位分配围绕 target 的独立终点格，避免叠在同一点
+    const units = cmd.unitIds
+      .map(id => this.entities.getUnit(id))
+      .filter(u => u && u.isAlive && u.owner === cmd.playerIndex) as Unit[];
+    const goals = units.length > 1
+      ? MovementSystem.assignGroupGoals(units, cmd.target, this.world.map)
+      : null;
+
+    for (const unit of units) {
+      const goal = goals ? (goals.get(unit.id) ?? cmd.target) : cmd.target;
+      MovementSystem.navigate(unit, goal, this.world.map, cmd.playerIndex);
+      // P1-D5: align with player right-click - clear gather slot on move command
+      if (unit.state === 'gathering' && unit.targetResourceId) {
+        const oldField = this.entities.getField(unit.targetResourceId);
+        if (oldField && oldField.currentGatherers > 0) oldField.currentGatherers--;
+        unit.targetResourceId = null;
+        unit.state = 'idle';
+      }
+      // P1-S1f: attack_move clears attack target but keeps new move target;
+      // gather slot already cleared above, so no residual targetResourceId
+      if (cmd.type === 'attack_move' && unit.targetEntityId) {
+        unit.state = 'pursuing';
       }
     }
     return ok();
@@ -115,7 +151,15 @@ export class CommandExecutor {
   private execAttackTarget(cmd: AttackCommand): CommandResult {
     for (const id of cmd.unitIds) {
       const unit = this.entities.getUnit(id);
-      if (unit && unit.isAlive) {
+      // P1-D7: ownership check
+      if (unit && unit.isAlive && unit.owner === cmd.playerIndex) {
+        // P1-S1d: clear path and release gather slot before attacking
+        unit.clearPath();
+        if (unit.state === 'gathering' && unit.targetResourceId) {
+          const oldField = this.entities.getField(unit.targetResourceId);
+          if (oldField && oldField.currentGatherers > 0) oldField.currentGatherers--;
+          unit.targetResourceId = null;
+        }
         unit.attackTarget(cmd.targetEntityId);
       }
     }
@@ -133,18 +177,29 @@ export class CommandExecutor {
     if (!aiCC) return fail('没有指挥中心');
 
     // 尝试多个候选位置（避开已有建筑）
+    // P2-D6: deploy command uses cmd.position; AI build falls back to CC-anchored search
     let safePos: { x: number; y: number } | null = null;
-    for (let radius = 5; radius <= 20; radius += 3) {
+    if ((cmd as any).type === 'deploy' && cmd.position && (cmd.position.x !== 0 || cmd.position.y !== 0)) {
+      const p = this.world.map.findNearbyPassable(cmd.position.x, cmd.position.y, 3);
+      if (p && !this.entities.hasBuildingAt(p.x, p.y)) safePos = p;
+    }
+    if (!safePos) {
+      for (let radius = 5; radius <= 20; radius += 3) {
       const pos = this.world.map.findNearbyPassable(aiCC.tileX + 4, aiCC.tileY + 4, radius);
       if (pos && !this.entities.hasBuildingAt(pos.x, pos.y)) {
         safePos = pos;
         break;
       }
     }
+        }
     if (!safePos) return fail('没有合适的建造位置');
 
     this.world.spend(cmd.playerIndex, { crystal: cost.crystal, industry: cost.industry });
     const bld = createBuilding(cmd.playerIndex, aiFaction, cmd.buildingDefId, safePos.x, safePos.y);
+    // P1-AI20 修复：AI 建筑不再瞬间完工，改为模拟建造时间（无需工人，但有时间成本）
+    bld.state = 'constructing';
+    bld.buildProgress = 0;
+    bld._aiBuildTime = cost.time > 0 ? cost.time : 10;
     this.applyTechToBuilding(bld);
     this.addBuilding(bld);
     return ok();
@@ -156,8 +211,14 @@ export class CommandExecutor {
       if (unit && unit.isAlive && cmd.resourceFieldId) {
         const field = this.entities.getField(cmd.resourceFieldId);
         if (field && field.isActive && !field.isDepleted) {
-          field.currentGatherers++;
-          unit.state = 'gathering';
+          // P0-A2 修复：换矿前先递减旧矿 currentGatherers，避免幽灵采集位膨胀
+          if (unit.state === 'gathering' && unit.targetResourceId) {
+            const oldField = this.entities.getField(unit.targetResourceId);
+            if (oldField && oldField.currentGatherers > 0) oldField.currentGatherers--;
+          }
+          // P1-S1e: stop attacking before gathering, clear stale targetEntityId
+          unit.stopAttacking();
+          // 工人直接走向矿点格（工人可与矿点重叠，多工人可同格采集）
           unit.targetResourceId = field.id;
           unit.gatherTimer = 0;
           MovementSystem.navigate(unit, { x: field.tileX, y: field.tileY }, this.world.map, cmd.playerIndex);
@@ -173,17 +234,23 @@ export class CommandExecutor {
 
     const tech = TECH_DEFS[cmd.techDefId];
     if (!tech) return fail('未知科技');
-    // 检查科技前置条件
-    if (tech.prerequisites) {
-      const tt = this.world.techTrees.get(cmd.playerIndex);
-      for (const pid of tech.prerequisites) {
-        if (!tt?.isResearched(pid)) return fail('前置科技未研究');
-      }
-    }
+    // P2-C4: use TechTreeSystem.canResearch instead of inline prereq check
+    const tt = this.world.techTrees.get(cmd.playerIndex);
+    if (tt && !tt.canResearch(cmd.techDefId, tech)) return fail('前置科技未研究或已研究');
     if (!this.world.canAfford(cmd.playerIndex, { crystal: tech.crystal })) return fail('水晶不足');
     if (this.world.techTrees.get(cmd.playerIndex)?.isResearched(cmd.techDefId)) return fail('科技已研究');
+    // P0-C3: cross-building same-tech check to prevent double crystal spend
+    const researchingElsewhere = this.entities.aliveBuildings.some(
+      b => b.owner === cmd.playerIndex && b.isAlive && b.id !== bld.id && b.researchingTechId === cmd.techDefId,
+    );
+    if (researchingElsewhere) return fail('该科技正在其他建筑研究');
     if (bld.researchingTechId) return fail('正在研究其他科技');
     if (bld.state !== 'idle') return fail('建筑忙碌中');
+    // P1-BUILD1: research must be in the building's researches whitelist (def.researches).
+    const bldDef = BUILDING_DEFS[bld.spriteKey];
+    if (bldDef && bldDef.researches && !bldDef.researches.includes(cmd.techDefId)) {
+      return fail('该建筑不能研究此科技');
+    }
 
     this.world.spend(cmd.playerIndex, { crystal: tech.crystal });
     bld.researchingTechId = cmd.techDefId;
@@ -243,6 +310,11 @@ export class CommandExecutor {
     for (const id of cmd.unitIds) {
       const unit = this.entities.getUnit(id);
       if (!unit || !unit.isAlive) continue;
+      // P0-A2 修复：停止/坚守命令会离开采集，递减旧矿 currentGatherers
+      if (unit.state === 'gathering' && unit.targetResourceId) {
+        const oldField = this.entities.getField(unit.targetResourceId);
+        if (oldField && oldField.currentGatherers > 0) oldField.currentGatherers--;
+      }
       unit.stopAttacking();
       unit.clearPath();
       unit.holdPosition = cmd.type === 'hold_position';
@@ -254,9 +326,8 @@ export class CommandExecutor {
     return ok();
   }
 
-  /** 使用技能命令桩（待英雄/行会 UI 完善后实现完整逻辑） */
-  private execAbility(cmd: AbilityCommand): CommandResult {
-    // Phase 2: 调用 HeroSystem.activateSkill 或 GuildSystem 主动技能
+  /** 使用技能命令桩（HUD 按钮绕过此处直接调 HeroSystem.activateSkill） */
+  private execAbility(_cmd: AbilityCommand): CommandResult {
     return fail('技能系统暂未开放');
   }
 }

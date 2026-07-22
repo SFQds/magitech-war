@@ -134,6 +134,8 @@ export class StrategyManager {
     // 时间兜底推进（原 /diffMult 错误导致 hard 停留更久，已修正为 *diffMult）
     if (this.elapsed > 90 * diffMult && !hasProduction) return 'early';
     if (this.elapsed > 180 * diffMult && hasProduction && combatCount < Math.round(6 * diffMult)) return 'mid';
-    return 'late';
+    // P1-AI1: fallthrough must not jump to late when combatCount < mid threshold.
+    // Keep current phase instead of forcing late (was always returning 'late').
+    return this.currentPhase;
   }
 }

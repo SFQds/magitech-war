@@ -41,7 +41,9 @@ class EventBusImpl {
       return;
     }
     this.emitDepth++;
-    for (const cb of callbacks) {
+    // P1-EVT1: snapshot callbacks to avoid Set iterator invalidation when a handler calls on/off/offAll during iteration.
+    const snapshot = Array.from(callbacks);
+    for (const cb of snapshot) {
       try {
         cb(data);
       } catch (e) {

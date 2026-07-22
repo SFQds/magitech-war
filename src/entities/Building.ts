@@ -25,8 +25,12 @@ export class Building extends Entity {
   researchTotalTime: number = 0;
   /** 建造该建筑的工人 ID（建造期间锁定） */
   builderId: string | null = null;
+  /** P1-FOG1: building sight radius for fog of war contribution (default 6) */
+  sight: number = 6;
   /** 英雄光环等临时 buff 带来的生产速度加成（0=无加成） */
   productionSpeedBonus: number = 0;
+  /** P1-AI20: AI 建筑模拟建造时间（>0 时由 stepConstructionResearch 推进） */
+  _aiBuildTime: number = 0;
 
   // ===== 防御建筑战斗属性 =====
   attackDamage: number = 0;
@@ -63,7 +67,8 @@ export class Building extends Entity {
   /** 添加生产队列项 */
   enqueueProduction(item: ProductionItem): void {
     this.productionQueue.push(item);
-    if (this.state !== 'producing') {
+    // P1-CC 修复：CC 研究中也可训练单位，不覆盖 researching 状态
+    if (this.state !== 'producing' && this.state !== 'researching') {
       this.state = 'producing';
     }
   }
@@ -89,7 +94,8 @@ export class Building extends Entity {
     return null;
   }
 
-  /** 取消生产队列 — P1-12 修复：返回被取消项的 unitDefId 供调用方计算退款 */
+  /** 取消生产队列 — P1-12 修复：返回被取消项的 unitDefId 供调用方计算退款
+   *  P2-C2 标注：方法已实现但当前无调用方，待训练取消 UI 接入后调用，暂保留。 */
   cancelProduction(index: number): string | null {
     if (index >= 0 && index < this.productionQueue.length) {
       const item = this.productionQueue.splice(index, 1)[0];
@@ -104,8 +110,9 @@ export class Building extends Entity {
     return null;
   }
 
-  /** 是否可添加更多生产队列 */
+  /** 是否可添加更多生产队列（建造完成后才允许） */
   canEnqueue(): boolean {
+    if (this.state === 'constructing') return false;
     return this.productionQueue.length < this.maxQueueSize;
   }
 }

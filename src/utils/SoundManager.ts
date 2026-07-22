@@ -41,6 +41,10 @@ export class SoundManager {
     src.buffer = buf;
     src.connect(gain);
     gain.connect(SoundManager.ctx.destination);
+    // P4-C7: disconnect nodes on end to avoid Web Audio node accumulation
+    src.onended = () => {
+      try { src.disconnect(); gain.disconnect(); } catch (e) { /* already disconnected */ }
+    };
     src.start();
   }
 
@@ -56,6 +60,7 @@ export class SoundManager {
     SoundManager._genAttack();
     SoundManager._genProduce();
     SoundManager._genDeath();
+    SoundManager._genHeroDeath();
     SoundManager._genVictory();
     SoundManager._genDefeat();
   }
@@ -156,6 +161,30 @@ export class SoundManager {
       data[i] = (Math.sin(2 * Math.PI * Math.max(40, freq) * t) * 0.35 + noise[i] * 0.3) * env;
     }
     SoundManager.buffers.set('death', buf);
+  }
+
+  /** 英雄阵亡音效 — 低沉下坠 + 低音轰 + 噪声，≈0.7s */
+  private static _genHeroDeath(): void {
+    const ctx = SoundManager.ctx!;
+    const sr = ctx.sampleRate;
+    const dur = 0.7;
+    const len = Math.floor(dur * sr);
+    const buf = ctx.createBuffer(1, len, sr);
+    const data = buf.getChannelData(0);
+    const noise = SoundManager._noise(dur, sr);
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      const env = Math.exp(-t * 4.5);
+      // 主音：深频率下坠（250→25 Hz），比普通 death（300→40 Hz）更厚重
+      const freq = 250 - t * 320;
+      const main = Math.sin(2 * Math.PI * Math.max(25, freq) * t) * 0.4;
+      // 低频轰鸣（50Hz 持续 0.35s 后衰减）
+      const subEnv = t < 0.35 ? 1 : Math.exp(-(t - 0.35) * 8);
+      const sub = Math.sin(2 * Math.PI * 48 * t) * 0.28 * subEnv;
+      const hiss = noise[i] * 0.22;
+      data[i] = (main + sub + hiss) * env;
+    }
+    SoundManager.buffers.set('heroDeath', buf);
   }
 
   private static _genVictory(): void {

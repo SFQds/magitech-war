@@ -68,10 +68,15 @@ export class HUDScene extends Phaser.Scene {
     this._eventHandlers.push({ event, handler });
   }
 
-  /** 每帧刷新进度条 */
+  /** 每帧刷新进度条 + 小地图 */
   update(): void {
     if ((this.game.loop.frame % 8) === 0) {
       this.updateProductionQueueUI();
+    }
+    // P1-质疑19 修复：小地图每帧更新（单位移动/相机平移需要实时反映）
+    if (this.minimap) {
+      const gs = this.scene.get('GameScene') as any;
+      this.minimap.update(gs?.units ?? [], gs?.buildings ?? [], 0);
     }
   }
 
@@ -156,17 +161,21 @@ export class HUDScene extends Phaser.Scene {
       if (!bld) { this.commandCard.clear(); return; }
       const def = BUILDING_DEFS[bld.spriteKey];
       const btns: any[] = [];
-      if (def?.produces) {
+      // 建造中的建筑不显示训练/研究按钮
+      if (bld.state !== 'constructing' && def?.produces) {
         const gs2 = this.scene.get('GameScene') as any;
+        const playerFaction = gs2.world?.players?.[0]?.faction;
         for (const uid of def.produces) {
           const ud = UNIT_DEFS[uid];
+          // 跳过阵营专属兵种（非本阵营不显示按钮）
+          if (ud?.exclusiveTo?.faction && ud.exclusiveTo.faction !== playerFaction) continue;
           const techsMet = !ud?.techReq?.length || ud.techReq.every((tid: string) => gs2.getTechTree?.(0)?.isResearched(tid));
           const label = techsMet ? getDisplayName(uid) : `${getDisplayName(uid)} 🔒`;
           const callback = techsMet ? () => this.issueTrainCommand(bld.id, uid) : () => this.showToast('科技未解锁');
           btns.push({ label, cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback, disabled: !techsMet });
         }
       }
-      if (def?.researches) {
+      if (bld.state !== 'constructing' && def?.researches) {
         const gs2 = this.scene.get('GameScene') as any;
         const techTree = gs2.getTechTree?.(0);
         for (const tid of def.researches) {

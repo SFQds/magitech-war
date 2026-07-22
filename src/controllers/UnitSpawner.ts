@@ -52,7 +52,7 @@ export class UnitSpawner {
     const faction = this.getFaction(owner);
 
     // 英雄
-    if (unitDefId.startsWith('hero:')) {
+    if (unitDefId.startsWith('hero_')) {
       const hero = HeroSystem.trainHero(unitDefId, owner, faction, sx, sy);
       if (hero) {
         this.onAddUnit(hero);
@@ -116,8 +116,10 @@ const unit = new Unit(owner, factionId as any, ux, uy, s.hp, s.armor, s.category
               s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
             unit.armor = s.armorValue ?? 0;
             unit.baseArmor = s.armorValue ?? 0;
-            // 设置补给消耗（死亡时退还）
-            unit.supplyCost = def.cost.supply ?? 0;
+            // P0-A13 修复：起始单位不扣 supply（spawnFactionStartingUnits 无 world 引用无法 spend），
+            // 设 supplyCost=0 与 freeSpawn 一致，死亡时不退款，避免"未支付却退款"导致 supply 被错扣。
+            // 起始 CC provides 50 supply 足够覆盖开局单位，不需要起始单位占 supply。
+            unit.supplyCost = 0;
             // 奥术守卫初始护盾
             if (unitDefId === 'unit_arcane_guard') {
               unit.shieldHp = 200; unit.maxShieldHp = 200;

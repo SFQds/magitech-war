@@ -8,9 +8,14 @@ import type { PlayerState } from '../types/entity';
 import { Unit } from '../entities/Unit';
 import { ResourceField } from '../entities/ResourceField';
 import { Building } from '../entities/Building';
-
-/** 水晶存储上限 */
-const MAX_CRYSTAL = 20000;
+import {
+  MAX_CRYSTAL,
+  GATHER_BASE_AMOUNT,
+  GATHER_NO_REFINERY_CAP,
+  GATHER_TICK_INTERVAL,
+  INDUSTRY_REGEN_BASE,
+  INDUSTRY_REGEN_PER_OUTPUT,
+} from '../config/balance';
 
 export interface GatherEvent {
   workerId: string;
@@ -24,7 +29,7 @@ export class ResourceSystem {
   static gather(worker: Unit, field: ResourceField): number {
     if (!field.isActive || field.isDepleted) return 0;
     // 允许超出 maxGatherers 的情况（已到场的已通过 GameScene 检查）
-    const gathered = field.gather(10); // 基础采集速率：10/次
+    const gathered = field.gather(GATHER_BASE_AMOUNT); // 基础采集速率
     return gathered;
   }
 
@@ -68,6 +73,9 @@ export class ResourceSystem {
 
       const field = fieldMap.get(unit.targetResourceId);
       if (!field || !field.isActive || field.isDepleted) {
+        // P0-A3 修复：矿耗尽时其余工人复位 idle 也要递减 currentGatherers，
+        // 否则幽灵采集位永久残留（只有触发耗尽的那 1 个工人在 line 107 递减）
+        if (field && field.currentGatherers > 0) field.currentGatherers--;
         unit.targetResourceId = null;
         unit.state = 'idle';
         continue;
@@ -75,14 +83,16 @@ export class ResourceSystem {
 
       // 累积采集计时
       unit.gatherTimer += deltaSec;
-      if (unit.gatherTimer >= 1.0) {
-        unit.gatherTimer -= 1.0;
+      if (unit.gatherTimer >= GATHER_TICK_INTERVAL) {
+        unit.gatherTimer -= GATHER_TICK_INTERVAL;
 
         const amount = ResourceSystem.gather(unit, field);
         const hasRefinery = unit.owner === 0 ? hasRefineryP0 : hasRefineryP1;
-        let gathered = hasRefinery ? amount : 3;
-        // 无采矿场时只采集 3，退还矿场 7
-        if (!hasRefinery) {
+        // P0-A1 修复：无精炼厂时最多采 3，但不能超过实际采集量 amount，
+        // 否则 amount - gathered 为负会回填负数把 field.amount 推到 -1/-2
+        let gathered = hasRefinery ? amount : Math.min(GATHER_NO_REFINERY_CAP, amount);
+        // 无采矿场时只采集 3，退还矿场多余部分（amount - gathered >= 0）
+        if (!hasRefinery && amount > gathered) {
           field.amount += (amount - gathered);
         }
 
@@ -139,7 +149,7 @@ export class ResourceSystem {
       // 仅在 cap 上升时允许 industry 跟随增长（初始化/建新建筑场景）
       // 工业值保持在 [0, industryCap] 之间但不强制截断已超出的部分
       if (deltaSec > 0) {
-        const regenRate = 0.5 + totalIndustry * 0.03;
+        const regenRate = INDUSTRY_REGEN_BASE + totalIndustry * INDUSTRY_REGEN_PER_OUTPUT;
         // 仅当当前工业低于 cap 时再生，不强制截断超出部分
         if (player.resources.industry < totalIndustry) {
           player.resources.industry = Math.min(

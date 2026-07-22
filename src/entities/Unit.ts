@@ -42,6 +42,10 @@ export class Unit extends Entity {
   baseAttackDamage: number = 0;
   /** P1-R1 修复：铁皮药剂是否曾生效（被腐蚀覆盖时用于恢复护甲） */
   hadIronskin: boolean = false;
+  /** P0-C5 修复：追击路径连续失败计数（navigate 返回空路径累计），超阈值放弃追击避免永久卡死 */
+  pursueFailTimer: number = 0;
+  /** P1-C6 修复：追击路径重算计数器，定期刷新路径以跟踪移动目标 */
+  pursueRetickTimer: number = 0;
 
   // ===== 行会系统 — 炼金协会药剂效果 =====
   /** 炼金药剂 buff 计时器（秒），0=无效果 */
@@ -106,6 +110,39 @@ export class Unit extends Entity {
     if (this.state === 'moving' || this.state === 'pursuing') {
       this.state = 'idle';
     }
+  }
+
+  /**
+   * P1-S1: unified cleanup of combat/gather dirty state.
+   * Used on revive, cargo load/unload, and state transitions to avoid
+   * residual targetEntityId/targetResourceId/aiLockedAction/holdPosition/buff timers.
+   */
+  resetCombatState(releaseGatherSlot?: () => void): void {
+    this.targetEntityId = null;
+    if (this.targetResourceId) {
+      if (releaseGatherSlot) releaseGatherSlot();
+      this.targetResourceId = null;
+    }
+    this.clearPath();
+    this.state = 'idle';
+    this.attackTimer = 0;
+    this.aiLockedAction = null;
+    this.holdPosition = false;
+    this.unloadTarget = null;
+    this.pursueFailTimer = 0;
+    this.pursueRetickTimer = 0;
+    // P1-F5 修复：清除充能打击/行会buff残留，避免复活/装车后攻击力错乱
+    if (this.baseAttackDamage > 0) {
+      this.attackDamage = this.baseAttackDamage;
+      this.baseAttackDamage = 0;
+    }
+    this._chargeStrikeUses = 0;
+    this.abilityCharges = 0;
+    this.alchemyBuffTimer = 0;
+    this.alchemyBuffType = 'none';
+    this.alchemyBuffValue = 0;
+    this.isVoidOvercharged = false;
+    this.voidOverloadTimer = 0;
   }
 
   /** 选择攻击目标 */

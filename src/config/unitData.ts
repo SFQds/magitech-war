@@ -123,19 +123,14 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     stats: { hp: 250, armor: 'mechanical', armorValue: 5, category: 'vehicle', speed: 3.5, damage: 0, dmgType: 'physical', range: 0, cooldown: 0, sight: 6 },
     attackEffect: 'melee',
   },
-  unit_basic_turret: {
-    displayName: '基础炮塔',
-    tier: 'L1',
-    cost: { crystal: 400, supply: 1, time: 20 },
-    stats: { hp: 400, armor: 'structure', armorValue: 8, category: 'vehicle', speed: 0, damage: 25, dmgType: 'physical', range: 6, cooldown: 1.2, sight: 6 },
-    attackEffect: 'proj_bullet',
-  },
+  // P2-D1: removed unit_basic_turret (orphan unit, never produced - bld_turret is the defense tower)
   // === L3 专属兵种 ===
   unit_arcane_guard: {
     displayName: '奥术守卫',
     tier: 'L3',
     cost: { crystal: 500, supply: 3, time: 25 },
-    stats: { hp: 350, armor: 'shield', armorValue: 15, category: 'infantry', speed: 1.8, damage: 30, dmgType: 'magic', range: 1, cooldown: 1.2, sight: 5 },
+    // P2-D4: armor shield->heavy (shield takes +50% magic, self-counter for a magic unit; heavy takes +25%)
+    stats: { hp: 350, armor: 'heavy', armorValue: 15, category: 'infantry', speed: 1.8, damage: 30, dmgType: 'magic', range: 1, cooldown: 1.2, sight: 5 },
     attackEffect: 'melee',
     techReq: ['tech:arcane_legacy'],
     exclusiveTo: { faction: 'arcane_empire' },
@@ -178,8 +173,9 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     displayName: '帝国指挥中心',
     cost: { crystal: 0, industry: 0, time: 0 },
     hp: 2000,
-    provides: { supply: 50, industry: 50 },
-    produces: ['unit_worker', 'hero:isabelle'],
+    // P1-D10: industry 50->65 to match federation CC (reduce early-game economic asymmetry)
+    provides: { supply: 50, industry: 65 },
+    produces: ['unit_worker', 'hero_isabelle'],
     researches: ['tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_cc_federation: {
@@ -187,7 +183,7 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     cost: { crystal: 0, industry: 0, time: 0 },
     hp: 2000,
     provides: { supply: 50, industry: 65 },
-    produces: ['unit_worker', 'hero:marcus'],
+    produces: ['unit_worker', 'hero_marcus'],
     researches: ['tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_barracks: {
@@ -267,6 +263,26 @@ export function getBuildingCost(buildingDefId: string, factionId?: string) {
     providesSupply: def.provides.supply,
     providesIndustry: def.provides.industry,
   };
+}
+
+/** P1-D2: get unit cost with faction/guild favoredBy discount (favored faction or guild -20% crystal) */
+export function getUnitCostWithFaction(unitDefId: string, factionId?: string, guilds?: string[]) {
+  const def = UNIT_DEFS[unitDefId];
+  if (!def) return null;
+  let crystal = def.cost.crystal;
+  if (factionId && def.favoredBy && def.favoredBy.includes(factionId)) {
+    crystal = Math.round(crystal * 0.8);
+  }
+  // P1-RES3: guild favoredBy discount (void_institute / alchemists_society etc.)
+  if (guilds && guilds.length > 0 && def.favoredBy) {
+    for (const g of guilds) {
+      if (def.favoredBy.includes(g)) {
+        crystal = Math.round(crystal * 0.8);
+        break;
+      }
+    }
+  }
+  return { crystal, supply: def.cost.supply, time: def.cost.time };
 }
 
 /** 获取建筑可训练的单位列表 */
@@ -351,8 +367,9 @@ export const FACTION_DEFS: Record<string, FactionDefData> = {
     econPassive: '研究速度 +15%',
     milPassive: '魔法伤害 +10%',
     startingCrystal: 2000,
-    startingIndustry: 50,
-    startingUnits: [['unit_worker', 3], ['unit_arcane_guard', 1]],
+    // P1-D10: startingIndustry 50->65 to match federation
+    startingIndustry: 65,
+    startingUnits: [['unit_worker', 3], ['unit_rifleman', 1]],
     bonuses: {
       buildCostMult: 1.0,
       productionSpeedMult: 0.95,
@@ -365,7 +382,7 @@ export const FACTION_DEFS: Record<string, FactionDefData> = {
     econPassive: '建筑造价 -20%',
     milPassive: '生产速度 +15%',
     startingCrystal: 2000,
-    startingIndustry: 80,
+    startingIndustry: 65, // P1-RES2: unify with CC provides.industry=65
     startingUnits: [['unit_worker', 4], ['unit_rifleman', 2]],
     bonuses: {
       buildCostMult: 0.80,

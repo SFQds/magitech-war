@@ -13,9 +13,10 @@ import { CombatSystem } from '../systems/CombatSystem';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { GuildSystem } from '../systems/GuildSystem';
+import { ALCHEMY_POTIONS } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
-import { BUILDING_DEFS, UNIT_DEFS, TECH_DEFS } from '../config/unitData';
+import { BUILDING_DEFS, UNIT_DEFS, TECH_DEFS, getUnitCostWithFaction } from '../config/unitData';
 import { HERO_DEFS } from '../config/heroData';
 import { Hero } from '../entities/Hero';
 import { EntityRegistry } from '../core/EntityRegistry';
@@ -125,6 +126,15 @@ export class GameScene extends Phaser.Scene {
   private flashTimers = new Map<string, number>();  // 单位→剩余闪光秒数
   private attackMoveMode = false;
   private _soundDispose: (() => void) | null = null;
+  // P0-B1: 炼金药剂轮换索引（Q 键循环 4 种药剂）
+  private _potionIndex = 0;
+  /** P0-C6 修复：炼金药剂全局 cooldown 截止时间（ms），避免多选连按秒空水晶 */
+  private _potionCooldownUntil = 0;
+  private _voidCooldownUntil = 0;
+  /** P1-FOG2: fog update tick counter for throttling (every 4 frames) */
+  private _fogTick = 0;
+  // P1-D8: SHIFT key reference for additive selection
+  private shiftKey: Phaser.Input.Keyboard.Key | null = null;
 
   // 建造系统
   private buildController!: BuildController;
@@ -190,10 +200,17 @@ export class GameScene extends Phaser.Scene {
     const playerCC = playerFaction === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
     const aiCC = aiFaction === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
 
-    // AI 行会：与玩家组合不同（优先选对立组合）
-    const aiGuilds = this._playerGuilds.includes('mages_guild')
-      ? ['mechanists_guild', 'alchemists_society']  // 机械+炼金 vs 法师+炼金
-      : ['mages_guild', 'alchemists_society'];
+    // P1-AI4: AI guild choice varies so void_institute is reachable.
+    const playerHasMages = this._playerGuilds.includes('mages_guild');
+    const playerHasVoid = this._playerGuilds.includes('void_institute');
+    let aiGuilds: string[];
+    if (this._aiDifficulty === 'hard' && !playerHasVoid) {
+      aiGuilds = ['void_institute', 'alchemists_society'];
+    } else if (playerHasMages) {
+      aiGuilds = ['mechanists_guild', 'alchemists_society'];
+    } else {
+      aiGuilds = ['mages_guild', 'alchemists_society'];
+    }
 
     this.world.addPlayer(playerFaction, [...this._playerGuilds], false);
     this.world.addPlayer(aiFaction, [...aiGuilds], true);
@@ -218,8 +235,10 @@ export class GameScene extends Phaser.Scene {
       (b) => this.applyTechToBuilding(b),
       (b) => this.addBuilding(b),
     );
+    this.shiftKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT) ?? null;
     this.spriteRenderer = new SpriteRenderer(
       this.unitSprites, this.buildingSprites, this.flashTimers, this.hpBarRenderer,
+      this.world.fogOfWar, 0,
     );
     // 迷雾渲染器初始化
     this.fogRenderer = new FogRenderer(this);
@@ -283,7 +302,41 @@ export class GameScene extends Phaser.Scene {
     this.setupSoundListeners();
 
     // 击杀奖励 XP → 英雄（保存引用以便 shutdown 精确移除）
-    this._onUnitKilled = (data: any) => { this.rewardHeroXp(data.killerId); };
+    this._onUnitKilled = (data: any) => {
+      // P1-C2 修复：建筑击杀走两条 XP 路径——此处 UNIT_KILLED→rewardHeroXp +20，
+      // cleanupDeadEntities→rewardHeroXpBuilding +50，同栋建筑击杀方拿 70 XP（双倍）。
+      // 此处跳过建筑（由 cleanup 的 rewardHeroXpBuilding 统一给 +50），仅单位击杀走 +20。
+      const victimUnit = this.entities.getUnit(data.unitId);
+      const victimBld = this.entities.getBuilding(data.unitId);
+      // P1-D5 修复：英雄被杀跳过基础 +20 XP，由下方 +100 统一奖励，避免双发 (+120)
+      if (!victimBld && !(victimUnit instanceof Hero)) {
+        this.rewardHeroXp(data.killerId);
+      }
+      // 若被害者是英雄，补充发射 HERO_DIED（供音效/HUD 消费）
+      // P2-H1: killing an enemy hero grants bonus XP (+100) to the killer side heroes.
+      if (victimUnit instanceof Hero && !victimBld && data.killerId) {
+        const heroKiller = this.entities.getUnit(data.killerId);
+        if (heroKiller) {
+          const allyHeroes = this.heroes.filter(h => h.owner === heroKiller.owner && h.isAlive);
+          for (const hero of allyHeroes) {
+            const leveled = hero.gainXp(100);
+            if (leveled) {
+              EventBus.emit(GameEvent.HERO_LEVELED, {
+                unitId: hero.id, heroId: hero.spriteKey, newLevel: hero.level, playerIndex: hero.owner,
+              });
+            }
+          }
+        }
+      }
+      if (victimUnit instanceof Hero) {
+        EventBus.emit(GameEvent.HERO_DIED, {
+          unitId: data.unitId,
+          heroId: victimUnit.spriteKey,
+          playerIndex: data.playerIndex ?? victimUnit.owner,
+          killerId: data.killerId ?? '',
+        });
+      }
+    };
     EventBus.on(GameEvent.UNIT_KILLED, this._onUnitKilled);
 
     // 注册 Phaser 场景关闭/销毁时的清理
@@ -344,6 +397,7 @@ export class GameScene extends Phaser.Scene {
 
   private removeUnit(id: string): void {
     this.entities.removeUnit(id);
+    this.flashTimers.delete(id); // P2-PERF1: clean flash timer to avoid dangling reference
     const sprite = this.unitSprites.get(id);
     if (sprite) { sprite.destroy(); this.unitSprites.delete(id); }
   }
@@ -375,6 +429,7 @@ export class GameScene extends Phaser.Scene {
 
   private addResourceField(field: ResourceField): void {
     this.entities.addField(field);
+    this.world.map.registerResourceTile(field.tileX, field.tileY);
     this.addResourceFieldSprite(field);
   }
 
@@ -427,7 +482,12 @@ export class GameScene extends Phaser.Scene {
         Math.round(u.tileX) === tile.x && Math.round(u.tileY) === tile.y
       );
       if (clickedUnit) {
-        this.inputCtrl.setSelection([clickedUnit.id]);
+        // P1-D8: Shift+click adds to selection (append), plain click replaces
+        if (this.shiftKey && this.input.keyboard?.checkDown(this.shiftKey)) {
+          this.inputCtrl.addToSelection([clickedUnit.id]);
+        } else {
+          this.inputCtrl.setSelection([clickedUnit.id]);
+        }
         this.updateSelectionHighlight();
         EventBus.emit(GameEvent.SELECTION_CHANGED, {
           unitIds: this.inputCtrl.getSelection(),
@@ -465,8 +525,12 @@ export class GameScene extends Phaser.Scene {
 
     // 框选
     this.inputCtrl.onSelection((box) => {
-      this.inputCtrl.clearSelection();
-      this.selectedBuildingId = null;
+      // P1-UI2: Shift+box-select appends to existing selection instead of replacing
+      const shiftDown = this.shiftKey && this.input.keyboard?.checkDown(this.shiftKey);
+      if (!shiftDown) {
+        this.inputCtrl.clearSelection();
+        this.selectedBuildingId = null;
+      }
       for (const unit of this.units) {
         if (unit.owner !== 0 || !unit.isAlive) continue;
         const w = tileToWorld(unit.tileX, unit.tileY);
@@ -491,17 +555,30 @@ export class GameScene extends Phaser.Scene {
       }
 
       const selection = this.inputCtrl.getSelection();
+      // P1-BUILD3: right-click with a building selected sets its rally point for produced units.
+      if (selection.length === 0 && this.selectedBuildingId) {
+        const bld = this.entities.getBuilding(this.selectedBuildingId);
+        if (bld && bld.owner === 0 && bld.isAlive) {
+          bld.rallyPoint = { x: tile.x, y: tile.y };
+        }
+        return;
+      }
       if (selection.length === 0) return;
 
       // 攻击移动模式：强制移动（自动索敌会处理沿途攻击）
       if (this.attackMoveMode) {
         this.attackMoveMode = false;
         EventBus.emit(GameEvent.ATTACK_MOVE_TOGGLE, { active: false });
-        for (const id of selection) {
-          const unit = this.entities.getUnit(id);
-          if (!unit || !unit.isAlive) continue;
+        const mvUnits = selection
+          .map(id => this.entities.getUnit(id))
+          .filter(u => u && u.isAlive) as Unit[];
+        const goals = mvUnits.length > 1
+          ? MovementSystem.assignGroupGoals(mvUnits, tile, this.world.map)
+          : null;
+        for (const unit of mvUnits) {
           unit.stopAttacking();
-          MovementSystem.navigate(unit, tile, this.world.map, 0);
+          const goal = goals ? (goals.get(unit.id) ?? tile) : tile;
+          MovementSystem.navigate(unit, goal, this.world.map, 0);
         }
         return;
       }
@@ -523,9 +600,27 @@ export class GameScene extends Phaser.Scene {
           )
         : null;
 
+      // 预计算移动命令的编队散开终点（仅纯移动单位需要）
+      const moveOnlyUnits: Unit[] = [];
       for (const id of selection) {
         const unit = this.entities.getUnit(id);
         if (!unit || !unit.isAlive) continue;
+        if (ownTransportAtTile && unit.category === 'infantry' && unit.id !== ownTransportAtTile.id) continue;
+        if (enemyAtTile) continue;
+        if (unit.spriteKey === 'unit_transport' && unit.cargo.length > 0 && selection.length === 1) continue;
+        if (fieldAtTile && unit.spriteKey === 'unit_worker') continue;
+        moveOnlyUnits.push(unit);
+      }
+      const moveGoals = moveOnlyUnits.length > 1
+        ? MovementSystem.assignGroupGoals(moveOnlyUnits, tile, this.world.map)
+        : null;
+
+      for (const id of selection) {
+        const unit = this.entities.getUnit(id);
+        if (!unit || !unit.isAlive) continue;
+        // P0-A2 补修：右键下达新命令时离开坚守状态（holdPosition 复位），
+        // 否则按过 H 的单位永久 holdPosition=true 永不自动索敌。
+        unit.holdPosition = false;
 
         // 运输卡车装载：选中步兵右键点击己方运输卡车
         if (ownTransportAtTile && unit.category === 'infantry' && unit.id !== ownTransportAtTile.id) {
@@ -534,9 +629,9 @@ export class GameScene extends Phaser.Scene {
             // 从地图上移除单位进入装载状态
             const sprite = this.unitSprites.get(unit.id);
             if (sprite) sprite.setAlpha(0);
+            unit.resetCombatState(() => this.releaseGatherSlot(unit));
             unit.isActive = false;
-            unit.state = 'idle';
-            unit.isCargo = true; // P0-NEW-1 修复：标记为 cargo 状态，防止 cleanup 误删
+            unit.isCargo = true;
           }
           continue;
         }
@@ -560,7 +655,7 @@ export class GameScene extends Phaser.Scene {
             MovementSystem.navigate(unit, tile, this.world.map, 0);
           }
         } else if (fieldAtTile && unit.spriteKey === 'unit_worker') {
-          // 工人采集 — 先走向资源田，到位后自动切换为采集
+          // 工人采集 - 直接走向矿点格（工人可与矿点重叠，多工人可同格采集）
           unit.stopAttacking();
           // P1-N2 修复：工人接到新命令时，若正在建造中则放弃建造（释放锁定+退款）
           if (unit.aiLockedAction === 'building') {
@@ -570,9 +665,12 @@ export class GameScene extends Phaser.Scene {
               (cost) => { this.world.refund(0, cost); },
             );
           }
+          // P0-A2 修复：换矿前先释放旧矿采集位
+          this.releaseGatherSlot(unit);
           unit.targetResourceId = fieldAtTile.id;
           unit.gatherTimer = 0;
-          MovementSystem.navigate(unit, tile, this.world.map, 0);
+          // 工人直接走向矿点 tile 本身，到点后由 stepMovement 的 dist<=1.5 切 gathering
+          MovementSystem.navigate(unit, { x: fieldAtTile.tileX, y: fieldAtTile.tileY }, this.world.map, 0);
         } else {
           // 移动命令：先清除攻击目标，再移动
           unit.stopAttacking();
@@ -584,7 +682,10 @@ export class GameScene extends Phaser.Scene {
               (cost) => { this.world.refund(0, cost); },
             );
           }
-          MovementSystem.navigate(unit, tile, this.world.map, 0);
+          // P0-A2 修复：移动命令会离开采集，释放旧矿采集位
+          this.releaseGatherSlot(unit);
+          const goal = moveGoals ? (moveGoals.get(unit.id) ?? tile) : tile;
+          MovementSystem.navigate(unit, goal, this.world.map, 0);
         }
       }
     });
@@ -596,20 +697,28 @@ export class GameScene extends Phaser.Scene {
       for (const id of this.inputCtrl.getSelection()) {
         const unit = this.entities.getUnit(id);
         if (unit && unit.isAlive) {
+          // P0-A2 修复：停止命令释放采集位
+          this.releaseGatherSlot(unit);
           unit.stopAttacking();
           unit.clearPath();
+          // P0-A2 补修：停止命令离开坚守状态（holdPosition 复位）
+          unit.holdPosition = false;
           unit.state = 'idle';
         }
       }
     });
 
-    // H: 坚守位置
+    // H: 坚守位置（与 S 停止区别：设 holdPosition=true，不主动寻路但可还击）
     this.input.keyboard!.on('keydown-H', () => {
       for (const id of this.inputCtrl.getSelection()) {
         const unit = this.entities.getUnit(id);
         if (unit && unit.isAlive) {
+          // P0-A2 修复：坚守命令释放采集位
+          this.releaseGatherSlot(unit);
           unit.stopAttacking();
           unit.clearPath();
+          unit.holdPosition = true;
+          unit.aiLockedAction = null;
           unit.state = 'idle';
         }
       }
@@ -661,6 +770,48 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
+    // P0-B1: Q key applies alchemy potion to selected units
+    // P0-C6 修复：多选施法只扣 1 次水晶（原来每单位各扣 1 次，N 选扣 N 倍可秒空水晶）。
+    // 加全局 cooldown（5 秒）避免连按。
+    this.input.keyboard!.on('keydown-Q', () => {
+      if (!this._playerGuilds.includes('alchemists_society')) return;
+      const sel = this.inputCtrl.getSelection();
+      if (sel.length === 0) return;
+      // P0-C6: 全局 cooldown 检查
+      const now = this.time.now;
+      if (now < (this._potionCooldownUntil ?? 0)) return;
+      this._potionIndex = (this._potionIndex + 1) % ALCHEMY_POTIONS.length;
+      const potion = ALCHEMY_POTIONS[this._potionIndex];
+      // 只 spend 1 次水晶，对选区内所有己方单位生效
+      if (!this.world.canAfford(0, { crystal: potion.crystalCost })) return;
+      this.world.spend(0, { crystal: potion.crystalCost });
+      for (const id of sel) {
+        const unit = this.entities.getUnit(id);
+        if (unit && unit.isAlive && unit.owner === 0) {
+          GuildSystem.applyAlchemyPotion(unit, potion);
+        }
+      }
+      this._potionCooldownUntil = now + 5000; // 5 秒全局 cooldown
+    });
+
+    // P0-B2: R key activates void overload on selected units
+    this.input.keyboard!.on('keydown-R', () => {
+      if (!this._playerGuilds.includes('void_institute')) return;
+      const sel = this.inputCtrl.getSelection();
+      const nowR = this.time.now;
+      if (nowR < (this._voidCooldownUntil ?? 0)) return;
+      if (sel.length === 0) return;
+      if (sel.length === 0) return;
+      const hasOpt = this.world.techTrees.get(0)?.isResearched('tech:production_line_optimized') ?? false;
+      for (const id of sel) {
+        const unit = this.entities.getUnit(id);
+        if (unit && unit.isAlive && unit.owner === 0) {
+          GuildSystem.activateVoidOverload(unit, hasOpt);
+        }
+      }
+      this._voidCooldownUntil = nowR + 8000; // 8s global cooldown
+    });
+
     // 滚轮缩放
     this.input.on('wheel', (_pointer: any, _gx: any, _gy: any, _gz: any, delta: any) => {
       if (delta && delta.y) this.cameraCtrl.zoomAt(delta.y);
@@ -691,6 +842,8 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this._gameOver) return;
+    // P1-C8: tab hidden = explicit pause (avoid rAF throttle causing inconsistent game time)
+    if (typeof document !== 'undefined' && document.hidden) return;
     // P0-1 修复：钳制 deltaSec，防止标签页回后台再切回时 delta 爆炸导致瞬移/一帧多结算
     const ds = Math.min(delta / 1000, 0.1); // 上限 100ms，超出视为卡顿/后台
 
@@ -723,6 +876,22 @@ export class GameScene extends Phaser.Scene {
 
   private stepCamera(): void {
     this.cameraCtrl.update(this.input.activePointer);
+  }
+
+  /**
+   * P0-A2 修复：释放工人的采集位。
+   * 工人离开 gathering 状态（换矿/移动/停止/死亡）时必须递减旧矿点 currentGatherers，
+   * 否则幽灵采集位单调膨胀（到点 +1 在 stepMovement 内，但换矿/移动从不递减旧矿）。
+   * 幂等：仅在 unit 正在 gathering 且有旧 targetResourceId 时递减。
+   */
+  private releaseGatherSlot(unit: Unit): void {
+    if (unit.state === 'gathering' && unit.targetResourceId) {
+      const oldField = this.entities.getField(unit.targetResourceId);
+      if (oldField && oldField.currentGatherers > 0) oldField.currentGatherers--;
+      // P1-A5: clear targetResourceId to prevent silent re-gather after STOP
+      unit.targetResourceId = null;
+      unit.state = 'idle';
+    }
   }
 
   private stepMovement(ds: number): void {
@@ -760,6 +929,8 @@ export class GameScene extends Phaser.Scene {
               // P0-NEW-1: 卸载成功才清除 cargo 标记并激活
               passenger.isCargo = false;
               passenger.isActive = true;
+              // P1-S1c: unload must reset combat/gather state, avoid following pre-load path
+              passenger.resetCombatState();
               const sp = this.unitSprites.get(passenger.id);
               if (sp) sp.setAlpha(1);
               // P1-R4: 即时更新占用，避免同帧后续单位叠放
@@ -778,6 +949,13 @@ export class GameScene extends Phaser.Scene {
           if (field && field.isActive && !field.isDepleted) {
             const dist = Math.abs(unit.tileX - field.tileX) + Math.abs(unit.tileY - field.tileY);
             if (dist <= 1.5) {
+              // P1-maxGatherers 修复：采集位已满时不再入场，工人保持 idle 等待空位
+              if (field.currentGatherers >= field.maxGatherers) {
+                unit.state = 'idle';
+                continue;
+              }
+              // P0-A2 修复：到点切 gathering 前先释放旧矿采集位，避免重复 +1
+              this.releaseGatherSlot(unit);
               unit.state = 'gathering';
               unit.gatherTimer = 0;
               field.currentGatherers++;
@@ -798,8 +976,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stepFogOfWar(): void {
+    this._fogTick++;
+    if (this._fogTick % 4 !== 0) return;
     // 直接传 units 引用（避免每帧 units.map() 新数组分配）
-    this.world.fogOfWar.update(this.units, 0);
+    this.world.fogOfWar.update(this.units, 0, this.buildings);
   }
 
   private stepCombat(ds: number): void {
@@ -821,7 +1001,7 @@ export class GameScene extends Phaser.Scene {
           const targetBld = this.entities.getBuilding(evt.targetId);
           const owner = targetUnit?.owner ?? targetBld?.owner ?? -1;
           EventBus.emit(GameEvent.UNIT_KILLED, {
-            unitId: evt.targetId, killerId: evt.attackerId, playerIndex: owner,
+            unitId: evt.targetId, killerId: evt.attackerId, playerIndex: owner, isBuilding: !!targetBld,
           });
         }
       } else {
@@ -833,17 +1013,18 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 为击杀者阵营的英雄分配 XP */
+  /** 为击杀者阵营的英雄分配 XP（P1-D4: 限制距离，仅击杀点附近 15 格内的英雄获得 XP） */
   private rewardHeroXp(killerId: string): void {
     const killer = this.entities.getUnit(killerId);
     if (!killer) return;
-    // 查找同阵营的存活英雄
     const allyHeroes = this.heroes.filter(
       h => h.owner === killer.owner && h.isAlive,
     );
     for (const hero of allyHeroes) {
-      // 单位击杀=20 XP，建筑=50 XP（由事件上下文判断）
-      const xpAmount = 20; // 默认单位击杀
+      // P1-D4: 超过 15 格的英雄不得 XP（防止蹲基地蹭经验）
+      const d = Math.abs(hero.tileX - killer.tileX) + Math.abs(hero.tileY - killer.tileY);
+      if (d > 15) continue;
+      const xpAmount = 20;
       const leveled = hero.gainXp(xpAmount);
       if (leveled) {
         EventBus.emit(GameEvent.HERO_LEVELED, {
@@ -894,21 +1075,31 @@ export class GameScene extends Phaser.Scene {
   private stepHeroRevive(): void {
     for (const hero of this.heroes) {
       if (!hero.isAlive && hero.reviveTimer === -1) {
+        // P0-D2 修复：CC 被毁后英雄无法复活。改为优先在 CC 复活，无 CC 则在任意己方存活建筑旁复活。
         const playerCC = this.entities.aliveBuildings.find(
+          b => b.owner === hero.owner && b.isAlive && (b.spriteKey === 'bld_cc_empire' || b.spriteKey === 'bld_cc_federation')
+        );
+        const anchor = playerCC ?? this.entities.aliveBuildings.find(
           b => b.owner === hero.owner && b.isAlive
         );
-        if (playerCC) {
+        if (anchor) {
           const spawnPos = this.world.map.findNearbyPassable(
-            playerCC.tileX + 1, playerCC.tileY + 2, 8
-          ) ?? { x: playerCC.tileX + 1, y: playerCC.tileY + 2 };
+            anchor.tileX + 1, anchor.tileY + 2, 8
+          ) ?? { x: anchor.tileX + 1, y: anchor.tileY + 2 };
           hero.reviveTimer = 0; // 0=存活
           hero.hp = hero.maxHp;
           hero.shieldHp = 0;
           hero.tileX = spawnPos.x;
           hero.tileY = spawnPos.y;
-          hero.clearPath();
-          hero.state = 'idle';
+          hero.resetCombatState();
+          hero.alchemyBuffTimer = 0;
+          hero.alchemyBuffType = 'none';
+          hero.isVoidOvercharged = false;
+          hero.voidOverloadTimer = 0;
           hero.isActive = true;
+          // P1-D12 修复：复活时给技能一个 15s 虚弱冷却，避免"死亡重置+复活即满技能"双免费窗口
+          hero.skillCooldowns = [15, 15, 15];
+          hero.skillCooldown = 15;
           const sprite = this.unitSprites.get(hero.id);
           if (sprite) sprite.setAlpha(0.9);
           EventBus.emit(GameEvent.HERO_REVIVED, { heroId: hero.id, playerIndex: hero.owner });
@@ -968,6 +1159,16 @@ export class GameScene extends Phaser.Scene {
         });
       },
     );
+    // P1-AI20: 推进 AI 建筑模拟建造进度
+    for (const bld of this.buildings) {
+      if (bld.state === 'constructing' && bld._aiBuildTime > 0) {
+        bld.buildProgress += ds / bld._aiBuildTime;
+        if (bld.buildProgress >= 1) {
+          bld.complete();
+          bld._aiBuildTime = 0;
+        }
+      }
+    }
     this.updateResearch(ds);
   }
 
@@ -1139,13 +1340,16 @@ export class GameScene extends Phaser.Scene {
         if (bld.state !== 'constructing') {
           this.rewardHeroXpBuilding(bld.owner);
         }
-        // 退还进行中的训练队列（兵营/工厂=训练建造者，它死了→生产过程失败）
+        // P0-退款修复：用入队时的折扣价退款（与 execTrain 一致），避免拆建筑刷水晶
         if (bld.productionQueue.length > 0 && player) {
+          const faction = this.world.players[bld.owner]?.faction;
+          const guilds = this.world.players[bld.owner]?.guilds;
           for (const item of bld.productionQueue) {
             const ud = UNIT_DEFS[item.unitDefId];
             const heroD = HERO_DEFS[item.unitDefId];
             if (ud) {
-              this.world.refund(bld.owner, { crystal: ud.cost.crystal, supply: ud.cost.supply ?? 1 });
+              const cost = getUnitCostWithFaction(item.unitDefId, faction, guilds) ?? ud.cost;
+              this.world.refund(bld.owner, { crystal: cost.crystal, supply: cost.supply });
             } else if (heroD) {
               this.world.refund(bld.owner, { crystal: heroD.cost.crystal, supply: heroD.cost.supply });
             }
@@ -1156,7 +1360,11 @@ export class GameScene extends Phaser.Scene {
         if (bld.researchingTechId && player) {
           const tech = TECH_DEFS[bld.researchingTechId];
           if (tech) {
-            this.world.refund(bld.owner, { crystal: tech.crystal });
+            const progress = Math.max(0, Math.min(1, bld.researchProgress));
+            const refundAmount = Math.floor(tech.crystal * (1 - progress));
+            if (refundAmount > 0) {
+              this.world.refund(bld.owner, { crystal: refundAmount });
+            }
           }
           bld.researchingTechId = null;
         }
@@ -1186,6 +1394,7 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.resourceFields.length - 1; i >= 0; i--) {
       const field = this.resourceFields[i];
       if (field.isDepleted || !field.isActive) {
+        this.world.map.unregisterResourceTile(field.tileX, field.tileY);
         this.entities.removeField(field.id);
         const sprite = this.resourceSprites.get(field.id);
         if (sprite) { sprite.destroy(); this.resourceSprites.delete(field.id); }
@@ -1213,14 +1422,17 @@ export class GameScene extends Phaser.Scene {
 
     const playerHasBld = aliveBuildings(0);
     const aiHasBld = aliveBuildings(1);
+    // P1-C5: also check worker to avoid deadlock when buildings lost but worker hides
+    const playerHasWorker = this.units.some(u => u.owner === 0 && u.isAlive && u.spriteKey === 'unit_worker');
+    const aiHasWorker = this.units.some(u => u.owner === 1 && u.isAlive && u.spriteKey === 'unit_worker');
 
     // P1-5：建筑存在即立刻清零宽限计时；建筑不存在则（由 stepTimer 推进累计）
     if (playerHasBld) this._graceTimers[0] = 0;
     if (aiHasBld) this._graceTimers[1] = 0;
 
     // 任一方宽限期满才判歼灭
-    const playerExpired = !playerHasBld && this._graceTimers[0] >= GameScene.GRACE_LIMIT;
-    const aiExpired = !aiHasBld && this._graceTimers[1] >= GameScene.GRACE_LIMIT;
+    const playerExpired = !playerHasBld && !playerHasWorker && this._graceTimers[0] >= GameScene.GRACE_LIMIT;
+    const aiExpired = !aiHasBld && !aiHasWorker && this._graceTimers[1] >= GameScene.GRACE_LIMIT;
 
     if (playerExpired || aiExpired) {
       this._gameOver = true;
@@ -1232,8 +1444,7 @@ export class GameScene extends Phaser.Scene {
       this.add.text(1280 / 2, 720 / 2 - 20, text, {
         fontSize: '32px', color, backgroundColor: '#1a1a2ecc',
         padding: { x: 24, y: 12 },
-      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
-      return;
+      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);      this.addRestartButton();      return;
     }
 
     // 30分钟限时胜利（按分数）
@@ -1249,9 +1460,18 @@ export class GameScene extends Phaser.Scene {
       this.add.text(1280 / 2, 720 / 2 - 20, resultText + scoreText, {
         fontSize: '28px', color: winner === 0 ? '#ffd700' : '#ff6644',
         backgroundColor: '#1a1a2ecc', padding: { x: 24, y: 12 },
-        align: 'center',
-      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
-    }
+        align: 'center',      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);      this.addRestartButton();    }
+  }
+
+  /** P1-C7: 游戏结束后显示重开按钮 */
+  private addRestartButton(): void {
+    const btn = this.add.text(1280 / 2, 720 / 2 + 60, '🔄 再来一局', {
+      fontSize: '24px', color: '#ffffff', backgroundColor: '#2a5a2acc',
+      padding: { x: 20, y: 10 },
+    }).setOrigin(0.5).setDepth(201).setScrollFactor(0).setInteractive({ useHandCursor: true });
+    btn.on('pointerdown', () => { this.scene.start('MenuScene'); });
+    btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#3a7a3acc' }));
+    btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#2a5a2acc' }));
   }
 
   /** 计算玩家分数（用于限时判定） */
@@ -1328,6 +1548,10 @@ export class GameScene extends Phaser.Scene {
     if (this._onUnitKilled) {
       EventBus.off(GameEvent.UNIT_KILLED, this._onUnitKilled);
       this._onUnitKilled = null;
+    }
+    // P1-质疑30 修复：停止 HUDScene 以清理其 EventBus 监听器，防止重启后旧监听器残留
+    if (this.scene.isActive('HUDScene')) {
+      this.scene.stop('HUDScene');
     }
     this.entities.clear();
   }

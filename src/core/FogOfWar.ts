@@ -54,7 +54,7 @@ export class FogOfWar {
   }
 
   /** 每帧调用：将上一帧可见瓦片重置为 Explored，然后照亮当前视野 */
-  update(units: readonly FogUnitView[], playerIndex: number): void {
+  update(units: readonly FogUnitView[], playerIndex: number, buildings?: readonly FogUnitView[]): void {
     this.changedKeys = [];
 
     // O(prevVisible) 只重置上一帧被照亮的瓦片
@@ -67,6 +67,13 @@ export class FogOfWar {
     }
     this.prevVisibleKeys = [];
 
+    // P1-FOG1: buildings contribute vision (default sight 6) in addition to units.
+    if (buildings) {
+      for (const b of buildings) {
+        if (b.owner !== playerIndex) continue;
+        this.revealCircle(b.tileX, b.tileY, b.sight);
+      }
+    }
     // 根据友方单位视野照亮
     for (const unit of units) {
       if (unit.owner !== playerIndex) continue;

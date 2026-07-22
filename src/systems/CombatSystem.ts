@@ -21,6 +21,7 @@ const DAMAGE_MATRIX: Record<DamageType, Record<ArmorType, number>> = {
   physical:  { light: 1.0, heavy: 0.75, shield: 1.0,  bio: 1.0, structure: 0.5,  mechanical: 0.75 },
   magic:     { light: 1.0, heavy: 1.25, shield: 1.5,  bio: 1.0, structure: 1.0,  mechanical: 1.0  },
   alchemy:   { light: 1.0, heavy: 1.0,  shield: 2.0,  bio: 0.9, structure: 1.5,  mechanical: 1.0  },
+  // P2-D3: crystal damage type has no units using it yet (death config, kept for type completeness)
   crystal:   { light: 1.0, heavy: 1.0,  shield: 0.5, bio: 1.0, structure: 1.0, mechanical: 1.25 },
   void:      { light: 1.0, heavy: 1.0,  shield: 1.0,  bio: 1.25, structure: 1.0,  mechanical: 1.0  },
 };
@@ -68,29 +69,7 @@ export class CombatSystem {
     return Math.round(baseDamage * matrixMult * factionMult);
   }
 
-  /** 单位攻击目标 — 检查距禈并计算伤害（含行会buff修正） */
-  static unitAttackTarget(attacker: Unit, target: Entity): number {
-    const dist = distance(
-      { x: attacker.tileX, y: attacker.tileY },
-      { x: target.tileX, y: target.tileY }
-    );
-
-    if (dist > attacker.attackRange) return 0;
-
-    // 行会buff修正攻击力
-    let effectiveDmg = attacker.attackDamage;
-    effectiveDmg = Math.round(effectiveDmg * GuildSystem.getAlchemyDamageMult(attacker));
-    effectiveDmg = Math.round(effectiveDmg * GuildSystem.getVoidOverloadDamageMult(attacker));
-
-    const damage = this.calculateDamage(
-      effectiveDmg,
-      attacker.attackType,
-      target.armorType,
-      attacker.faction,
-    );
-
-    return damage;
-  }
+  // P2-D5 修复：删除死代码 unitAttackTarget（全项目无调用，战斗循环走 updateCombat 内联计算）
 
   /**
    * 更新所有单位的战斗状态 — 完整战斗循环
@@ -145,14 +124,29 @@ export class CombatSystem {
         );
 
         if (dist > unit.attackRange) {
-          // 目标超出射程 → 追击
-          // 只在无路径时规划追击路径
-          if (unit.path.length === 0) {
+          // 目标超出射程 -> 追击
+          // P1-C6 修复：目标移动后路径不刷新。每 30 帧重算一次路径（即使 path 非空）。
+          // P1-A1 修复：有路但走不动（path 非空但实际卡住）也需超时检测，用 pursueFailTimer 统一。
+          const tick30 = (unit.pursueRetickTimer ?? 0) + 1;
+          unit.pursueRetickTimer = tick30;
+          if (unit.path.length === 0 || tick30 >= 30) {
             MovementSystem.navigate(
               unit,
               { x: Math.round(target.tileX), y: Math.round(target.tileY) },
               map,
             );
+            unit.pursueRetickTimer = 0;
+            // navigate 仍返回空路径 -> 计入失败计数
+            if (unit.path.length === 0) {
+              unit.pursueFailTimer = (unit.pursueFailTimer ?? 0) + 1;
+              if (unit.pursueFailTimer > 180) {
+                unit.stopAttacking();
+                unit.pursueFailTimer = 0;
+                continue;
+              }
+            } else {
+              unit.pursueFailTimer = 0;
+            }
           }
           // setPath() 会把 state 设为 'moving'，这里修正为 pursuing
           if (unit.state === 'moving' && unit.targetEntityId) {
@@ -171,12 +165,11 @@ export class CombatSystem {
         // 冷却完毕 → 攻击（应用行会buff修正）
         if (unit.attackTimer <= 0) {
           // 攻击力：炼金力量药剂 + 虚空过载
-          let effectiveDmg = unit.attackDamage;
-          effectiveDmg = Math.round(effectiveDmg * GuildSystem.getAlchemyDamageMult(unit));
-          effectiveDmg = Math.round(effectiveDmg * GuildSystem.getVoidOverloadDamageMult(unit));
-          // 目标护甲修正：炼金腐蚀弹（扣减目标护甲）
-          const corrosionPenalty = target instanceof Unit
-            ? Math.round((target as Unit).baseArmor * GuildSystem.getAlchemyCorrosionArmorPenalty(target as Unit))
+          let effectiveDmgMult = GuildSystem.getAlchemyDamageMult(unit) * GuildSystem.getVoidOverloadDamageMult(unit);
+          let effectiveDmg = Math.round(unit.attackDamage * effectiveDmgMult); // P2: single round instead of triple
+          // 目标护甲修正：炼金腐蚀弹（P1-E3 修复：读攻击者的 corrosion buff，而非 target）
+          const corrosionPenalty = unit instanceof Unit
+            ? Math.round((unit as Unit).baseArmor * GuildSystem.getAlchemyCorrosionArmorPenalty(unit as Unit))
             : 0;
           // 攻击方护甲增益（铁皮药剂 + 虚空过载护甲仅在攻击方被反击时需要；暂不在此处处理）
           
@@ -230,11 +223,12 @@ export class CombatSystem {
         continue;
       }
 
-      // === 自动索敌：空闲单位（或移动中的作战单位）自动攻击视野内敌人 ===
+      // === 自动索敌：仅空闲单位自动攻击视野内敌人 ===
+      // P1-B1 修复：moving 状态单位不再自动索敌，避免覆盖玩家移动命令（撤退/走位被敌人勾走）
       // 工人不自动攻击；已有攻击目标的跳过（防止覆盖用户命令）
       // AI 锁定的单位不自动索敌（防止 CombatSystem 覆盖 AI 撤退/防守命令）
       if (unit.targetEntityId) continue;
-      if (unit.state !== 'idle' && unit.state !== 'moving') continue;
+      if (unit.state !== 'idle') continue;
       // 工人 + 非战斗单位不自动攻击，也不应被手动命攻击
       if (unit.attackDamage <= 0) continue;
       if (unit.holdPosition) continue;
@@ -250,12 +244,10 @@ export class CombatSystem {
       );
 
       if (dist <= unit.attackRange && unit.attackTimer <= 0) {
-        // 在射程内 → 站立攻击
+        // 在射程内 -> 站立攻击
         unit.attackTarget(enemy.id);
       } else if (dist <= unit.sight) {
-        // 在视野内但不在射程内 → 追击
-        if (unit.state === 'moving' && unit.path.length > 0) continue;
-
+        // 在视野内但不在射程内 -> 追击
         unit.targetEntityId = enemy.id;
         unit.attackTimer = 0;
         MovementSystem.navigate(
@@ -264,7 +256,8 @@ export class CombatSystem {
           map,
         );
         // setPath() 把状态设为 'moving'，修正为 pursuing
-        if (unit.state === 'moving') {
+        const st = unit.state as string;
+        if (st === 'moving') {
           unit.state = 'pursuing';
         }
       }
@@ -308,7 +301,7 @@ export class CombatSystem {
         }
       }
 
-      // 自动索敌：找射程内最近敌人
+      // 自动索敌：找射程内最近敌人（P1-G2 修复：同时搜索单位和建筑）
       let nearest: Entity | null = null;
       let nearestDist = bld.attackRange;
       for (const enemy of allUnits) {
@@ -316,6 +309,13 @@ export class CombatSystem {
         if (fogOfWar && bld.owner === 0 && !fogOfWar.isVisible(Math.round(enemy.tileX), Math.round(enemy.tileY))) continue;
         const d = distance({ x: bld.tileX, y: bld.tileY }, { x: enemy.tileX, y: enemy.tileY });
         if (d <= nearestDist) { nearestDist = d; nearest = enemy; }
+      }
+      // P1-G2: 也搜索敌方建筑
+      for (const enemyBld of allBuildings) {
+        if (enemyBld.owner === bld.owner || !enemyBld.isAlive) continue;
+        if (fogOfWar && bld.owner === 0 && !fogOfWar.isVisible(enemyBld.tileX, enemyBld.tileY)) continue;
+        const d = distance({ x: bld.tileX, y: bld.tileY }, { x: enemyBld.tileX, y: enemyBld.tileY });
+        if (d <= nearestDist) { nearestDist = d; nearest = enemyBld; }
       }
       if (nearest) {
         bld.targetEntityId = nearest.id;

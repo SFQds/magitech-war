@@ -84,6 +84,9 @@ export class Minimap {
     // 建筑
     for (const b of buildings) {
       if (!b.isAlive) continue;
+      // P1-D16 修复：敌方建筑需通过迷雾可见才显示，避免小地图透视未探索区域的敌方建筑
+      // 己方建筑始终可见（自己当然知道自己的建筑在哪）
+      if (b.owner !== playerIndex && !this.fog.isVisible(Math.round(b.tileX), Math.round(b.tileY))) continue;
       const color = b.owner === playerIndex ? 0x00ff00 : 0xff4444;
       this.graphics.fillStyle(color, 0.9);
       this.graphics.fillRect(this.x + b.tileX * s - 1, this.y + b.tileY * s - 1, 3, 3);
@@ -98,14 +101,14 @@ export class Minimap {
       this.graphics.fillRect(this.x + u.tileX * s, this.y + u.tileY * s, 2, 2);
     }
 
-    // 视野框
+    // 视野框（P1-质疑16 修复：用 cam.worldView 替代 cam.width，缩放后框大小正确）
     const cam = this.scene.cameras.main;
     this.graphics.lineStyle(1, 0xffffff, 0.5);
     this.graphics.strokeRect(
-      this.x + (cam.scrollX / 32) * s,
-      this.y + (cam.scrollY / 32) * s,
-      (cam.width / 32) * s,
-      (cam.height / 32) * s
+      this.x + (cam.worldView.x / 32) * s,
+      this.y + (cam.worldView.y / 32) * s,
+      (cam.worldView.width / 32) * s,
+      (cam.worldView.height / 32) * s
     );
   }
 

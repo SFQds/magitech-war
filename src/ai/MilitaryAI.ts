@@ -58,11 +58,11 @@ export class MilitaryAI {
     return this.difficulty === 'easy';
   }
 
-  /** easy AI 进攻警惕性（低=不主动攻击，让玩家发育） */
+  /** Attack eagerness by difficulty (low = needs more idle units to attack). */
   private get attackThreshold(): number {
-    if (this.difficulty === 'easy') return 6;    // 需要6个空闲单位才进攻
-    if (this.difficulty === 'hard') return 1;    // 有1个就进攻
-    return 1;
+    if (this.difficulty === 'easy') return 6;
+    if (this.difficulty === 'hard') return 1;
+    return 3; // P2-AI: normal now distinct from hard (3 vs 1)
   }
 
   evaluate(
@@ -78,11 +78,15 @@ export class MilitaryAI {
     const ownBuildings = buildings.filter(
       b => b.owner === this.playerIndex && b.isAlive
     );
+    // P1-AI3: AI respects fog of war (units real-time visible, buildings explored/visible memory)
+    const fog = this.world.fogOfWar;
     const enemyUnits = units.filter(
-      u => u.owner !== this.playerIndex && u.isAlive
+      u => u.owner !== this.playerIndex && u.isAlive &&
+        fog.isVisible(Math.round(u.tileX), Math.round(u.tileY))
     );
     const enemyBuildings = buildings.filter(
-      b => b.owner !== this.playerIndex && b.isAlive
+      b => b.owner !== this.playerIndex && b.isAlive &&
+        (fog.isExplored(Math.round(b.tileX), Math.round(b.tileY)) || fog.isVisible(Math.round(b.tileX), Math.round(b.tileY)))
     );
 
     if (ownCombat.length === 0) {
@@ -126,7 +130,10 @@ export class MilitaryAI {
         if (nearOwnBuilding) {
           unit.aiLockedAction = 'recover';
           unit.holdPosition = false;
-          unit.hp = Math.min(unit.maxHp, unit.hp + 3 * 2);
+          // P1-AI2: base regen is a design; only hard AI gets the bonus heal near buildings.
+          if (this.difficulty === 'hard') {
+            unit.hp = Math.min(unit.maxHp, unit.hp + 3 * 2);
+          }
           if (unit.hpPercent >= RECOVER_HP_TARGET) {
             unit.aiLockedAction = null;
             unit.stopAttacking();
@@ -226,19 +233,28 @@ export class MilitaryAI {
         if (nearbyEnemies.length === 0) continue;
 
         for (const enemy of nearbyEnemies) {
-          // 优先 idle，其次 pursuing，最后可打断 attacking 的单位
-          let defender = ownCombat.find(u =>
+          // P1-AI5: pick nearest idle defender to the enemy, not global first idle.
+          const idleCandidates = ownCombat.filter(u =>
             u.holdPosition === false && u.aiLockedAction === null && u.state === 'idle'
           );
+          let defender: Unit | undefined;
+          const nearest = (arr: Unit[]) => arr.reduce((best, u) => {
+            const dU = Math.abs(u.tileX - enemy.tileX) + Math.abs(u.tileY - enemy.tileY);
+            const dB = Math.abs(best.tileX - enemy.tileX) + Math.abs(best.tileY - enemy.tileY);
+            return dU < dB ? u : best;
+          }, arr[0]);
+          if (idleCandidates.length > 0) defender = nearest(idleCandidates);
           if (!defender) {
-            defender = ownCombat.find(u =>
+            const pursueCandidates = ownCombat.filter(u =>
               u.holdPosition === false && u.aiLockedAction === null && u.state === 'pursuing'
             );
+            if (pursueCandidates.length > 0) defender = nearest(pursueCandidates);
           }
           if (!defender) {
-            defender = ownCombat.find(u =>
+            const anyCandidates = ownCombat.filter(u =>
               u.holdPosition === false && u.aiLockedAction === null
             );
+            if (anyCandidates.length > 0) defender = nearest(anyCandidates);
           }
           if (!defender) break;
 

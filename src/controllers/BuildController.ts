@@ -52,6 +52,7 @@ export class BuildController {
     const ty = Math.floor(pointer.worldY / 32);
     this.preview.setPosition(tx * 32 + 16, ty * 32 + 16);
     const ok = map.inBounds(tx, ty) && map.isPassable(tx, ty) &&
+      !map.isResourceTile(tx, ty) &&
       !buildings.some(b => b.isAlive && b.tileX === tx && b.tileY === ty);
     this.preview.setTint(ok ? 0x88ff88 : 0xff4444);
   }
@@ -63,7 +64,8 @@ export class BuildController {
     if (!this.mode) return false;
     const defId = this.mode.buildingDefId;
     const cost = getBuildingCost(defId, faction);
-    if (!cost || !map.inBounds(tileX, tileY) || !map.isPassable(tileX, tileY)) return false;
+    if (!cost || !map.inBounds(tileX, tileY) || !map.isPassableWithUnits(tileX, tileY)) return false;
+    if (map.isResourceTile(tileX, tileY)) return false; // P1-质疑24: 禁止在矿点上建建筑
     if (buildings.some(b => b.isAlive && b.tileX === tileX && b.tileY === tileY)) return false;
     if (!world.canAfford(0, { crystal: cost.crystal, industry: cost.industry })) return false;
     world.spend(0, { crystal: cost.crystal, industry: cost.industry });

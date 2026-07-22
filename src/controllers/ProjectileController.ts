@@ -92,15 +92,23 @@ export class ProjectileController {
             target.tileX, target.tileY, 2, Math.round((proj.rawDamage ?? proj.damage) * 0.5),
             proj.damageType, proj.owner, attackerUnit.faction,
             units, buildings, target.id);
+          // P1-A5 修复：AOE 多目标击杀合并为一次 UNIT_KILLED 事件，避免每个目标 +20 XP 刷经验
+          let aoeKillCount = 0;
+          let firstAoeVictimId: string | null = null;
           for (const ae of aoeEvents) {
             flashTimers.set(ae.targetId, 0.12);
             if (ae.targetDied) {
               flashTimers.delete(ae.targetId);
-              EventBus.emit(GameEvent.UNIT_KILLED, {
-                unitId: ae.targetId, killerId: proj.sourceId,
-                playerIndex: ae.playerIndex ?? 1,
-              });
+              aoeKillCount++;
+              if (!firstAoeVictimId) firstAoeVictimId = ae.targetId;
             }
+          }
+          // 统一发一次 UNIT_KILLED（携带 killCount），XP 按 1 次计算
+          if (aoeKillCount > 0 && firstAoeVictimId) {
+            EventBus.emit(GameEvent.UNIT_KILLED, {
+              unitId: firstAoeVictimId, killerId: proj.sourceId,
+              playerIndex: proj.owner, killCount: aoeKillCount,
+            });
           }
         }
       } else {

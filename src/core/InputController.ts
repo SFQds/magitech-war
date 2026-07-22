@@ -36,9 +36,14 @@ export class InputController {
   }
 
   private setupInput(): void {
-    // 左键按下 — 开始框选
+    // 左键按下 - 开始框选
     this.scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (pointer.rightButtonDown()) return;
+      // P1-质疑1 修复：HUD 区域点击不启动框选（顶部资源栏 y<50, 底部命令卡 y>640）
+      const sy = pointer.y;
+      if (sy < 50 || sy > 640) return;
+      // 右下角小地图区域不框选
+      if (sy > 720 - 160 - 80 && pointer.x > 1280 - 160) return;
       this.isDragging = true;
       this.dragStart = { x: pointer.worldX, y: pointer.worldY };
       this.dragEnd = { ...this.dragStart };

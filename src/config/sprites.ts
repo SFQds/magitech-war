@@ -18,7 +18,6 @@ export const PNG_SPRITE_KEYS = [
   'bld_wall',
   'unit_scout_bike',
   'unit_transport',
-  'unit_basic_turret',
   'unit_arcane_guard',
   'unit_hammer_squad',
   'unit_grenadier',

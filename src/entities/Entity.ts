@@ -66,7 +66,13 @@ export abstract class Entity {
       }
     }
     // 虚空伤害穿透50%护甲
-    const effectiveArmor = damageType === 'void' ? Math.floor(this.armor * 0.5) : this.armor;
+    let effectiveArmor = damageType === 'void' ? Math.floor(this.armor * 0.5) : this.armor;
+    // P2-D3 修复：虚空过载护甲加成（原 getVoidOverloadArmorMult 未接入 takeDamage）
+    const voUnit = this as unknown as { isVoidOvercharged?: boolean; isVoidOptimized?: boolean; voidOverloadTimer?: number };
+    if (voUnit.isVoidOvercharged && (voUnit.voidOverloadTimer ?? 0) > 0) {
+      const boost = voUnit.isVoidOptimized ? 0.35 : 0.50;
+      effectiveArmor = Math.floor(effectiveArmor * (1 + boost));
+    }
     const final = Math.max(1, remaining - effectiveArmor);
     this.hp -= final;
     if (this.hp <= 0) {

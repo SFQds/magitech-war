@@ -10,6 +10,7 @@ import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { HpBarRenderer } from './HpBarRenderer';
 import { tileToWorld } from '../utils/MathUtils';
+import type { FogOfWar } from '../core/FogOfWar';
 
 export class SpriteRenderer {
   /** 复用避免每帧 new Set + map 分配 */
@@ -20,6 +21,10 @@ export class SpriteRenderer {
     private buildingSprites: Map<string, Phaser.GameObjects.Image>,
     private flashTimers: Map<string, number>,
     private hpBarRenderer: HpBarRenderer,
+    /** P0-B6 修复：注入迷雾用于隐藏不可见区域的敌方单位，避免迷雾透视 */
+    private fogOfWar: FogOfWar | null = null,
+    /** 本地玩家索引（默认 0），用于判断单位敌我 */
+    private localPlayerIndex: number = 0,
   ) {}
 
   /**
@@ -46,6 +51,17 @@ export class SpriteRenderer {
       sprite.setPosition(w.x, w.y);
 
       if (unit.isAlive) {
+        // P0-B6 修复：敌方单位在不可见区域隐藏（迷雾透视漏洞修复）
+        // 己方/盟方单位始终可见；敌方单位需通过 fog.isVisible 才显示
+        const isVisibleByFog = !this.fogOfWar
+          || unit.owner === this.localPlayerIndex
+          || this.fogOfWar.isVisible(Math.round(unit.tileX), Math.round(unit.tileY));
+        if (!isVisibleByFog) {
+          sprite.setAlpha(0);
+          this.hpBarRenderer.clear(unit.id);
+          continue;
+        }
+
         const flashRemain = this.flashTimers.get(unit.id);
         if (flashRemain && flashRemain > 0) {
           sprite.setTint(0xffffff);
@@ -82,6 +98,16 @@ export class SpriteRenderer {
     for (const bld of buildings) {
       const sprite = this.buildingSprites.get(bld.id);
       if (!sprite || !bld.isAlive) continue;
+
+      // P1-质疑9 修复：敌方建筑在迷雾未探索区域隐藏（与单位对称）
+      const bVisibleByFog = !this.fogOfWar
+        || bld.owner === this.localPlayerIndex
+        || this.fogOfWar.isVisible(bld.tileX, bld.tileY);
+      if (!bVisibleByFog) {
+        sprite.setAlpha(0);
+        this.hpBarRenderer.clear(bld.id);
+        continue;
+      }
 
       const w = tileToWorld(bld.tileX, bld.tileY);
       sprite.setPosition(w.x, w.y);

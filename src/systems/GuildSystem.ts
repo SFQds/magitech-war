@@ -10,6 +10,7 @@
 import type { PlayerState } from '../types/entity';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
+import { Hero } from '../entities/Hero';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 
@@ -26,7 +27,8 @@ const MAGE_GUILD_UNITS = new Set([
   'unit_battle_mage',
   'unit_arcane_guard',
   'unit_arcane_heavy',
-  'unit_arcane_cannon',
+  // P2-D2 修复：移除 'unit_arcane_cannon'——该单位在 unitData.ts 从未定义，
+  // 保留会让法师公会充能对该 ID 永远不生效（虽不报错但暗示缺失单位）。
 ]);
 
 // ============================================================
@@ -204,6 +206,8 @@ export class GuildSystem {
   }
 
   // ========== 法师公会：主动技能 ==========
+  // P2-D1 标注：magesChargeStrike / magesGroupShield / magesElementalSurge 当前无调用点，
+  // 待技能 UI 命令链路接入后调用，暂保留实现。
 
   /** Lv1 单体附加伤害：消耗1层充能，下一次攻击 +50%，攻击后自动恢复 */
   static magesChargeStrike(unit: Unit): boolean {
@@ -402,6 +406,8 @@ export class GuildSystem {
     if (unit.isVoidOvercharged || !unit.isAlive) return false;
 
     unit.isVoidOvercharged = true;
+    // P1-B5: record optimized state so getVoidOverload*/takeDamage apply +35% boost instead of +50%
+    unit.isVoidOptimized = !!hasOptimizedTech;
     unit.voidOverloadTimer = hasOptimizedTech
       ? TECH_OVERLOAD_OPTIMIZED
       : VOID_OVERLOAD_DURATION;
@@ -428,8 +434,16 @@ export class GuildSystem {
       unit.voidOverloadTimer -= deltaSec;
       if (unit.voidOverloadTimer <= 0) {
         // 过载结束 → 单位损毁
-        unit.hp = 0;
-        unit.isActive = false;
+        // P0-C3 修复：若单位是英雄，走 takeDamage 触发 reviveTimer（否则英雄永不复活）。
+        // takeDamage 内部会设 isActive=false 并（Hero 覆写）启动复活倒计时 + 重置技能冷却。
+        // 非英雄单位保持原直接销毁逻辑（避免触发 UNIT_KILLED 给敌方 XP，虚空过载是自毁不是被击杀）。
+        if (unit instanceof Hero) {
+          // 传 hp+shield+armor+100 确保穿透护盾与护甲后仍致死（takeDamage 会减伤）
+          unit.takeDamage(unit.hp + unit.shieldHp + unit.armor + 100, 'void');
+        } else {
+          unit.hp = 0;
+          unit.isActive = false;
+        }
         unit.isVoidOvercharged = false;
         unit.voidOverloadTimer = 0;
 
@@ -438,6 +452,15 @@ export class GuildSystem {
           playerIndex,
           cause: 'void_overload_expired',
         });
+        // P1-A4: hero self-destruct emits HERO_DIED for sound/HUD feedback
+        if (unit instanceof Hero) {
+          EventBus.emit(GameEvent.HERO_DIED, {
+            unitId: unit.id,
+            heroId: unit.spriteKey,
+            playerIndex,
+            killerId: '',
+          });
+        }
       }
     }
   }
