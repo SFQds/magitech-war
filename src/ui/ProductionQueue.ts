@@ -15,8 +15,8 @@ export class ProductionQueueUI {
     this.container.setScrollFactor(0);
   }
 
-  /** 更新生产队列显示 */
-  update(queue: Array<{ name: string; progress: number; color?: number }>): void {
+  /** 更新生产队列显示（P1-取消训练：支持点击取消训练项） */
+  update(queue: Array<{ name: string; progress: number; color?: number; cancelType?: 'train' | 'research'; buildingId?: string; queueIndex?: number }>): void {
     this.container.removeAll(true);
 
     const { width } = this.scene.cameras.main;
@@ -34,6 +34,28 @@ export class ProductionQueueUI {
       const barFill = this.scene.add.rectangle(startX + 6, y + 22, Math.min(158 * item.progress, 158), 10, fillColor).setOrigin(0);
 
       this.container.add([bg, label, barBg, barFill]);
+
+      // P1-取消训练：训练/研究项可点击取消
+      if (item.cancelType && item.buildingId !== undefined) {
+        const cancelBtn = this.scene.add.text(startX + 140, y + 2, '✖', {
+          fontSize: '14px', color: '#ff4444', fontFamily: 'Arial, sans-serif',
+        }).setInteractive({ useHandCursor: true });
+        cancelBtn.on('pointerdown', () => {
+          const gs = this.scene.scene.get('GameScene') as any;
+          if (item.cancelType === 'train') {
+            gs.commandExecutor?.execute({
+              type: 'cancel_train', playerIndex: 0, unitIds: [],
+              buildingId: item.buildingId, queueIndex: item.queueIndex ?? -1, frame: 0,
+            });
+          } else if (item.cancelType === 'research') {
+            gs.commandExecutor?.execute({
+              type: 'cancel_research', playerIndex: 0, unitIds: [],
+              buildingId: item.buildingId, frame: 0,
+            });
+          }
+        });
+        this.container.add(cancelBtn);
+      }
     });
   }
 

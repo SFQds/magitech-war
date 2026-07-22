@@ -204,6 +204,18 @@ export class EconomyAI {
       commands.push(makeBuildCmd(this.playerIndex, techBldId));
     }
 
+    // P1-AI1: 供给不足时扩产第二兵营/工厂（突破 90 人口硬上限）
+    const barracksCount = buildings.filter(b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_barracks').length;
+    const factoryCount = buildings.filter(b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_factory').length;
+    if (supply >= supplyCap - 5 && hasFactory) {
+      if (barracksCount < 2 && buildCostThreshold(this.getBuildingCost('bld_barracks'))) {
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_barracks'));
+      }
+      if (factoryCount < 2 && buildCostThreshold(this.getBuildingCost('bld_factory'))) {
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_factory'));
+      }
+    }
+
     // 2.5 防御建筑
     if (combatCount >= 5 || crystal > 600) {
       if (wallCount < 4 && buildCostThreshold(this.getBuildingCost('bld_wall'))) {

@@ -35,6 +35,9 @@ export class AIController {
   private strategyTimer: number = 0;
   private currentDirective: StrategyDirective = StrategyManager.DEFAULT_DIRECTIVE;
 
+  /** P1-AI6: 暴露资源倍率供 ResourceSystem 应用到 AI 采集 */
+  get resourceMult(): number { return this.resourceBonus; }
+
   constructor(world: GameWorld, playerIndex: number, difficulty: AIDifficulty = 'normal') {
     this.world = world;
     this.playerIndex = playerIndex;

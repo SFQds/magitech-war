@@ -16,6 +16,7 @@ export type CommandType =
   | 'hold_position'
   | 'build'
   | 'train'
+  | 'cancel_train'
   | 'research'
   | 'cancel_research'
   | 'gather'
@@ -76,6 +77,14 @@ export interface CancelResearchCommand extends Command {
   buildingId: string;
 }
 
+/** P1-取消训练：取消建筑生产队列中的训练项并退款 */
+export interface CancelTrainCommand extends Command {
+  type: 'cancel_train';
+  buildingId: string;
+  /** 取消的队列项索引（-1=取消最后一个） */
+  queueIndex: number;
+}
+
 /** 采集命令 */
 export interface GatherCommand extends Command {
   type: 'gather';
@@ -123,6 +132,7 @@ export type AnyCommand =
   | TrainCommand
   | ResearchCommand
   | CancelResearchCommand
+  | CancelTrainCommand
   | GatherCommand
   | DeployCommand
   | AbilityCommand

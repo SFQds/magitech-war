@@ -202,6 +202,27 @@ export class HUDScene extends Phaser.Scene {
       this.commandCard.setCommands(btns.length > 0 ? btns : []);
     });
 
+    // P2-质疑33: 建造中建筑选中时显示进度 + 取消建造按钮
+    this._on(GameEvent.BUILDING_SELECTED, (data: any) => {
+      if (data.playerIndex !== 0) return;
+      const gs = this.scene.get('GameScene') as any;
+      const bld = gs.buildings?.find((b: Building) => b.id === data.buildingId) as Building | undefined;
+      if (!bld || bld.state !== 'constructing') return;
+      // 取消建造：调用 cancelBuilderConstructions 退款
+      this.commandCard.setCommands([{
+        label: `🏗 建造中 ${Math.floor(bld.buildProgress * 100)}%`,
+        cost: '取消',
+        callback: () => {
+          if (gs.buildController?.cancelBuilderConstructions) {
+            gs.buildController.cancelBuilderConstructions(
+              bld.builderId, gs.buildings,
+              (cost: any) => { gs.world?.refund?.(0, cost); },
+            );
+          }
+        },
+      }]);
+    });
+
     this._on(GameEvent.PRODUCTION_STARTED, () => this.updateProductionQueueUI());
     this._on(GameEvent.PRODUCTION_COMPLETE, () => this.updateProductionQueueUI());
     this._on(GameEvent.UNIT_CREATED, () => this.scheduleMinimapUpdate());
@@ -326,7 +347,7 @@ export class HUDScene extends Phaser.Scene {
 
   private updateProductionQueueUI(): void {
     const gs = this.scene.get('GameScene') as any;
-    const queue: { name: string; progress: number; color?: number }[] = [];
+    const queue: { name: string; progress: number; color?: number; cancelType?: 'train' | 'research'; buildingId?: string; queueIndex?: number }[] = [];
     for (const bld of (gs.buildings ?? []) as Building[]) {
       if (bld.owner !== 0 || !bld.isAlive) continue;
       if (bld.state === 'constructing') {
@@ -334,10 +355,18 @@ export class HUDScene extends Phaser.Scene {
       }
       if (bld.state === 'researching' && bld.researchingTechId) {
         const td = TECH_DEFS[bld.researchingTechId];
-        queue.push({ name: `🔬 ${td?.name ?? '科技'}`, progress: bld.researchProgress, color: 0x9b59b6 });
+        queue.push({ name: `🔬 ${td?.name ?? '科技'}`, progress: bld.researchProgress, color: 0x9b59b6, cancelType: 'research', buildingId: bld.id });
       }
-      for (const item of bld.productionQueue) {
-        queue.push({ name: getDisplayName(item.unitDefId), progress: item.timeRemaining > 0 ? 1 - item.timeRemaining / item.totalTime : 1, color: 0x2ecc71 });
+      for (let qi = 0; qi < bld.productionQueue.length; qi++) {
+        const item = bld.productionQueue[qi];
+        queue.push({
+          name: getDisplayName(item.unitDefId),
+          progress: item.timeRemaining > 0 ? 1 - item.timeRemaining / item.totalTime : 1,
+          color: 0x2ecc71,
+          cancelType: 'train' as const,
+          buildingId: bld.id,
+          queueIndex: qi,
+        });
       }
     }
     this.productionQueue.update(queue);

@@ -5,7 +5,7 @@
  * 所有命令执行均为纯逻辑，无 Phaser 依赖。
  */
 
-import type { AnyCommand, TrainCommand, MoveCommand, AttackCommand, BuildCommand, GatherCommand, ResearchCommand, CancelResearchCommand, SpawnCommand, StopCommand, HoldPositionCommand, AbilityCommand } from '../types/commands';
+import type { AnyCommand, TrainCommand, MoveCommand, AttackCommand, BuildCommand, GatherCommand, ResearchCommand, CancelResearchCommand, CancelTrainCommand, SpawnCommand, StopCommand, HoldPositionCommand, AbilityCommand } from '../types/commands';
 import type { GameWorld } from '../core/GameWorld';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { UnitSpawner } from './UnitSpawner';
@@ -50,6 +50,7 @@ export class CommandExecutor {
   execute(cmd: AnyCommand): CommandResult {
     switch (cmd.type) {
       case 'train': return this.execTrain(cmd as TrainCommand);
+      case 'cancel_train': return this.execCancelTrain(cmd as CancelTrainCommand);
       case 'move':
       case 'attack_move': return this.execMove(cmd as MoveCommand);
       case 'attack_target': return this.execAttackTarget(cmd as AttackCommand);
@@ -117,6 +118,33 @@ export class CommandExecutor {
       buildingId: bld.id, playerIndex: cmd.playerIndex,
       unitDefId: cmd.unitDefId, totalTime: cost.time,
     });
+    return ok();
+  }
+
+  /** P1-取消训练：取消建筑生产队列中的训练项并退款（折扣价与入队一致） */
+  private execCancelTrain(cmd: CancelTrainCommand): CommandResult {
+    const bld = this.entities.getBuilding(cmd.buildingId);
+    if (!bld || bld.owner !== cmd.playerIndex) return fail('建筑不存在');
+    if (bld.productionQueue.length === 0) return fail('生产队列为空');
+
+    const idx = cmd.queueIndex < 0 ? bld.productionQueue.length - 1 : cmd.queueIndex;
+    const item = bld.productionQueue[idx];
+    if (!item) return fail('队列项不存在');
+
+    const ud = UNIT_DEFS[item.unitDefId];
+    const heroD = HERO_DEFS[item.unitDefId];
+    const faction = this.world.players[cmd.playerIndex]?.faction;
+    const guilds = this.world.players[cmd.playerIndex]?.guilds;
+
+    if (ud) {
+      const cost = getUnitCostWithFaction(item.unitDefId, faction, guilds) ?? ud.cost;
+      this.world.refund(cmd.playerIndex, { crystal: cost.crystal, supply: cost.supply });
+    } else if (heroD) {
+      this.world.refund(cmd.playerIndex, { crystal: heroD.cost.crystal, supply: heroD.cost.supply });
+    }
+
+    bld.productionQueue.splice(idx, 1);
+    EventBus.emit(GameEvent.PRODUCTION_STARTED, { buildingId: bld.id, playerIndex: cmd.playerIndex });
     return ok();
   }
 

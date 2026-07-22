@@ -369,7 +369,8 @@ export const FACTION_DEFS: Record<string, FactionDefData> = {
     startingCrystal: 2000,
     // P1-D10: startingIndustry 50->65 to match federation
     startingIndustry: 65,
-    startingUnits: [['unit_worker', 3], ['unit_rifleman', 1]],
+    // P1-平衡: 起始单位与联邦对齐（4 worker + 2 rifleman），消除早期三重劣势
+    startingUnits: [['unit_worker', 4], ['unit_rifleman', 2]],
     bonuses: {
       buildCostMult: 1.0,
       productionSpeedMult: 0.95,

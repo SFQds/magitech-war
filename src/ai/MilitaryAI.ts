@@ -10,6 +10,7 @@ import type { Unit } from '../entities/Unit';
 import type { Building } from '../entities/Building';
 import type { StrategyDirective } from './StrategyManager';
 import type { AIDifficulty } from './AIController';
+import { GuildSystem, ALCHEMY_POTIONS } from '../systems/GuildSystem';
 
 /** 目标权重基础分 */
 const BUILDING_PRIORITY: Record<string, number> = {
@@ -64,6 +65,11 @@ export class MilitaryAI {
     if (this.difficulty === 'hard') return 1;
     return 3; // P2-AI: normal now distinct from hard (3 vs 1)
   }
+
+  /** AI 行会技能冷却（毫秒） */
+  private _potionCooldown = 0;
+  private _voidCooldown = 0;
+  private _potionIndex = 0;
 
   evaluate(
     units: Unit[],
@@ -274,6 +280,9 @@ export class MilitaryAI {
       }
     }
 
+    // === P1-AI药剂: AI 使用炼金药剂和虚空过载 ===
+    this._useGuildAbilities(units, enemyUnits, commands);
+
     // === 进攻分配：每个空闲单位独立选择最佳目标 ===
     const unassigned = ownCombat.filter(u =>
       u.isAlive &&
@@ -314,6 +323,57 @@ export class MilitaryAI {
     }
 
     return commands;
+  }
+
+  // ============ P1-AI: 行会技能使用 ============
+
+  /** AI 在战斗时自动使用炼金药剂和虚空过载 */
+  private _useGuildAbilities(
+    allUnits: Unit[], enemyUnits: Unit[], _commands: AnyCommand[],
+  ): void {
+    const guilds = this.world.players[this.playerIndex]?.guilds ?? [];
+    const crystal = this.world.players[this.playerIndex]?.resources.crystal ?? 0;
+    const now = Date.now();
+
+    // 炼金药剂：有敌人且冷却结束 + 水晶充足
+    if (guilds.includes('alchemists_society') && enemyUnits.length > 0 && now >= this._potionCooldown) {
+      // 选进攻中的己方战斗单位
+      const combatUnits = allUnits.filter(u =>
+        u.owner === this.playerIndex && u.isAlive &&
+        u.spriteKey !== 'unit_worker' &&
+        (u.state === 'attacking' || u.state === 'pursuing') &&
+        u.alchemyBuffTimer <= 0,
+      );
+      if (combatUnits.length > 0) {
+        // 轮换药剂类型（与玩家 Q 键一致）
+        this._potionIndex = (this._potionIndex + 1) % ALCHEMY_POTIONS.length;
+        const potion = ALCHEMY_POTIONS[this._potionIndex];
+        if (crystal >= potion.crystalCost) {
+          this.world.spend(this.playerIndex, { crystal: potion.crystalCost });
+          for (const unit of combatUnits) {
+            GuildSystem.applyAlchemyPotion(unit, potion);
+          }
+          this._potionCooldown = now + 8000; // 8s cooldown (比玩家 5s 略长)
+        }
+      }
+    }
+
+    // 虚空过载：有敌人且冷却结束
+    if (guilds.includes('void_institute') && enemyUnits.length > 0 && now >= this._voidCooldown) {
+      const overloadUnits = allUnits.filter(u =>
+        u.owner === this.playerIndex && u.isAlive &&
+        u.spriteKey !== 'unit_worker' && !u.spriteKey.startsWith('hero_') &&
+        (u.state === 'attacking' || u.state === 'pursuing') &&
+        !u.isVoidOvercharged,
+      );
+      if (overloadUnits.length > 0) {
+        const hasOpt = this.world.techTrees.get(this.playerIndex)?.isResearched('tech:production_line_optimized') ?? false;
+        for (const unit of overloadUnits) {
+          GuildSystem.activateVoidOverload(unit, hasOpt);
+        }
+        this._voidCooldown = now + 12000; // 12s cooldown (比玩家 8s 略长)
+      }
+    }
   }
 
   // ============ 目标选择 ============

@@ -92,6 +92,15 @@ export class Minimap {
       this.graphics.fillRect(this.x + b.tileX * s - 1, this.y + b.tileY * s - 1, 3, 3);
     }
 
+    // P2-质疑18: 资源点（已探索的矿点显示为蓝色）
+    const resFields = (this.scene.scene.get('GameScene') as any)?.resourceFields ?? [];
+    for (const f of resFields) {
+      if (!f.isAlive || f.isDepleted) continue;
+      if (!this.fog.isExplored(f.tileX, f.tileY)) continue;
+      this.graphics.fillStyle(0x44aaff, 0.8);
+      this.graphics.fillRect(this.x + f.tileX * s - 1, this.y + f.tileY * s - 1, 3, 3);
+    }
+
     // 单位
     for (const u of units) {
       if (!u.isAlive) continue;

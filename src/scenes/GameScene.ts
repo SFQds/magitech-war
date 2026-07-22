@@ -118,6 +118,8 @@ export class GameScene extends Phaser.Scene {
 
   // 选中状态（同时支持单位和建筑）
   private selectedBuildingId: string | null = null;
+  /** P2-质疑34: 防御塔射程可视化 */
+  private _rangeIndicator: Phaser.GameObjects.Graphics | null = null;
 
   // HUD 资源更新计时
   private _lastHudTick: number = 0;
@@ -835,7 +837,22 @@ export class GameScene extends Phaser.Scene {
 
   private updateSelectionHighlight(): void {
     // 选中视觉由 syncSprites() 统一处理（tint 方式），
-    // 此处只确保输入状态已更新（selection 已在调用方设置好）
+    // P2-质疑34: 防御塔选中时显示射程圈
+    if (!this._rangeIndicator) {
+      this._rangeIndicator = this.add.graphics();
+      this._rangeIndicator.setDepth(8);
+    }
+    this._rangeIndicator.clear();
+    if (this.selectedBuildingId) {
+      const bld = this.entities.getBuilding(this.selectedBuildingId);
+      if (bld && bld.isAlive && bld.attackDamage > 0 && bld.attackRange > 0) {
+        const w = tileToWorld(bld.tileX, bld.tileY);
+        this._rangeIndicator.lineStyle(2, 0xffff00, 0.3);
+        this._rangeIndicator.strokeCircle(w.x, w.y, bld.attackRange * 32);
+        this._rangeIndicator.fillStyle(0xffff00, 0.05);
+        this._rangeIndicator.fillCircle(w.x, w.y, bld.attackRange * 32);
+      }
+    }
   }
 
   // ============ 主循环 ============
@@ -977,7 +994,8 @@ export class GameScene extends Phaser.Scene {
 
   private stepFogOfWar(): void {
     this._fogTick++;
-    if (this._fogTick % 4 !== 0) return;
+    // P2-质疑11: 4帧->2帧节流，减少视野边缘闪烁
+    if (this._fogTick % 2 !== 0) return;
     // 直接传 units 引用（避免每帧 units.map() 新数组分配）
     this.world.fogOfWar.update(this.units, 0, this.buildings);
   }
@@ -1110,7 +1128,8 @@ export class GameScene extends Phaser.Scene {
 
   private stepGathering(ds: number): void {
     const gMult0 = this.getTechEffects(0).gatherMult;
-    const gMult1 = this.getTechEffects(1).gatherMult;
+    // P1-AI6: AI 采集应用难度资源倍率（hard 2x, easy 0.7x）
+    const gMult1 = this.getTechEffects(1).gatherMult * this.aiController.resourceMult;
     const gatherEvents = ResourceSystem.updateGathering(
       this.units, this.resourceFields, this.world.players, ds, this.buildings, gMult0, gMult1,
     );
@@ -1294,9 +1313,11 @@ export class GameScene extends Phaser.Scene {
         }
         const sel = this.inputCtrl.getSelection();
         if (sel.includes(u.id)) {
-          this.inputCtrl.clearSelection();
+          // P2-质疑31 修复：只移除阵亡单位，保留其余选中（不再整组清空）
+          const newSel = sel.filter(id => id !== u.id);
+          this.inputCtrl.setSelection(newSel);
           this.updateSelectionHighlight();
-          EventBus.emit(GameEvent.SELECTION_CHANGED, { unitIds: [], playerIndex: 0 });
+          EventBus.emit(GameEvent.SELECTION_CHANGED, { unitIds: newSel, playerIndex: 0 });
         }
         this.removeUnit(u.id);
 
@@ -1543,6 +1564,8 @@ export class GameScene extends Phaser.Scene {
     this.fogRenderer?.destroy();
     this.projectileController?.destroy();
     this.buildController?.destroy();
+    this._rangeIndicator?.destroy();
+    this._rangeIndicator = null;
     if (this._scoreTimerDisplay) { this._scoreTimerDisplay.destroy(); this._scoreTimerDisplay = null; }
     // 精确移除 EventBus 监听器（防止内存泄漏）
     if (this._onUnitKilled) {
