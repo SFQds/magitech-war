@@ -16,8 +16,11 @@ import { GuildSystem } from '../systems/GuildSystem';
 import { ALCHEMY_POTIONS } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
-import { BUILDING_DEFS, UNIT_DEFS, TECH_DEFS, getUnitCostWithFaction } from '../config/unitData';
-import { HERO_DEFS } from '../config/heroData';
+import { TechSystem } from '../systems/TechSystem';
+import { ResearchSystem } from '../systems/ResearchSystem';
+import { GameOverController } from '../controllers/GameOverController';
+import { DeathCleanupSystem } from '../systems/DeathCleanupSystem';
+import { BUILDING_DEFS } from '../config/unitData';
 import { Hero } from '../entities/Hero';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { FogRenderer } from '../rendering/FogRenderer';
@@ -45,58 +48,29 @@ export class GameScene extends Phaser.Scene {
   private aiController!: AIController;
 
 /** 科技效果缓存（per-player，每次研究完成时刷新） */
-  private techEffects = new Map<number, { gatherMult: number; infantryArmor: number; buildingHpMult: number }>();
+  /** 科技系统（从 GameScene 抽离的科技效果缓存与应用） */
+  private techSystem!: TechSystem;
+  /** 研究系统（从 GameScene 抽离的科技研究推进） */
+  private researchSystem!: ResearchSystem;
+  /** 胜负/计时控制器（从 GameScene 抽离） */
+  private gameOverCtrl!: GameOverController;
+  /** 死亡清理系统（从 GameScene 抽离，回调注入解耦） */
+  private deathCleanup!: DeathCleanupSystem;
 
   // EventBus 监听器引用（供 shutdown 精确移除）
   private _onUnitKilled: ((data: any) => void) | null = null;
 
-  /** 计算采集倍率（多个科技叠乘） */
-  private calcGatherMult(tt: TechTreeSystem): number {
-    let m = 1.0;
-    if (tt.isResearched('tech:advanced_mining')) m *= 1.2;
-    if (tt.isResearched('tech:crystal_smelting')) m *= 1.15;
-    if (tt.isResearched('tech:refining_tech')) m *= 1.25;
-    return m;
-  }
+  // ===== 科技效果：委托 TechSystem（GameScene 保留同名薄包装，外部回调不变）=====
 
-  /** 初始化玩家科技效果缓存 */
-  private initTechEffects(): void {
-    for (let i = 0; i < this.world.players.length; i++) {
-      this.refreshTechEffects(i);
-    }
-  }
+  private initTechEffects(): void { this.techSystem.initAll(); }
 
-  /** 刷新指定玩家的科技效果缓存 */
-  private refreshTechEffects(playerIndex: number): void {
-    const tt = this.getTechTree(playerIndex);
-    this.techEffects.set(playerIndex, {
-      gatherMult: this.calcGatherMult(tt),
-      infantryArmor: tt.isResearched('tech:infantry_armor') ? 5 : 0,
-      buildingHpMult: tt.isResearched('tech:structure_reinforce') ? 1.2 : 1.0,
-    });
-  }
+  private refreshTechEffects(playerIndex: number): void { this.techSystem.refresh(playerIndex); }
 
-  /** 获取某玩家的科技效果 */
-  private getTechEffects(playerIndex: number) {
-    return this.techEffects.get(playerIndex) ?? { gatherMult: 1.0, infantryArmor: 0, buildingHpMult: 1.0 };
-  }
+  private getTechEffects(playerIndex: number) { return this.techSystem.getEffects(playerIndex); }
 
-  /** 将科技效果应用到单位（新建单位时调用） */
-  private applyTechToUnit(unit: Unit): void {
-    const te = this.getTechEffects(unit.owner);
-    if (unit.category === 'infantry' && te.infantryArmor > 0) {
-      unit.armor = unit.baseArmor + te.infantryArmor;
-    }
-  }
+  private applyTechToUnit(unit: Unit): void { this.techSystem.applyToUnit(unit); }
 
-  /** 将科技效果应用到建筑（新建建筑时调用） */
-  private applyTechToBuilding(bld: Building): void {
-    const te = this.getTechEffects(bld.owner);
-    if (te.buildingHpMult !== 1.0) {
-      bld.maxHp = Math.round(bld.maxHp * te.buildingHpMult);
-      bld.hp = Math.min(bld.hp, bld.maxHp);
-    }
-  }
+  private applyTechToBuilding(bld: Building): void { this.techSystem.applyToBuilding(bld); }
 
   // 实体注册表 — 统一管理所有实体
   private entities = new EntityRegistry();
@@ -148,12 +122,9 @@ export class GameScene extends Phaser.Scene {
   private commandExecutor!: CommandExecutor;
   private spriteRenderer!: SpriteRenderer;
 
-  /** 获取某玩家科技树 */
-  private getTechTree(playerIndex: number): TechTreeSystem {
-    const tt = this.world.techTrees.get(playerIndex);
-    if (!tt) throw new Error(`TechTree not found for player ${playerIndex}`);
-    return tt;
-  }
+  /** 获取某玩家科技树（委托 TechSystem） */
+  private getTechTree(playerIndex: number): TechTreeSystem { return this.techSystem.getTree(playerIndex); }
+
 
   constructor() {
     super({ key: 'GameScene' });
@@ -190,6 +161,28 @@ export class GameScene extends Phaser.Scene {
 
     // 初始化 GameWorld
     this.world = new GameWorld(mapW, mapH, tileSize);
+    this.techSystem = new TechSystem(this.world);
+    this.researchSystem = new ResearchSystem(this.world, this.entities, this.techSystem);
+    this.gameOverCtrl = new GameOverController(this, this.world, this.entities);
+    this.deathCleanup = new DeathCleanupSystem(this.world, this.entities, {
+      removeUnitSprite: (id) => {
+        const sp = this.unitSprites.get(id); if (sp) { sp.destroy(); this.unitSprites.delete(id); }
+      },
+      removeBuildingSprite: (id) => {
+        const sp = this.buildingSprites.get(id); if (sp) { sp.destroy(); this.buildingSprites.delete(id); }
+      },
+      removeFieldSprite: (id) => {
+        const sp = this.resourceSprites.get(id); if (sp) { sp.destroy(); this.resourceSprites.delete(id); }
+      },
+      onUnitRemoved: (id) => this.removeUnit(id),
+      onBuildingRemoved: (id) => this.removeBuilding(id),
+      rewardBuildingXp: (destroyedOwner) => this.rewardHeroXpBuilding(destroyedOwner),
+      updateSelectionHighlight: () => this.updateSelectionHighlight(),
+      getSelection: () => this.inputCtrl.getSelection(),
+      setSelection: (ids) => this.inputCtrl.setSelection(ids),
+      clearSelection: () => this.inputCtrl.clearSelection(),
+      consumeIfSelectedBuilding: (id) => this._consumeIfSelectedBuilding(id),
+    });
 
     // 如果 JSON 有 tiles 数据，加载到地图
     if (mapJson?.tiles) {
@@ -1202,7 +1195,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
-    this.updateResearch(ds);
+    this.researchSystem.update(ds);
   }
 
   private stepProjectiles(ds: number): void {
@@ -1267,307 +1260,24 @@ export class GameScene extends Phaser.Scene {
     this.buildController.confirm(tileX, tileY, this._playerFaction, this.world, this.world.map, this.buildings, (b) => { this.applyTechToBuilding(b); this.addBuilding(b); }, (id) => this.entities.getUnit(id));
   }
 
-  /** 每帧推进研究进度 */
-  private updateResearch(deltaSec: number): void {
-    for (const bld of this.buildings) {
-      if (!bld.isAlive || bld.state !== 'researching' || !bld.researchingTechId) continue;
-      bld.researchProgress += deltaSec / bld.researchTotalTime;
-      if (bld.researchProgress >= 1) {
-        const playerTT = this.getTechTree(bld.owner);
-        playerTT.completeTech(bld.researchingTechId);
-        const techId = bld.researchingTechId;
-        bld.researchingTechId = null;
-        bld.researchProgress = 0;
-        bld.state = 'idle';
-
-        // 刷新该玩家科技效果缓存
-        const owner = bld.owner;
-        this.refreshTechEffects(owner);
-
-        // 回溯应用科技效果到该玩家的现有实体
-        const te = this.getTechEffects(owner);
-        if (techId === 'tech:infantry_armor') {
-          for (const u of this.units) {
-            if (u.owner === owner && u.category === 'infantry' && u.isAlive) u.armor = u.baseArmor + te.infantryArmor;
-          }
-        }
-        if (techId === 'tech:structure_reinforce') {
-          for (const b of this.buildings) {
-            if (b.owner === owner && b.isAlive) {
-              b.maxHp = Math.round(b.maxHp * te.buildingHpMult);
-              b.hp = Math.min(b.hp, b.maxHp);
-            }
-          }
-        }
-
-        EventBus.emit(GameEvent.RESEARCH_COMPLETE, {
-          buildingId: bld.id, playerIndex: bld.owner, techDefId: techId,
-        });
-      }
-    }
-  }
+  /** 每帧推进研究进度（委托 ResearchSystem） */
+  private updateResearch(deltaSec: number): void { this.researchSystem.update(deltaSec); }
 
   // ============ 死亡清理 ============
 
-  private cleanupDeadEntities(): void {
-    // 用 for-of 即时处理替代 filter() 新数组分配
-    for (let i = this.units.length - 1; i >= 0; i--) {
-      const u = this.units[i];
-      if (!u.isAlive && !(u instanceof Hero && (u as Hero).reviveTimer !== 0)
-        && !(u as Unit).isCargo) { // P0-NEW-1 修复：跳过 cargo 中的单位
-        const player = this.world.players[u.owner];
-        if (player) {
-          const refund = (u as Unit).supplyCost ?? 1;
-          player.resources.supply = Math.max(0, player.resources.supply - refund);
-        }
-        if (u.targetResourceId) {
-          const f = this.entities.getField(u.targetResourceId);
-          if (f && f.currentGatherers > 0) f.currentGatherers--;
-          u.targetResourceId = null;
-        }
-        const sel = this.inputCtrl.getSelection();
-        if (sel.includes(u.id)) {
-          // P2-质疑31 修复：只移除阵亡单位，保留其余选中（不再整组清空）
-          const newSel = sel.filter(id => id !== u.id);
-          this.inputCtrl.setSelection(newSel);
-          this.updateSelectionHighlight();
-          EventBus.emit(GameEvent.SELECTION_CHANGED, { unitIds: newSel, playerIndex: 0 });
-        }
-        this.removeUnit(u.id);
+  private cleanupDeadEntities(): void { this.deathCleanup.cleanup(); }
 
-        // P0-2 修复：运输车被摧毁时释放 cargo 内单位（退还 supply + 清除 isCargo）
-        const deadTransport = u as Unit;
-        if (deadTransport.cargo && deadTransport.cargo.length > 0) {
-          const cargoPlayer = this.world.players[deadTransport.owner];
-          for (const passenger of deadTransport.cargo) {
-            passenger.isCargo = false;
-            // 退还 cargo 内单位占用的 supply
-            if (cargoPlayer) {
-              const cargoRefund = passenger.supplyCost ?? 0;
-              cargoPlayer.resources.supply = Math.max(0, cargoPlayer.resources.supply - cargoRefund);
-            }
-            // 从选中集移除
-            const sel = this.inputCtrl.getSelection();
-            if (sel.includes(passenger.id)) {
-              this.inputCtrl.clearSelection();
-              this.updateSelectionHighlight();
-            }
-            // 从实体注册表移除（cargo 单位仍在 units 数组中，需清理）
-            this.entities.removeUnit(passenger.id);
-            const sprite = this.unitSprites.get(passenger.id);
-            if (sprite) { sprite.destroy(); this.unitSprites.delete(passenger.id); }
-          }
-          deadTransport.cargo = [];
-        }
-      }
-    }
-
-    for (let i = this.buildings.length - 1; i >= 0; i--) {
-      const bld = this.buildings[i];
-      if (!bld.isAlive) {
-        const player = this.world.players[bld.owner];
-        // P1-5: 发送建筑摧毁事件（战斗摧毁、建造失败都发）
-        EventBus.emit(GameEvent.BUILDING_DESTROYED, {
-          buildingId: bld.id, playerIndex: bld.owner,
-          reason: bld.state === 'constructing' ? 'construction_failed' : 'destroyed',
-        });
-        // P1-1: 建筑击杀奖励英雄XP (50 XP)
-        if (bld.state !== 'constructing') {
-          this.rewardHeroXpBuilding(bld.owner);
-        }
-        // P0-退款修复：用入队时的折扣价退款（与 execTrain 一致），避免拆建筑刷水晶
-        if (bld.productionQueue.length > 0 && player) {
-          const faction = this.world.players[bld.owner]?.faction;
-          const guilds = this.world.players[bld.owner]?.guilds;
-          for (const item of bld.productionQueue) {
-            const ud = UNIT_DEFS[item.unitDefId];
-            const heroD = HERO_DEFS[item.unitDefId];
-            if (ud) {
-              const cost = getUnitCostWithFaction(item.unitDefId, faction, guilds) ?? ud.cost;
-              this.world.refund(bld.owner, { crystal: cost.crystal, supply: cost.supply });
-            } else if (heroD) {
-              this.world.refund(bld.owner, { crystal: heroD.cost.crystal, supply: heroD.cost.supply });
-            }
-          }
-          bld.productionQueue.length = 0;
-        }
-        // 退还进行中的科技研究
-        if (bld.researchingTechId && player) {
-          const tech = TECH_DEFS[bld.researchingTechId];
-          if (tech) {
-            const progress = Math.max(0, Math.min(1, bld.researchProgress));
-            const refundAmount = Math.floor(tech.crystal * (1 - progress));
-            if (refundAmount > 0) {
-              this.world.refund(bld.owner, { crystal: refundAmount });
-            }
-          }
-          bld.researchingTechId = null;
-        }
-        // supplyCap/industryCap 由 ResourceSystem 每帧自动重算，此处不手动扣减（避免双重扣除）
-        // 通知 HUD 刷新资源
-        if (player) {
-          EventBus.emit(GameEvent.RESOURCE_CHANGED, {
-            playerIndex: bld.owner, resource: 'crystal', newValue: player.resources.crystal, delta: 0,
-          });
-        }
-        // 如果建筑正在建造中，释放工人
-        if (bld.builderId) {
-          const builder = this.entities.getUnit(bld.builderId);
-          if (builder?.isAlive) {
-            builder.state = 'idle';
-            builder.aiLockedAction = null;
-          }
-        }
-        if (this.selectedBuildingId === bld.id) {
-          this.selectedBuildingId = null;
-          this.updateSelectionHighlight();
-        }
-        this.removeBuilding(bld.id);
-      }
-    }
-
-    for (let i = this.resourceFields.length - 1; i >= 0; i--) {
-      const field = this.resourceFields[i];
-      if (field.isDepleted || !field.isActive) {
-        this.world.map.unregisterResourceTile(field.tileX, field.tileY);
-        this.entities.removeField(field.id);
-        const sprite = this.resourceSprites.get(field.id);
-        if (sprite) { sprite.destroy(); this.resourceSprites.delete(field.id); }
-      }
-    }
+  /** 选中建筑若为 id 则清除并返回 true（供 DeathCleanupSystem 回调用） */
+  private _consumeIfSelectedBuilding(id: string): boolean {
+    if (this.selectedBuildingId === id) { this.selectedBuildingId = null; return true; }
+    return false;
   }
+  // ============ 胜负检测（委托 GameOverController）===========
 
-  // ============ 胜负检测 ============
-
-  private _gameOver = false;
-  private _gameTimer: number = 0;       // 累计游戏时间（秒）
-  private _scoreTimerDisplay: Phaser.GameObjects.Text | null = null;
-
-  // P1-5：建筑全失宽限机制 — 建筑为 0 时开始累计，超过 GRACE_LIMIT 秒才判负
-  // 重建任一己方建筑即清零（由 checkGameOver 内 aliveBuildings 检测完成）
-  private static readonly GRACE_LIMIT = 60; // 秒
-  private _graceTimers: [number, number] = [0, 0];
-  private _prevGraceWarnSecond: [number, number] = [-1, -1]; // 每方上次通知的秒值（按 1s 节流）
-
-  private checkGameOver(): void {
-    if (this._gameOver) return;
-
-    const aliveBuildings = (owner: number) =>
-      this.buildings.some(b => b.owner === owner && b.isAlive);
-
-    const playerHasBld = aliveBuildings(0);
-    const aiHasBld = aliveBuildings(1);
-    // P1-C5: also check worker to avoid deadlock when buildings lost but worker hides
-    const playerHasWorker = this.units.some(u => u.owner === 0 && u.isAlive && u.spriteKey === 'unit_worker');
-    const aiHasWorker = this.units.some(u => u.owner === 1 && u.isAlive && u.spriteKey === 'unit_worker');
-
-    // P1-5：建筑存在即立刻清零宽限计时；建筑不存在则（由 stepTimer 推进累计）
-    if (playerHasBld) this._graceTimers[0] = 0;
-    if (aiHasBld) this._graceTimers[1] = 0;
-
-    // 任一方宽限期满才判歼灭
-    const playerExpired = !playerHasBld && !playerHasWorker && this._graceTimers[0] >= GameScene.GRACE_LIMIT;
-    const aiExpired = !aiHasBld && !aiHasWorker && this._graceTimers[1] >= GameScene.GRACE_LIMIT;
-
-    if (playerExpired || aiExpired) {
-      this._gameOver = true;
-      // P1-4 修复：双方同帧互毁 → 平局
-      const winner = playerExpired && aiExpired ? -1 : aiExpired ? 0 : 1;
-      EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'annihilated' });
-      const text = winner === -1 ? '🤝 同归于尽！平局' : winner === 0 ? '🏆 胜利！敌方基地已被摧毁' : '💀 失败…我方基地已被摧毁';
-      const color = winner === -1 ? '#aaaaaa' : winner === 0 ? '#ffd700' : '#ff4444';
-      this.add.text(1280 / 2, 720 / 2 - 20, text, {
-        fontSize: '32px', color, backgroundColor: '#1a1a2ecc',
-        padding: { x: 24, y: 12 },
-      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);      this.addRestartButton();      return;
-    }
-
-    // 30分钟限时胜利（按分数）
-    const MAX_TIME = 30 * 60; // 1800秒 = 30分钟
-    if (this._gameTimer >= MAX_TIME) {
-      this._gameOver = true;
-      const p0Score = this.calcScore(0);
-      const p1Score = this.calcScore(1);
-      const winner = p0Score > p1Score ? 0 : p1Score > p0Score ? 1 : -1;
-      EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'timeout' });
-      const resultText = winner === 0 ? '🏆 时间到！你赢了！' : winner === 1 ? '💀 时间到…你输了' : '🤝 平局！';
-      const scoreText = `\n你的分数: ${p0Score}  |  敌方分数: ${p1Score}`;
-      this.add.text(1280 / 2, 720 / 2 - 20, resultText + scoreText, {
-        fontSize: '28px', color: winner === 0 ? '#ffd700' : '#ff6644',
-        backgroundColor: '#1a1a2ecc', padding: { x: 24, y: 12 },
-        align: 'center',      }).setOrigin(0.5).setDepth(200).setScrollFactor(0);      this.addRestartButton();    }
-  }
-
-  /** P2-质疑28: 标签页隐藏时仍推进宽限期，防止暂停作弊 */
-  private _advanceGraceTimers(ds: number): void {
-    const aliveBldFn = (owner: number) =>
-      this.buildings.some(b => b.owner === owner && b.isAlive);
-    for (let pi = 0 as 0 | 1; pi <= 1; pi = (pi + 1) as 0 | 1) {
-      if (aliveBldFn(pi)) continue;
-      this._graceTimers[pi] += ds;
-    }
-    this.checkGameOver();
-  }
-
-  /** P1-C7: 游戏结束后显示重开按钮 */
-  private addRestartButton(): void {
-    const btn = this.add.text(1280 / 2, 720 / 2 + 60, '🔄 再来一局', {
-      fontSize: '24px', color: '#ffffff', backgroundColor: '#2a5a2acc',
-      padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setDepth(201).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    btn.on('pointerdown', () => { this.scene.start('MenuScene'); });
-    btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#3a7a3acc' }));
-    btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#2a5a2acc' }));
-  }
-
-  /** 计算玩家分数（用于限时判定） */
-  private calcScore(playerIndex: number): number {
-    const player = this.world.players[playerIndex];
-    let score = player?.resources.crystal ?? 0;
-    for (const u of this.units) {
-      if (u.owner !== playerIndex || !u.isAlive) continue;
-      score += (u.maxHp + u.attackDamage * 10) * 0.5;
-    }
-    for (const b of this.buildings) {
-      if (b.owner !== playerIndex || !b.isAlive) continue;
-      score += b.maxHp * 0.3;
-    }
-    return Math.round(score);
-  }
-
-  private stepTimer(ds: number): void {
-    if (this._gameOver) return;
-    this._gameTimer += ds;
-    // HUD 计时器显示
-    const mins = Math.floor(this._gameTimer / 60);
-    const secs = Math.floor(this._gameTimer % 60);
-    const timeStr = `⏱ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    if (!this._scoreTimerDisplay) {
-      this._scoreTimerDisplay = this.add.text(1280 / 2, 10, timeStr, {
-        fontSize: '16px', color: '#ffd700',
-        backgroundColor: '#1a1a2ecc', padding: { x: 12, y: 4 },
-        fontFamily: 'Arial, sans-serif',
-      }).setOrigin(0.5, 0).setDepth(250).setScrollFactor(0);
-    } else {
-      this._scoreTimerDisplay.setText(timeStr);
-    }
-
-    // P1-5：推进建筑全失宽限计时器并按整秒广播警告
-    const aliveBldFn = (owner: number) =>
-      this.buildings.some(b => b.owner === owner && b.isAlive);
-    for (let pi = 0 as 0 | 1; pi <= 1; pi = (pi + 1) as 0 | 1) {
-      if (aliveBldFn(pi)) continue; // 有建筑不累计
-      this._graceTimers[pi] += ds;
-      // 每秒广播一次剩余秒（取整秒值，节流避免每帧高频触发）
-      const secondsLeft = Math.max(0, Math.ceil(GameScene.GRACE_LIMIT - this._graceTimers[pi]));
-      if (secondsLeft !== this._prevGraceWarnSecond[pi]) {
-        this._prevGraceWarnSecond[pi] = secondsLeft;
-        EventBus.emit(GameEvent.GRACE_WARNING, {
-          playerIndex: pi, secondsLeft,
-        } as any);
-      }
-    }
-  }
+  private get _gameOver(): boolean { return this.gameOverCtrl.isOver; }
+  private checkGameOver(): void { this.gameOverCtrl.checkGameOver(); }
+  private _advanceGraceTimers(ds: number): void { this.gameOverCtrl.advanceGraceTimers(ds); }
+  private stepTimer(ds: number): void { this.gameOverCtrl.stepTimer(ds); }
 
 // ============ 精灵同步 ============
 
@@ -1591,7 +1301,7 @@ export class GameScene extends Phaser.Scene {
     this.buildController?.destroy();
     this._rangeIndicator?.destroy();
     this._rangeIndicator = null;
-    if (this._scoreTimerDisplay) { this._scoreTimerDisplay.destroy(); this._scoreTimerDisplay = null; }
+    this.gameOverCtrl?.destroy();
     // 精确移除 EventBus 监听器（防止内存泄漏）
     if (this._onUnitKilled) {
       EventBus.off(GameEvent.UNIT_KILLED, this._onUnitKilled);
