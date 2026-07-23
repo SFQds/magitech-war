@@ -11,15 +11,17 @@
  */
 import { describe, it, expect } from 'vitest';
 import { ResearchSystem } from './ResearchSystem';
-import { TechSystem } from './TechSystem';
-import { GameWorld } from '../core/GameWorld';
+import {
+  makeWorld,
+  makeResearchingBuilding,
+  makeInfantry as makeInfantryBase,
+} from '../__fixtures__/factories';
 import { EntityRegistry } from '../core/EntityRegistry';
-import { Unit } from '../entities/Unit';
+import { TechSystem } from './TechSystem';
 import { Building } from '../entities/Building';
 
 function setup() {
-  const world = new GameWorld(16, 16);
-  world.addPlayer('arcane_empire', [], false);
+  const world = makeWorld(16, 16, true); // 1 玩家
   const entities = new EntityRegistry();
   const tech = new TechSystem(world);
   tech.initAll();
@@ -27,18 +29,9 @@ function setup() {
   return { world, entities, tech, research };
 }
 
-function makeResearchingBuilding(owner = 0, techId = 'tech:infantry_armor', totalTime = 10): Building {
-  const b = new Building(owner, 'arcane_empire', 1, 1, 800, 'structure', 'tech', 'bld_ancient_archive', 0, 0);
-  b.complete();
-  b.state = 'researching';
-  b.researchingTechId = techId;
-  b.researchProgress = 0;
-  b.researchTotalTime = totalTime;
-  return b;
-}
-
-function makeInfantry(owner = 0): Unit {
-  const u = new Unit(owner, 'arcane_empire', 5, 5, 100, 'light', 'infantry', 2, 10, 'physical', 3, 1, 5, 'unit_rifleman');
+/** 造步兵（设 baseArmor=2，便于测试护甲科技加成） */
+function makeInfantry(owner = 0) {
+  const u = makeInfantryBase(owner);
   u.baseArmor = 2;
   u.armor = 2;
   return u;

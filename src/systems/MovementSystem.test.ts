@@ -13,25 +13,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import { MovementSystem } from './MovementSystem';
-import { GameMap } from '../core/GameMap';
-import { Unit } from '../entities/Unit';
+import { grassMap, makeUnit as makeUnitBase } from '../__fixtures__/factories';
 
-/** 造一张全草地地图 */
-function grassMap(w = 16, h = 16): GameMap {
-  return new GameMap({ name: 't', width: w, height: h, tileSize: 32 });
-}
-
-/** 造一个单位（默认步枪兵，非工人） */
-function makeUnit(
-  spriteKey = 'unit_rifleman',
-  tileX = 0, tileY = 0,
-  owner = 0,
-): Unit {
-  return new Unit(
-    owner, 'arcane_empire', tileX, tileY,
-    100, 'light', 'infantry',
-    2, 10, 'physical', 3, 1, 5, spriteKey,
-  );
+/** 造一个单位（位置参数风格薄包装，委托夹具库） */
+function makeUnit(spriteKey = 'unit_rifleman', tileX = 0, tileY = 0, owner = 0) {
+  return makeUnitBase({ spriteKey, tileX, tileY, owner });
 }
 
 describe('MovementSystem.findPath — A* 寻路', () => {

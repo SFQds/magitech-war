@@ -15,9 +15,14 @@
  */
 import { describe, it, expect } from 'vitest';
 import { ResourceSystem } from './ResourceSystem';
-import { Unit } from '../entities/Unit';
 import { ResourceField } from '../entities/ResourceField';
 import { Building } from '../entities/Building';
+import {
+  makeWorker as makeWorkerBase,
+  bindToField,
+  makeRefinery,
+  makePlayer,
+} from '../__fixtures__/factories';
 import type { PlayerState } from '../types/entity';
 import {
   MAX_CRYSTAL,
@@ -28,38 +33,11 @@ import {
   INDUSTRY_REGEN_PER_OUTPUT,
 } from '../config/balance';
 
-/** 造工人 */
-function makeWorker(owner = 0, tileX = 5, tileY = 0): Unit {
-  const w = new Unit(
-    owner, 'arcane_empire', tileX, tileY,
-    80, 'light', 'infantry', 2, 5, 'physical', 3, 1, 5, 'unit_worker',
-  );
+/** 造工人（默认 gathering 状态，便于采集测试） */
+function makeWorker(owner = 0, tileX = 5, tileY = 0) {
+  const w = makeWorkerBase(owner, tileX, tileY);
   w.state = 'gathering';
   return w;
-}
-
-/** 把工人绑定到矿点（targetResourceId 必须用 field 的真实 id，否则查表失败） */
-function bindToField(worker: Unit, field: ResourceField, gatherers = 1): void {
-  worker.targetResourceId = field.id;
-  field.currentGatherers = gatherers;
-}
-
-/** 造精炼厂（owner 阵营） */
-function makeRefinery(owner = 0, tileX = 0, tileY = 0): Building {
-  const b = new Building(owner, 'arcane_empire', tileX, tileY, 800, 'structure', 'resource', 'bld_refinery', 0, 0);
-  b.complete();
-  return b;
-}
-
-/** 造玩家状态 */
-function makePlayer(index = 0, crystal = 0): PlayerState {
-  return {
-    index,
-    faction: 'arcane_empire',
-    guilds: [],
-    resources: { crystal, industry: 0, supply: 0, supplyCap: 0, industryCap: 0 },
-    isAI: false,
-  };
 }
 
 describe('ResourceSystem.gather — 基础采集', () => {

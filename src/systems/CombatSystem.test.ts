@@ -11,11 +11,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import { CombatSystem } from './CombatSystem';
-import { Unit } from '../entities/Unit';
-import { Building } from '../entities/Building';
+import { makeUnit as makeUnitBase, makeTurret } from '../__fixtures__/factories';
 import { FogOfWar, FogState } from '../core/FogOfWar';
 
-/** 造单位 */
+/** 造单位（位置参数风格薄包装，委托夹具库） */
 function makeUnit(
   owner = 0, tileX = 5, tileY = 5,
   armorType: 'light' | 'heavy' | 'shield' | 'bio' | 'structure' | 'mechanical' = 'light',
@@ -25,22 +24,8 @@ function makeUnit(
   range = 3,
   sight = 5,
   spriteKey = 'unit_rifleman',
-): Unit {
-  return new Unit(
-    owner, owner === 0 ? 'arcane_empire' : 'hammer_federation', tileX, tileY,
-    hp, armorType, 'infantry', 2, attackDamage, attackType, range, 1, sight, spriteKey,
-  );
-}
-
-/** 造防御建筑 */
-function makeTurret(owner = 0, tileX = 0, tileY = 0, range = 5): Building {
-  const b = new Building(owner, 'arcane_empire', tileX, tileY, 800, 'structure', 'defense', 'bld_turret', 0, 0);
-  b.attackDamage = 20;
-  b.attackRange = range;
-  b.attackCooldown = 1;
-  b.attackType = 'physical';
-  b.complete();
-  return b;
+) {
+  return makeUnitBase({ owner, tileX, tileY, armorType, hp, attackDamage, attackType, range, sight, spriteKey });
 }
 
 describe('CombatSystem.calculateDamage — 伤害矩阵', () => {

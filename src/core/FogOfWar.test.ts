@@ -14,11 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { FogOfWar, FogState } from './FogOfWar';
 import { GameMap } from './GameMap';
-import type { FogUnitView } from './FogOfWar';
-
-function view(owner: number, tileX: number, tileY: number, sight = 3): FogUnitView {
-  return { tileX, tileY, sight, owner };
-}
+import { view } from '../__fixtures__/factories';
 
 describe('FogOfWar — 初始状态', () => {
   it('初始全 Hidden', () => {

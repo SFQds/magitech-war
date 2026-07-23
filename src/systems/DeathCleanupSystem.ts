@@ -15,6 +15,7 @@
 import type { GameWorld } from '../core/GameWorld';
 import type { EntityRegistry } from '../core/EntityRegistry';
 import type { Unit } from '../entities/Unit';
+import { Hero } from '../entities/Hero';
 import { UNIT_DEFS, TECH_DEFS, getUnitCostWithFaction } from '../config/unitData';
 import { HERO_DEFS } from '../config/heroData';
 import { EventBus } from '../utils/EventBus';
@@ -55,7 +56,8 @@ export class DeathCleanupSystem {
       const u = this.entities.units[i];
       // Hero 复活中（reviveTimer !== 0）跳过；cargo 中的单位跳过
       if (u.isAlive) continue;
-      const isHeroReviving = (u as any).reviveTimer !== 0;
+      // P0：仅 Hero 实例检查 reviveTimer（普通单位 reviveTimer 为 undefined !== 0 会被误跳过）
+      const isHeroReviving = u instanceof Hero && (u as Hero).reviveTimer !== 0;
       if (isHeroReviving) continue;
       if ((u as Unit).isCargo) continue;
 
