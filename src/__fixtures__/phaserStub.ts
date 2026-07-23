@@ -27,6 +27,7 @@ function chainable(): any {
     setVisible() { return obj; },
     setActive() { return obj; },
     setScale() { return obj; },
+    setDisplaySize() { return obj; },
     on() { return obj; },
     off() { return obj; },
     once() { return obj; },
