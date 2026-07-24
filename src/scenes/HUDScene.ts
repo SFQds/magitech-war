@@ -105,6 +105,16 @@ export class HUDScene extends Phaser.Scene {
       const units = d.unitIds.map((id: string) => gs.units?.find((u: Unit) => u.id === id)).filter(Boolean) as Unit[];
       this.selectionPanel.showUnits(units);
 
+      // P1-UI 批3: 多选时显示头像网格
+      if (units.length > 1) {
+        this.selectionPanel.showUnitsGrid(units, (unit: Unit) => {
+          // 点击头像聚焦该单位
+          this.selectionPanel.showUnits([unit]);
+          gs.inputCtrl?.setSelection([unit.id]);
+          EventBus.emit(GameEvent.SELECTION_CHANGED, { unitIds: [unit.id], playerIndex: 0 } as SelectionData);
+        });
+      }
+
       // === 英雄技能按钮 ===
       if (units.length === 1 && units[0] instanceof Hero) {
         const hero = units[0] as Hero;
