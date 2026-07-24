@@ -11,6 +11,7 @@ import type { Building } from '../entities/Building';
 import type { StrategyDirective } from './StrategyManager';
 import type { AIDifficulty } from './AIController';
 import { GuildSystem, ALCHEMY_POTIONS } from '../systems/GuildSystem';
+import type { FogOfWar } from '../core/FogOfWar';
 
 /** 目标权重基础分 */
 const BUILDING_PRIORITY: Record<string, number> = {
@@ -24,6 +25,14 @@ const BUILDING_PRIORITY: Record<string, number> = {
 const RECOVER_RADIUS = 3;
 /** 回复目标 HP 百分比 */
 const RECOVER_HP_TARGET = 0.7;
+
+/** 侦察用：将这些 spriteKey 视为侦察单位 */
+const SCOUT_KEYS = new Set(['unit_scout_bike', 'unit_void_probe']);
+
+/** 侦察间隔：每隔 N 个 tick 才分发一次侦察任务（避免每帧发） */
+const SCOUT_INTERVAL_TICKS = 3;
+/** 每个侦察点探索的最大距离 */
+const SCOUT_TARGET_RADIUS = 20;
 
 export class MilitaryAI {
   private world: GameWorld;
@@ -70,6 +79,9 @@ export class MilitaryAI {
   private _potionCooldown = 0;
   private _voidCooldown = 0;
   private _potionIndex = 0;
+
+  /** 侦察 tick 计数（每隔 SCOUT_INTERVAL_TICKS 分发一次侦察任务） */
+  private _scoutTickCounter = 0;
 
   evaluate(
     units: Unit[],
@@ -287,7 +299,10 @@ export class MilitaryAI {
     // === P1-AI药剂: AI 使用炼金药剂和虚空过载 ===
     this._useGuildAbilities(units, enemyUnits, commands);
 
-    // === 进攻分配：每个空闲单位独立选择最佳目标 ===
+    // === 侦察调度：空闲侦察单位主动探索未探区域 ===
+    this._dispatchScouts(ownCombat, units, buildings, commands);
+
+    // === 进攻分配：攒够兵一起冲，分散目标不全部A同一个点 ===
     const unassigned = ownCombat.filter(u =>
       u.isAlive &&
       u.targetEntityId === null &&
@@ -297,19 +312,7 @@ export class MilitaryAI {
     );
 
     if (unassigned.length >= this.attackThreshold) {
-      for (const unit of unassigned) {
-        const best = this.selectBestTarget([unit], enemyUnits, enemyBuildings, ownBuildings);
-        if (!best) continue;
-
-        unit.attackTarget(best.id);
-        commands.push({
-          type: 'attack_move',
-          playerIndex: this.playerIndex,
-          unitIds: [unit.id],
-          target: { x: Math.round(best.tileX), y: Math.round(best.tileY) },
-          frame: 0,
-        });
-      }
+      this._dispatchOffense(unassigned, enemyUnits, enemyBuildings, ownBuildings, commands);
     }
 
     // 清理无效的风筝记录 + 减少撤退冷却
@@ -450,5 +453,131 @@ export class MilitaryAI {
     }
 
     return best;
+  }
+
+  // ============ 侦察 ============
+
+  /** 每几个 tick 分配空闲侦察单位去探索未探区域 */
+  private _dispatchScouts(
+    ownCombat: Unit[],
+    allUnits: Unit[],
+    buildings: Building[],
+    commands: AnyCommand[],
+  ): void {
+    this._scoutTickCounter++;
+    if (this._scoutTickCounter < SCOUT_INTERVAL_TICKS) return;
+    this._scoutTickCounter = 0;
+
+    const fog = this.world.fogOfWar;
+    const scouts = ownCombat.filter(u =>
+      u.isAlive && u.state === 'idle' && u.aiLockedAction === null &&
+      u.holdPosition === false && SCOUT_KEYS.has(u.spriteKey),
+    );
+    if (scouts.length === 0) return;
+
+    // 如果已有敌人在视野中，侦察优先级降低（单位应参战）
+    const anyEnemyVisible = allUnits.some(u =>
+      u.owner !== this.playerIndex && u.isAlive &&
+      this._canAiSee(u.tileX, u.tileY, allUnits, buildings),
+    );
+    if (anyEnemyVisible && ownCombat.length > 3) return;
+
+    for (const scout of scouts) {
+      // 找到离当前侦察单位最远的未探索 tile
+      const target = this._findUnexploredTarget(scout.tileX, scout.tileY, fog, SCOUT_TARGET_RADIUS);
+      if (!target) continue;
+
+      scout.aiLockedAction = 'building'; // 复用 building 标记，防进攻系统覆盖
+      commands.push({
+        type: 'move',
+        playerIndex: this.playerIndex,
+        unitIds: [scout.id],
+        target: { x: target.x, y: target.y },
+        frame: 0,
+      });
+    }
+  }
+
+  /** 在当前侦察单位附近找最远的未探索 tile */
+  private _findUnexploredTarget(
+    fromX: number, fromY: number,
+    fog: FogOfWar, maxRadius: number,
+  ): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = null;
+    let bestDist = -1;
+    const mapW = this.world.map.config.width;
+    const mapH = this.world.map.config.height;
+    const step = 3; // 采样步长（避免全地图扫描）
+    for (let tx = 0; tx < mapW; tx += step) {
+      for (let ty = 0; ty < mapH; ty += step) {
+        if (fog.isExplored(tx, ty)) continue;
+        const d = Math.abs(fromX - tx) + Math.abs(fromY - ty);
+        if (d <= maxRadius && d > bestDist) {
+          bestDist = d;
+          best = { x: tx, y: ty };
+        }
+      }
+    }
+    return best;
+  }
+
+  // ============ 分散进攻 ============
+
+  /** 攒够兵后分散攻击，不全部A同一个点。每批单位分配到不同目标。 */
+  private _dispatchOffense(
+    unassigned: Unit[],
+    enemyUnits: Unit[],
+    enemyBuildings: Building[],
+    ownBuildings: Building[],
+    commands: AnyCommand[],
+  ): void {
+    // 计算敌方单位/建筑分组（按位置聚类，每 cluster 分配一批单位）
+    const targets = [...enemyUnits.map(e => ({ id: e.id, x: Math.round(e.tileX), y: Math.round(e.tileY) })),
+      ...enemyBuildings.map(b => ({ id: b.id, x: Math.round(b.tileX), y: Math.round(b.tileY) }))];
+    if (targets.length === 0) return;
+
+    // 按目标价值分组：每个己方单位独立选最佳目标，但限制同一目标分配数
+    const targetAssignCount = new Map<string, number>();
+    const MAX_PER_TARGET = Math.max(2, Math.ceil(unassigned.length / Math.max(targets.length, 1)));
+
+    for (const unit of unassigned) {
+      // 跳过已被分配为侦察的单位
+      if (unit.aiLockedAction === 'building') continue;
+
+      const best = this.selectBestTarget([unit], enemyUnits, enemyBuildings, ownBuildings);
+      if (!best) continue;
+
+      const count = targetAssignCount.get(best.id) ?? 0;
+      if (count >= MAX_PER_TARGET) {
+        // 该目标已满，尝试选择次优目标（排除已满目标）
+        const fullTargetIds = new Set<string>();
+        for (const [tid, c] of targetAssignCount) {
+          if (c >= MAX_PER_TARGET) fullTargetIds.add(tid);
+        }
+        const altEnemies = enemyUnits.filter(e => !fullTargetIds.has(e.id));
+        const altBuildings = enemyBuildings.filter(b => !fullTargetIds.has(b.id));
+        const alt = this.selectBestTarget([unit], altEnemies, altBuildings, ownBuildings);
+        if (!alt) continue;
+        targetAssignCount.set(alt.id, (targetAssignCount.get(alt.id) ?? 0) + 1);
+        unit.attackTarget(alt.id);
+        commands.push({
+          type: 'attack_move',
+          playerIndex: this.playerIndex,
+          unitIds: [unit.id],
+          target: { x: Math.round(alt.tileX), y: Math.round(alt.tileY) },
+          frame: 0,
+        });
+      } else {
+        targetAssignCount.set(best.id, count + 1);
+        unit.attackTarget(best.id);
+        commands.push({
+          type: 'attack_move',
+          playerIndex: this.playerIndex,
+          unitIds: [unit.id],
+          target: { x: Math.round(best.tileX), y: Math.round(best.tileY) },
+          frame: 0,
+        });
+      }
+    }
   }
 }

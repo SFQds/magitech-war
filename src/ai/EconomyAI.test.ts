@@ -243,3 +243,44 @@ describe('EconomyAI difficulty resourceFactor', () => {
     expect(cmds.some(c => c.type === 'build' && (c as { buildingDefId: string }).buildingDefId === 'bld_barracks')).toBe(false);
   });
 });
+
+
+describe('EconomyAI - counter units', () => {
+  it('evaluate with shield-heavy enemies does not throw', () => {
+    const { world, ai } = setupAI(1, 'hard');
+    const cc = makeCommandCenter(1, 10, 10);
+    const bld = makeBuilding({ owner: 1, spriteKey: 'bld_barracks', tileX: 12, tileY: 12 });
+    const field = makeResourceField(12, 10, 5000);
+    const enemies = [
+      makeUnit({ owner: 0, spriteKey: 'unit_arcane_guard', armorType: 'shield', hp: 350, tileX: 15, tileY: 10 }),
+      makeUnit({ owner: 0, spriteKey: 'unit_arcane_guard', armorType: 'shield', hp: 350, tileX: 15, tileY: 10 }),
+      makeUnit({ owner: 0, spriteKey: 'unit_rifleman', armorType: 'light', hp: 100, tileX: 15, tileY: 10 }),
+    ];
+    const workers = [makeUnit({ owner: 1, spriteKey: 'unit_worker', hp: 80, tileX: 5, tileY: 5 })];
+    const allUnits: any[] = [cc, bld, ...workers, ...enemies];
+    expect(() => ai.evaluate([cc, bld], allUnits, [field], EARLY)).not.toThrow();
+  });
+
+  it('empty enemies produces no counter units', () => {
+    const { world, ai } = setupAI();
+    const cc = makeCommandCenter(1, 10, 10);
+    const field = makeResourceField(12, 10, 5000);
+    expect(() => ai.evaluate([cc], [cc], [field], EARLY)).not.toThrow();
+  });
+
+  it('mechanical-heavy enemy composition does not crash', () => {
+    const { world, ai } = setupAI(1, 'hard');
+    const cc = makeCommandCenter(1, 10, 10);
+    const bld = makeBuilding({ owner: 1, spriteKey: 'bld_barracks', tileX: 12, tileY: 12 });
+    const field = makeResourceField(12, 10, 5000);
+    const enemies = [
+      makeUnit({ owner: 0, spriteKey: 'unit_magitech_mech', armorType: 'mechanical', hp: 500, tileX: 15, tileY: 10 }),
+      makeUnit({ owner: 0, spriteKey: 'unit_magitech_mech', armorType: 'mechanical', hp: 500, tileX: 15, tileY: 10 }),
+      makeUnit({ owner: 0, spriteKey: 'unit_magitech_mech', armorType: 'mechanical', hp: 500, tileX: 15, tileY: 10 }),
+      makeUnit({ owner: 0, spriteKey: 'unit_rifleman', armorType: 'light', hp: 100, tileX: 15, tileY: 10 }),
+    ];
+    const workers = [makeUnit({ owner: 1, spriteKey: 'unit_worker', hp: 80, tileX: 5, tileY: 5 })];
+    const allUnits: any[] = [cc, bld, ...workers, ...enemies];
+    expect(() => ai.evaluate([cc, bld], allUnits, [field], EARLY)).not.toThrow();
+  });
+});

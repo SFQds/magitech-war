@@ -174,3 +174,75 @@ describe('MilitaryAI target selection priority', () => {
     expect(attacker.targetEntityId).toBe(enemyA.id);
   });
 });
+
+
+describe('MilitaryAI - 分散进攻', () => {
+  it('多个单位分配到不同敌方目标', () => {
+    const { world, ai } = setupAI();
+    const own = [
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+    ];
+    const enemies = [
+      makeUnit({ owner: 0, spriteKey: 'unit_rifleman', tileX: 5, tileY: 10, hp: 100 }),
+      makeUnit({ owner: 0, spriteKey: 'unit_rifleman', tileX: 15, tileY: 10, hp: 100 }),
+    ];
+    for (const o of own) o.sight = 20;
+    for (const e of enemies) e.sight = 0;
+
+    const allUnits = [...own, ...enemies];
+    const cmds = ai.evaluate(allUnits, [], EARLY);
+    const attackCmds = cmds.filter(c => c.type === 'attack_move');
+    expect(attackCmds.length).toBeGreaterThan(0);
+    const assigned = own.filter(u => u.targetEntityId !== null);
+    expect(assigned.length).toBe(4);
+  });
+
+  it('只有一个敌方单位时所有己方单位分配到同一目标', () => {
+    const { world, ai } = setupAI();
+    const own = [
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+    ];
+    const enemies = [
+      makeUnit({ owner: 0, spriteKey: 'unit_rifleman', tileX: 5, tileY: 10, hp: 100 }),
+    ];
+    for (const o of own) o.sight = 20;
+    for (const e of enemies) e.sight = 0;
+    const allUnits2 = [...own, ...enemies];
+    ai.evaluate(allUnits2, [], EARLY);
+    const targets = new Set(own.map(u => u.targetEntityId));
+    expect(targets.size).toBe(1);
+  });
+});
+
+describe('MilitaryAI - 侦察系统', () => {
+  it('void_probe 也被视为侦察单位（不抛错）', () => {
+    const { world, ai } = setupAI();
+    const probe = makeUnit({ owner: 1, spriteKey: 'unit_void_probe', tileX: 10, tileY: 10, hp: 60 });
+    probe.sight = 15;
+    for (let i = 0; i < 10; i++) {
+      expect(() => ai.evaluate([probe], [], EARLY)).not.toThrow();
+    }
+  });
+
+  it('有敌人在视野中时侦察单位不会被标记为 building 状态', () => {
+    const { world, ai } = setupAI();
+    const own = [
+      makeUnit({ owner: 1, spriteKey: 'unit_scout_bike', tileX: 10, tileY: 10, hp: 100 }),
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+      makeUnit({ owner: 1, spriteKey: 'unit_rifleman', tileX: 10, tileY: 10, hp: 100 }),
+    ];
+    const enemies = [
+      makeUnit({ owner: 0, spriteKey: 'unit_rifleman', tileX: 5, tileY: 10, hp: 100 }),
+    ];
+    for (const o of own) o.sight = 20;
+    for (const e of enemies) e.sight = 0;
+    const allScoutUnits = [...own, ...enemies];
+    for (let i = 0; i < 10; i++) ai.evaluate(allScoutUnits, [], EARLY);
+    expect(own[0].aiLockedAction).not.toBe('building');
+  });
+});

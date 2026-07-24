@@ -15,9 +15,9 @@ import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getBuildingCost as getBuildingCost
 import type { BuildCommand, ResearchCommand, TrainCommand } from '../types/commands';
 import { MAX_CRYSTAL, AI_RESCUE_CRYSTAL_MIN } from '../config/balance';
 
-/** 构造 Build 命令（类型安全，不含 as any） */
-function makeBuildCmd(playerIndex: number, bldId: string): BuildCommand {
-  return { type: 'build', playerIndex, unitIds: [], buildingDefId: bldId, position: { x: 0, y: 0 }, frame: 0 };
+/** 构造 Build 命令（类型安全，不含 as any）。可选 position 用于精确定位（精炼厂靠矿、炮塔守要害）。 */
+function makeBuildCmd(playerIndex: number, bldId: string, pos?: { x: number; y: number }): BuildCommand {
+  return { type: 'build', playerIndex, unitIds: [], buildingDefId: bldId, position: pos ?? { x: 0, y: 0 }, frame: 0 };
 }
 /** 构造 Research 命令 */
 function makeResearchCmd(playerIndex: number, bldId: string, techId: string): ResearchCommand {
@@ -95,6 +95,9 @@ export class EconomyAI {
       u => u.owner === this.playerIndex && u.isAlive &&
         u.spriteKey !== 'unit_worker' && !u.spriteKey.startsWith('hero_')
     ).length;
+
+    // === P3: 反制兵种 — 分析敌方单位构成，调整训练优先级 ===
+    const counterUnits = this._getCounterUnits(units, directive);
 
     // 0. 指派空闲工人去采集
     const activeFields = fields.filter(f => f.isActive && !f.isDepleted);
@@ -183,25 +186,30 @@ export class EconomyAI {
       commands.push(makeTrainCmd(this.playerIndex, cc.id, 'unit_worker'));
     }
 
-    // 2. 建造建筑 — P1-6: 阈值使用 resourceFactor 保持原设计意图
+    // 2. 建造建筑 — 带智能选址：精炼厂靠矿、电厂靠后、炮塔守咽喉
     const buildCostThreshold = (cost: number) => crystal >= cost * resourceFactor;
+
+    // P5: 计算战略位置（CC朝向敌方的方向、最近矿点等）
+    const stratPos = this._computeStrategicPositions(cc, buildings, fields);
 
     if (directive.aggression < 0.7 || (!hasBarracks && !hasFactory)) {
       if (!hasBarracks && buildCostThreshold(this.getBuildingCost('bld_barracks'))) {
-        commands.push(makeBuildCmd(this.playerIndex, 'bld_barracks'));
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_barracks', stratPos.production));
       }
       if (!hasFactory && buildCostThreshold(this.getBuildingCost('bld_factory'))) {
-        commands.push(makeBuildCmd(this.playerIndex, 'bld_factory'));
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_factory', stratPos.production));
       }
     }
+    // P5: 精炼厂建在最靠近水晶矿的位置
     if (!hasRefinery && buildCostThreshold(this.getBuildingCost('bld_refinery'))) {
-      commands.push(makeBuildCmd(this.playerIndex, 'bld_refinery'));
+      commands.push(makeBuildCmd(this.playerIndex, 'bld_refinery', stratPos.refinery));
     }
+    // P5: 电厂建在后方（CC 远离矿点方向）
     if (!hasPowerPlant && hasFactory && buildCostThreshold(this.getBuildingCost('bld_power_plant'))) {
-      commands.push(makeBuildCmd(this.playerIndex, 'bld_power_plant'));
+      commands.push(makeBuildCmd(this.playerIndex, 'bld_power_plant', stratPos.rear));
     }
     if (!hasTechBuilding && buildCostThreshold(this.getBuildingCost(techBldId))) {
-      commands.push(makeBuildCmd(this.playerIndex, techBldId));
+      commands.push(makeBuildCmd(this.playerIndex, techBldId, stratPos.tech));
     }
 
     // P1-AI1: 供给不足时扩产第二兵营/工厂（突破 90 人口硬上限）
@@ -216,13 +224,13 @@ export class EconomyAI {
       }
     }
 
-    // 2.5 防御建筑
+    // 2.5 防御建筑 — 炮塔/城墙建在面向敌方的前线位置
     if (combatCount >= 5 || crystal > 600) {
       if (wallCount < 4 && buildCostThreshold(this.getBuildingCost('bld_wall'))) {
-        commands.push(makeBuildCmd(this.playerIndex, 'bld_wall'));
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_wall', stratPos.defense));
       }
       if (!hasTurret && buildCostThreshold(this.getBuildingCost('bld_turret'))) {
-        commands.push(makeBuildCmd(this.playerIndex, 'bld_turret'));
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_turret', stratPos.defense));
       }
     }
 
@@ -263,10 +271,12 @@ export class EconomyAI {
       commands.push(makeTrainCmd(this.playerIndex, factoryBld.id, 'unit_scout_bike'));
     }
 
-    // 6. 按 directive.preferredUnits 优先级训练战斗单位
+    // 6. 按 counterUnits + directive.preferredUnits 优先级训练战斗单位
     const trainedBuildings = new Set<string>();
     const tt = this.world.techTrees.get(this.playerIndex);
-    for (const unitDefId of directive.preferredUnits) {
+    // 反制单位优先于常规偏好单位
+    const trainPriority = [...counterUnits, ...directive.preferredUnits.filter(id => !counterUnits.includes(id))];
+    for (const unitDefId of trainPriority) {
       if (unitDefId === 'unit_worker') continue;
       if (supply >= supplyCap) continue;
 
@@ -302,5 +312,122 @@ if (unitDefId === 'unit_grenadier') return b.spriteKey === 'bld_barracks';
     }
 
     return commands;
+  }
+
+  /** P3: 分析敌方单位构成，返回需要训练的反制单位 ID 列表。
+   *    - 敌方机械多 -> 优先 grenadier (alchemy 克 mechanical)、crystal 类单位
+   *    - 敌方护盾多 -> 优先 grenadier (alchemy 克 shield ×2)
+   *    - 敌方重甲多 -> 优先 battle_mage (magic 克 heavy +25%)
+   *    - 敌方法师多 -> 优先 rifleman (physical 对 light 无惩罚，量大便宜)
+   */
+  private _getCounterUnits(units: Unit[], directive: StrategyDirective): string[] {
+    const enemyUnits = units.filter(u => u.owner !== this.playerIndex && u.isAlive);
+    if (enemyUnits.length === 0) return [];
+
+    const counts: Record<string, number> = {};
+    for (const u of enemyUnits) {
+      const armor = u.armorType;
+      counts[armor] = (counts[armor] ?? 0) + 1;
+    }
+
+    const total = enemyUnits.length;
+    const result: string[] = [];
+    const faction = this.playerFaction;
+
+    // 机械占比 > 33% -> 炼金克制（grenadier）
+    if ((counts['mechanical'] ?? 0) / total > 0.33) {
+      // P3-COUNTER: alchemy dmg x1.0 vs mechanical (no bonus) BUT mechanical takes +25% from crystal
+      // grenadier 的 alchemy 对机械无加成，但 grenadier 是 AOE，仍有用
+      result.push('unit_grenadier');
+    }
+
+    // 护盾占比 > 20% -> 炼金/魔法克制
+    if ((counts['shield'] ?? 0) / total > 0.20) {
+      // alchemy ×2 vs shield, magic ×1.5 vs shield
+      result.push('unit_grenadier'); // alchemy 最克护盾
+      result.push('unit_battle_mage');
+    }
+
+    // 重甲占比 > 33% -> 魔法克制
+    if ((counts['heavy'] ?? 0) / total > 0.33) {
+      result.push('unit_battle_mage'); // magic +25% vs heavy
+      if (faction === 'arcane_empire') result.push('unit_arcane_heavy');
+    }
+
+    // 轻甲多 -> 扫射单位（rifleman 便宜量大）
+    if ((counts['light'] ?? 0) / total > 0.5) {
+      result.push('unit_rifleman');
+      if (faction === 'hammer_federation') result.push('unit_assault_worker');
+    }
+
+    // 建筑多 -> grenadier (alchemy +50% vs structure)
+    if ((counts['structure'] ?? 0) / total > 0.25) {
+      result.push('unit_grenadier');
+    }
+
+    // 去重 + 合并 directive.preferredUnits 中已有的（不重复）
+    const preferredSet = new Set(directive.preferredUnits);
+    return [...new Set(result)].filter(cu => !preferredSet.has(cu));
+  }
+
+  /** P4+P5: 建筑选址。根据CC位置、矿点分布和敌方方向，为每种建筑类型返回推荐位置。
+   *   - refinery: 最近活跃水晶矿方向
+   *   - defense: CC朝向敌方建筑方向（炮塔/城墙放在前线侧）
+   *   - rear: CC远离矿点/敌方方向（电厂等后方建筑）
+   *   - production / tech: CC周边（原有逻辑）
+   */
+  private _computeStrategicPositions(
+    cc: Building,
+    allBuildings: Building[],
+    fields: ResourceField[],
+  ): { refinery?: { x: number; y: number }; defense?: { x: number; y: number }; rear?: { x: number; y: number }; production?: { x: number; y: number }; tech?: { x: number; y: number } } {
+    const cx = Math.round(cc.tileX);
+    const cy = Math.round(cc.tileY);
+    const result: any = {};
+
+    // 精炼厂位置：最近活跃水晶矿方向 4 格
+    const activeFields = fields.filter(f => f.isActive && !f.isDepleted);
+    if (activeFields.length > 0) {
+      let closest = activeFields[0];
+      let closestDist = Infinity;
+      for (const f of activeFields) {
+        const d = Math.abs(cx - f.tileX) + Math.abs(cy - f.tileY);
+        if (d < closestDist) { closestDist = d; closest = f; }
+      }
+      // 在 CC 朝向矿点的 4 格处放置（如果距离足够远）
+      const dx = closest.tileX - cx;
+      const dy = closest.tileY - cy;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      result.refinery = { x: Math.round(cx + (dx / len) * 4), y: Math.round(cy + (dy / len) * 4) };
+    }
+
+    // 防御位置：CC朝向敌方建筑方向 4 格（炮塔/城墙守前线）
+    const enemyBuildings = allBuildings.filter(b => b.owner !== this.playerIndex && b.isAlive);
+    if (enemyBuildings.length > 0) {
+      let avgEx = 0, avgEy = 0;
+      for (const b of enemyBuildings) {
+        avgEx += b.tileX; avgEy += b.tileY;
+      }
+      avgEx /= enemyBuildings.length;
+      avgEy /= enemyBuildings.length;
+      const dx = avgEx - cx;
+      const dy = avgEy - cy;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      result.defense = { x: Math.round(cx + (dx / len) * 4), y: Math.round(cy + (dy / len) * 4) };
+    }
+
+    // 后方位置：远离矿点和敌方的方向
+    const rearDx = result.refinery ? -(result.refinery.x - cx) : (result.defense ? -(result.defense.x - cx) : 0);
+    const rearDy = result.refinery ? -(result.refinery.y - cy) : (result.defense ? -(result.defense.y - cy) : 4);
+    const rearLen = Math.sqrt(rearDx * rearDx + rearDy * rearDy) || 1;
+    result.rear = { x: Math.round(cx + (rearDx / rearLen) * 3), y: Math.round(cy + (rearDy / rearLen) * 3) };
+
+    // 生产/科技建筑：CC周边随机偏移（避免重叠）
+    const offsets = [[4, 0], [-4, 0], [0, 4], [0, -4], [3, 3], [-3, 3], [3, -3], [-3, -3]];
+    const pick = (idx: number) => ({ x: cx + offsets[idx][0], y: cy + offsets[idx][1] });
+    result.production = pick(Math.floor(Math.random() * offsets.length));
+    result.tech = pick(Math.floor(Math.random() * offsets.length));
+
+    return result;
   }
 }
