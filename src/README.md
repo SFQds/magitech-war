@@ -87,6 +87,15 @@ src/
 
 ## 测试约定
 
+### 当前成绩单
+
+| 指标 | 数值 |
+|------|------|
+| 测试文件 | 45 |
+| 总用例 | 1166 |
+| tsc | 零错误 |
+| vitest | 1166 全部通过 |
+
 ### 测试分层
 
 | 层 | 覆盖范围 | 怎么测 | 自动化 |
@@ -119,6 +128,19 @@ npx tsc --noEmit        # 类型检查（必须零错误）
 - 新增/修改 AI 行为 -> 补 **L2** 集成测试
 - 修改胜负判定/游戏循环 -> 补 **L3** 端到端测试
 - 修 bug -> 补对应层的回归测试（it 描述标注修复点，如「回归 P0-A2」）
+
+### L4 人工验收清单（不写自动化测试）
+
+以下模块本质上是 Phaser 渲染/交互/入口，单元测试 ROI 极低，由人工在 dev server 实玩验收：
+
+| 模块 | 原因 |
+|------|------|
+| `rendering/*` (FogRenderer/HpBarRenderer/SpriteRenderer/SoundBindings) | 纯 Phaser graphics/sound 调用，无分支逻辑 |
+| `scenes/*` (BootScene/GameScene/HUDScene/MenuScene) | Phaser 生命周期 + 事件协调 |
+| `ui/CommandCard.ts`, `ui/Minimap.ts` | 全是 fillRect/fillCircle 绘制 |
+| `utils/AssetGenerator.ts` | 全是 generateTexture 绘制 |
+| `main.ts` | 入口启动代码 |
+| `*/index.ts` | 桶导出，零逻辑 |
 
 ### 命名约定
 

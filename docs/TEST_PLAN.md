@@ -1,7 +1,17 @@
 # 测试调研文档 — L2/L3 测试项清单
 
-> 本文档是 L2 集成测试与 L3 端到端测试的 `it` 清单，由子代理调研后填充，指导测试编写。
-> L1 单元测试已就绪（127 个，覆盖寻路/战斗/采集/迷雾/科技/研究）。
+> 测试现状：**45 个测试文件，1166 用例**（tsc 零错误，vitest 全绿）
+>
+> 初始 L1 单元测试 127 个（寻路/战斗/采集/迷雾/科技/研究）。
+> 经三轮审计补洞后扩展至：实体(Entity/Unit/Building/ResourceField/Projectile/Hero)、
+> 系统(Combat/Movement/Resource/Production/Research/Tech/Guild/Hero/DeathCleanup)、
+> AI(AIController/EconomyAI/MilitaryAI/StrategyManager)、
+> 控制器(CommandExecutor/GameOver/Build/Projectile/UnitSpawner)、
+> 配置(unitData/balance/sprites/heroData/全查询函数)、
+> UI(ResourceDisplay/ProductionQueue/SelectionPanel)、
+> 工具(EventBus/MathUtils/BinaryHeap/SoundManager)、
+> 核心(CameraController/InputController/EntityRegistry/GameMap/GameWorld/FogOfWar)、
+> 端到端(HeadlessGameRunner 歼灭/限时/宽限/阵营交换/确定论)。
 
 ## L2 集成测试
 
