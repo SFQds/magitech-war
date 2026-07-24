@@ -23,6 +23,8 @@ export const PNG_SPRITE_KEYS = [
   'unit_grenadier',
   'hero_isabelle',
   'hero_marcus',
+  'hero_sebastian',
+  'hero_eileen',
   'bld_turret',
   'bld_ancient_archive',
   'bld_assembly_workshop',

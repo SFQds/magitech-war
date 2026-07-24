@@ -175,7 +175,7 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     // P1-D10: industry 50->65 to match federation CC (reduce early-game economic asymmetry)
     provides: { supply: 50, industry: 65 },
-    produces: ['unit_worker', 'hero_isabelle'],
+    produces: ['unit_worker', 'hero_isabelle', 'hero_sebastian'],
     researches: ['tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_cc_federation: {
@@ -183,7 +183,7 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     cost: { crystal: 0, industry: 0, time: 0 },
     hp: 2000,
     provides: { supply: 50, industry: 65 },
-    produces: ['unit_worker', 'hero_marcus'],
+    produces: ['unit_worker', 'hero_marcus', 'hero_eileen'],
     researches: ['tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce'],
   },
   bld_barracks: {

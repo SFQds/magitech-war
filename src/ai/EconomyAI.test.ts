@@ -265,7 +265,7 @@ describe('EconomyAI - counter units', () => {
     const { world, ai } = setupAI();
     const cc = makeCommandCenter(1, 10, 10);
     const field = makeResourceField(12, 10, 5000);
-    expect(() => ai.evaluate([cc], [cc], [field], EARLY)).not.toThrow();
+    expect(() => ai.evaluate([cc], [makeUnit({ owner: 1, spriteKey: 'unit_rifleman', hp: 100 })], [field], EARLY)).not.toThrow();
   });
 
   it('mechanical-heavy enemy composition does not crash', () => {

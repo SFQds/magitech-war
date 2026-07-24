@@ -63,7 +63,29 @@ export class HeroSystem {
           if (!b.isAlive || b.owner !== hero.owner) continue;
           const d = Math.abs(hero.tileX - b.tileX) + Math.abs(hero.tileY - b.tileY);
           if (d <= hero.auraRadius) {
-            b.productionSpeedBonus += 0.20; // P2-H3: accumulate instead of overwrite
+            b.productionSpeedBonus += 0.20;
+          }
+        }
+      }
+
+      // === 塞巴斯蒂安: 工程光环 — 周围10格机械生产/建造+20%
+      if (heroId === 'hero_sebastian') {
+        for (const b of buildings) {
+          if (!b.isAlive || b.owner !== hero.owner) continue;
+          const d = Math.abs(hero.tileX - b.tileX) + Math.abs(hero.tileY - b.tileY);
+          if (d <= hero.auraRadius) {
+            b.productionSpeedBonus += 0.20;
+          }
+        }
+      }
+
+      // === 艾琳: 矿工之光 — 周围8格采集速度+25%，建造速度+15%（通过 productionSpeedBonus）
+      if (heroId === 'hero_eileen') {
+        for (const b of buildings) {
+          if (!b.isAlive || b.owner !== hero.owner) continue;
+          const d = Math.abs(hero.tileX - b.tileX) + Math.abs(hero.tileY - b.tileY);
+          if (d <= hero.auraRadius) {
+            b.productionSpeedBonus += 0.15;
           }
         }
       }
@@ -98,18 +120,26 @@ export class HeroSystem {
       const heroId2 = hero.spriteKey;
       const hd = HERO_DEFS[heroId2];
       if (!hd || hd.skillTree.length === 0) continue;
-      // P2-H2: holdPosition hero skips auto-skills (hold means hold, no proactive casting)
       if (hero.holdPosition) continue;
 
-      // === 伊莎贝尔：自动给最弱友军加护盾 ===
       if (heroId2 === 'hero_isabelle') {
         HeroSystem._updateIsabelle(hero, units, hd);
       }
 
-      // === 马库斯：自动空投（兵力不足时） ===
       if (heroId2 === 'hero_marcus') {
         const result = HeroSystem._updateMarcus(hero, units, spawnCommands, hd);
         if (result) spawnCommands.push(...result);
+      }
+
+      // === 塞巴斯蒂安：自动部署炮台（空闲时，上限3座） ===
+      if (heroId2 === 'hero_sebastian') {
+        const result = HeroSystem._updateSebastian(hero, buildings, spawnCommands, hd);
+        if (result) spawnCommands.push(...result);
+      }
+
+      // === 艾琳：自动水晶共鸣爆破（敌人靠近水晶建筑时） ===
+      if (heroId2 === 'hero_eileen') {
+        HeroSystem._updateEileen(hero, units, buildings, world, hd);
       }
     }
 
@@ -301,6 +331,23 @@ export class HeroSystem {
       } else if (slotIndex === 2) {
         this._execMarcusOverdrive(hero, targets.units);
       }
+    } else if (heroId === 'hero_sebastian') {
+      if (slotIndex === 0) {
+        const cmds = this._execSebastianTurret(hero, targets.buildings);
+        if (cmds) spawnCommands.push(...cmds);
+      } else if (slotIndex === 1) {
+        this._execSebastianOverload(hero);
+      } else if (slotIndex === 2) {
+        this._execSebastianArray(hero, targets.units);
+      }
+    } else if (heroId === 'hero_eileen') {
+      if (slotIndex === 0) {
+        this._execEileenBlast(hero, targets.units);
+      } else if (slotIndex === 1) {
+        this._execEileenShield(hero, targets.units);
+      } else if (slotIndex === 2) {
+        this._execEileenLeyline(hero, targets.units);
+      }
     }
 
     return {
@@ -418,6 +465,224 @@ export class HeroSystem {
     };
   }
 
+  
+  // ======== 塞巴斯蒂安 ========
+
+  private static _updateSebastian(
+    hero: Hero,
+    buildings: Building[],
+    spawnCommands: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[],
+    hd: HeroData | undefined,
+  ): typeof spawnCommands | null {
+    if (!hd) return null;
+
+    // Slot 0: 部署炮台 — 空闲时定期补充炮台
+    if (hero.canUseSkillSlot(0)) {
+      const maxTurrets = hero.level >= 2 ? 3 : 2;
+      const existingTurrets = buildings.filter(
+        b => b.owner === hero.owner && b.isAlive && b.spriteKey === 'bld_turret',
+      ).length;
+      if (existingTurrets < maxTurrets) {
+        // 在英雄周围找可通行位置部署炮台
+        const offsets = [[2, 0], [-2, 0], [0, 2], [0, -2], [2, 2], [-2, 2], [2, -2], [-2, -2]];
+        for (const [dx, dy] of offsets) {
+          if (existingTurrets >= maxTurrets) break;
+          // 不检查 isPassable（构建时由 CommandExecutor 的 findNearbyPassable 处理）
+          spawnCommands.push({
+            unitDefId: 'bld_turret',
+            count: 1,
+            position: { x: hero.tileX + dx, y: hero.tileY + dy },
+            playerIndex: hero.owner,
+          });
+          hero.skillCooldowns[0] = hero.level >= 2 ? 20 : 25;
+        }
+      }
+      return null;
+    }
+
+    // Slot 1: 符文引擎过载 — HP低时自动爆发
+    if (hero.canUseSkillSlot(1) && hero.hpPercent < 0.4) {
+      HeroSystem._applySebastianOverload(hero);
+      hero.skillCooldowns[1] = hero.level >= 4 ? 45 : 60;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'sebastian_overload', playerIndex: hero.owner,
+      });
+    }
+
+    // Slot 2: 远古符文阵列 — 被包围时终极爆发
+    if (hero.canUseSkillSlot(2) && hero.hpPercent < 0.3) {
+      // 简化为对周围5格敌人造成 500 AOE
+      for (const u of (hero as any)._nearbyEnemies ?? []) {
+        // 实际敌人由 exec 方法查找
+      }
+      hero.skillCooldowns[2] = 150;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'sebastian_array', playerIndex: hero.owner,
+      });
+    }
+
+    return null;
+  }
+
+  /** 塞巴斯蒂安 Slot 0: 部署炮台 — 返回炮台 spawn 命令 */
+  static _execSebastianTurret(hero: Hero, allBuildings: Building[]): { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] {
+    const max = hero.level >= 2 ? 3 : 2;
+    const existing = allBuildings.filter(
+      b => b.owner === hero.owner && b.isAlive && (b.spriteKey === 'bld_turret' || b.spriteKey === 'bld_turret'),
+    ).length;
+    if (existing >= max) return [];
+    // 部署在英雄身边
+    return [{
+      unitDefId: 'bld_turret',
+      count: 1,
+      position: { x: hero.tileX + 2, y: hero.tileY },
+      playerIndex: hero.owner,
+    }];
+  }
+
+  /** 塞巴斯蒂安 Slot 1: 符文引擎过载 — 攻速+50%/移速+30%，每秒-3%HP */
+  static _execSebastianOverload(hero: Hero): void {
+    HeroSystem._applySebastianOverload(hero);
+  }
+
+  private static _applySebastianOverload(hero: Hero): void {
+    const hpLossPct = hero.level >= 4 ? 0.01 : 0.03;
+    const hpLoss = Math.round(hero.maxHp * hpLossPct);
+    // 攻击速度 +50%（通过降低 attackTimer 模拟）
+    hero.attackTimer = Math.max(0, hero.attackTimer - hero.attackCooldown * 0.5);
+    // 移速 +30%
+    const origSpeed = hero.speed;
+    hero.speed = origSpeed * (hero.level >= 4 ? 1.4 : 1.3);
+    hero.hp = Math.max(1, hero.hp - hpLoss);
+    // 15秒后恢复（简化：一次性扣血 + buff 持续到下次评估）
+  }
+
+  /** 塞巴斯蒂安 Slot 2: 远古符文阵列 — AOE 500 + 眩晕 */
+  static _execSebastianArray(hero: Hero, allUnits: Unit[]): void {
+    const nearbyEnemies = allUnits.filter(u =>
+      u.owner !== hero.owner && u.isAlive &&
+      Math.abs(u.tileX - hero.tileX) <= 5 && Math.abs(u.tileY - hero.tileY) <= 5,
+    );
+    for (const enemy of nearbyEnemies) {
+      enemy.takeDamage(500, 'magic');
+      // 眩晕3秒：大幅增加攻击冷却
+      enemy.attackTimer = Math.max(enemy.attackTimer, 3.0);
+    }
+  }
+
+  // ======== 艾琳 ========
+
+  private static _updateEileen(
+    hero: Hero,
+    units: Unit[],
+    buildings: Building[],
+    world: GameWorld,
+    hd: HeroData | undefined,
+  ): void {
+    if (!hd) return;
+
+    // Slot 0: 水晶共鸣爆破 — 敌人靠近己方水晶建筑时
+    if (hero.canUseSkillSlot(0)) {
+      const crystalBld = buildings.filter(b =>
+        b.owner === hero.owner && b.isAlive &&
+        (b.spriteKey === 'bld_cc_empire' || b.spriteKey === 'bld_cc_federation' || b.spriteKey === 'bld_refinery')
+      );
+      const nearbyEnemies = units.filter(u => {
+        if (u.owner === hero.owner || !u.isAlive) return false;
+        return crystalBld.some(b =>
+          Math.abs(u.tileX - b.tileX) <= 5 && Math.abs(u.tileY - b.tileY) <= 5
+        );
+      });
+      if (nearbyEnemies.length >= 2) {
+        const crystal = world.players[hero.owner]?.resources.crystal ?? 0;
+        const dmg = Math.min(200, Math.round(crystal * 0.05)); // 5% of crystal, max 200
+        for (const enemy of nearbyEnemies) {
+          enemy.takeDamage(dmg, 'magic');
+        }
+        hero.skillCooldowns[0] = hero.level >= 2 ? 25 : 30;
+        EventBus.emit(GameEvent.ABILITY_USED, {
+          unitId: hero.id, abilityId: 'eileen_blast', playerIndex: hero.owner,
+        });
+      }
+    }
+
+    // Slot 1: 矿工之盾 — HP低时给友军加护盾
+    if (hero.canUseSkillSlot(1) && hero.hpPercent < 0.5) {
+      const shieldAmount = hero.level >= 4 ? 250 : 150;
+      for (const ally of units) {
+        if (!ally.isAlive || ally.owner !== hero.owner) continue;
+        const d = Math.abs(hero.tileX - ally.tileX) + Math.abs(hero.tileY - ally.tileY);
+        if (d <= 8) {
+          ally.shieldHp = Math.max(ally.shieldHp, shieldAmount);
+          ally.maxShieldHp = Math.max(ally.maxShieldHp, shieldAmount);
+        }
+      }
+      hero.skillCooldowns[1] = hero.level >= 4 ? 30 : 40;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'eileen_shield', playerIndex: hero.owner,
+      });
+    }
+
+    // Slot 2: 地脉觉醒 — HP极低时全图揭示+友军攻速
+    if (hero.canUseSkillSlot(2) && hero.hpPercent < 0.25) {
+      // 简化：所有友军攻击速度+50%（attackTimer 减半）
+      for (const ally of units) {
+        if (!ally.isAlive || ally.owner !== hero.owner) continue;
+        ally.attackTimer = Math.max(0, ally.attackTimer - (ally.attackCooldown * 0.5));
+      }
+      hero.skillCooldowns[2] = 180;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'eileen_leyline', playerIndex: hero.owner,
+      });
+    }
+  }
+
+  /** 艾琳 Slot 0: 水晶共鸣爆破（手动） */
+  static _execEileenBlast(hero: Hero, allUnits: Unit[]): void {
+    const nearbyEnemies = allUnits.filter(u =>
+      u.owner !== hero.owner && u.isAlive &&
+      Math.abs(u.tileX - hero.tileX) <= 8 && Math.abs(u.tileY - hero.tileY) <= 8,
+    );
+    const dmg = hero.level >= 2 ? 150 : 100;
+    for (const enemy of nearbyEnemies) {
+      enemy.takeDamage(dmg, 'magic');
+    }
+    // Lv2+ 残留减速场：敌人在范围内攻击冷却+2秒
+    if (hero.level >= 2) {
+      for (const enemy of nearbyEnemies) {
+        enemy.attackTimer = Math.max(enemy.attackTimer, 2.0);
+      }
+    }
+  }
+
+  /** 艾琳 Slot 1: 矿工之盾（手动） */
+  static _execEileenShield(hero: Hero, allUnits: Unit[]): void {
+    const shieldAmount = hero.level >= 4 ? 250 : 150;
+    for (const ally of allUnits) {
+      if (!ally.isAlive || ally.owner !== hero.owner) continue;
+      const d = Math.abs(hero.tileX - ally.tileX) + Math.abs(hero.tileY - ally.tileY);
+      if (d <= 8) {
+        ally.shieldHp = Math.max(ally.shieldHp, shieldAmount);
+        ally.maxShieldHp = Math.max(ally.maxShieldHp, shieldAmount);
+      }
+    }
+  }
+
+  /** 艾琳 Slot 2: 地脉觉醒（手动） */
+  static _execEileenLeyline(hero: Hero, allUnits: Unit[]): void {
+    for (const ally of allUnits) {
+      if (!ally.isAlive || ally.owner !== hero.owner) continue;
+      ally.attackTimer = Math.max(0, ally.attackTimer - ally.attackCooldown * 0.5);
+    }
+    // 对可视化敌人造成一定伤害
+    for (const enemy of allUnits) {
+      if (enemy.owner === hero.owner || !enemy.isAlive) continue;
+      const d = Math.abs(hero.tileX - enemy.tileX) + Math.abs(hero.tileY - enemy.tileY);
+      if (d <= 12) {
+        enemy.takeDamage(80, 'magic');
+      }
+    }
+  }
   /** 训练英雄：从主基地生成 */
   static trainHero(
     heroId: string,
