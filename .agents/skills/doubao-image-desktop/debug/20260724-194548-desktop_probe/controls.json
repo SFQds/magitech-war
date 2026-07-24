@@ -1,0 +1,32 @@
+[
+  {
+    "index": 0,
+    "name": "",
+    "control_type": "Pane",
+    "automation_id": "",
+    "class_name": "",
+    "rect": {
+      "left": 0,
+      "top": 0,
+      "right": 2100,
+      "bottom": 1406,
+      "width": 2100,
+      "height": 1406
+    }
+  },
+  {
+    "index": 1,
+    "name": "assistant_button",
+    "control_type": "Button",
+    "automation_id": "",
+    "class_name": "",
+    "rect": {
+      "left": 9,
+      "top": 6,
+      "right": 2091,
+      "bottom": 1394,
+      "width": 2082,
+      "height": 1388
+    }
+  }
+]

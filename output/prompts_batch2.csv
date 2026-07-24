@@ -1,3 +1,6 @@
 name,prompt
-bld_barracks,俯视角RTS游戏兵营建筑 石头城堡风格 两扇木门 旗帜 像素风格 64x64尺寸 纯色背景 简单干净
-unit_battle_mage,俯视角RTS游戏战斗法师 穿紫色长袍 手持发光法杖 魔法光芒 像素风格 32x32尺寸 纯色背景 简单干净
+neutral_crystal_wisp.png,Take the following figures into consideration when creating the image: 俯视视角2D像素风RTS中立野怪精灵，32x32像素，透明背景。水晶精魄——一团漂浮在半透明紫色水晶碎片中的柔和光球。光球内部有微弱脉冲光以约1秒周期明暗呼吸。没有具体形态，纯粹的能量+碎晶组合。半透明紫色+白色光。下方有轻微的光晕投影。
+neutral_mountain_beast.png,Take the following figures into consideration when creating the image: 俯视视角2D像素风RTS中立野怪精灵，96x96像素，透明背景。山兽——一头由深灰色岩石和苔藓构成的庞然大物，四足立地，背部隆起如小山丘。眼睛是两个深邃的暗绿色发光点。体表裂缝中渗出暗绿色雾气。守护姿态——站在远古建筑废墟碎块上，发出低沉的威胁。深灰+暗绿+苔藓色。
+neutral_ancient_shrine.png,Take the following figures into consideration when creating the image: 俯视视角2D像素风RTS中立建筑精灵，96x96像素，透明背景。远古符文遗迹——一座被藤蔓覆盖的古老石阵，中央竖立着一块高耸的符文石碑。石碑上蚀刻的符文发出微弱的淡金色脉冲光。环绕石碑的地面有同心圆刻痕，部分已被泥土和青苔掩埋。灰石+金色符文+绿色藤蔓。
+neutral_abandoned_mine.png,Take the following figures into consideration when creating the image: 俯视视角2D像素风RTS中立建筑精灵，96x96像素，透明背景。废弃矿井——一座木质支撑结构已半腐朽的矿洞入口。洞口外停放着一辆锈蚀的矿车（里面还有几块暗紫色水晶碎片），旁边堆着废弃的木箱和断裂的铁轨。洞内黑暗深处有一丝微弱的紫色光。深棕木+铁锈+暗紫水晶。同风格参考：bld_refinery.png
+neutral_watchtower.png,Take the following figures into consideration when creating the image: 俯视视角2D像素风RTS中立建筑精灵，64x64像素，透明背景。废弃瞭望塔——一座高耸的石砌塔楼，塔顶有木制瞭望平台和残破的遮阳棚。塔身有明显裂缝但整体结构仍然坚固。塔顶悬挂着一盏已经熄灭的旧式油灯。灰石+深棕木+暗铜灯。

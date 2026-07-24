@@ -1,0 +1,65 @@
+{
+  "hwnd": 1312300,
+  "title": "",
+  "rect": {
+    "left": 0,
+    "top": 0,
+    "right": 2099,
+    "bottom": 1405,
+    "width": 2099,
+    "height": 1405
+  },
+  "debug_dir": "D:\\ZCodeProject\\游戏\\策略对战\\.agents\\skills\\doubao-image-desktop\\debug\\20260724-194548-desktop_probe",
+  "screenshot": "D:\\ZCodeProject\\游戏\\策略对战\\.agents\\skills\\doubao-image-desktop\\debug\\20260724-194548-desktop_probe\\window.png",
+  "screenshot_error": "",
+  "control_count": 2,
+  "interesting_controls": [
+    {
+      "index": 1,
+      "name": "assistant_button",
+      "control_type": "Button",
+      "automation_id": "",
+      "class_name": "",
+      "rect": {
+        "left": 9,
+        "top": 6,
+        "right": 2091,
+        "bottom": 1394,
+        "width": 2082,
+        "height": 1388
+      }
+    }
+  ],
+  "controls": [
+    {
+      "index": 0,
+      "name": "",
+      "control_type": "Pane",
+      "automation_id": "",
+      "class_name": "",
+      "rect": {
+        "left": 0,
+        "top": 0,
+        "right": 2100,
+        "bottom": 1406,
+        "width": 2100,
+        "height": 1406
+      }
+    },
+    {
+      "index": 1,
+      "name": "assistant_button",
+      "control_type": "Button",
+      "automation_id": "",
+      "class_name": "",
+      "rect": {
+        "left": 9,
+        "top": 6,
+        "right": 2091,
+        "bottom": 1394,
+        "width": 2082,
+        "height": 1388
+      }
+    }
+  ]
+}

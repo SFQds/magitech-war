@@ -26,7 +26,7 @@ describe('PNG_SPRITE_KEYS - 结构', () => {
 
   it('所有 key 匹配命名规范 ^(unit_|bld_|hero_|proj_|ui_)[a-z_]+$', () => {
     for (const key of PNG_SPRITE_KEYS) {
-      expect(key).toMatch(/^(unit_|bld_|hero_|proj_|ui_)[a-z_]+$/);
+      expect(key).toMatch(/^(unit_|bld_|hero_|proj_|ui_|neutral_)[a-z_]+$/);
     }
   });
 });
