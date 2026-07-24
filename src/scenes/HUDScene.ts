@@ -148,7 +148,7 @@ export class HUDScene extends Phaser.Scene {
       }
 
       if (units.length === 1 && units[0].spriteKey === 'unit_worker') {
-        const btns: { label: string; cost: string; spriteKey?: string; callback: () => void }[] = [];
+        const btns: { label: string; cost: string; spriteKey?: string; callback: () => void; hotkey?: string }[] = [];
         const playerFaction = gs.world?.players?.[0]?.faction;
         for (const [bldId, def] of Object.entries(BUILDING_DEFS)) {
           if (def.cost.crystal > 0) {
@@ -156,7 +156,16 @@ export class HUDScene extends Phaser.Scene {
             btns.push({ label: `建造${def.displayName}`, cost: cost ? `💎${cost.crystal}` : `💎?`, spriteKey: bldId, callback: () => this.enterBuildMode(units[0].id, bldId) });
           }
         }
+        // P1-UI: 追加通用命令按钮
+        btns.push(...this._buildCommandButtons(units, gs));
         this.commandCard.setCommands(btns);
+        return;
+      }
+
+      // P1-UI: 普通单位（非英雄非工兵）选中时显示命令按钮
+      if (units.length >= 1 && !units.some(u => u instanceof Hero)) {
+        const btns = this._buildCommandButtons(units, gs);
+        if (btns.length > 0) this.commandCard.setCommands(btns);
       }
     });
 
@@ -359,6 +368,36 @@ export class HUDScene extends Phaser.Scene {
     }) as CommandResult | undefined;
     if (result && !result.ok) this.showToast(result.reason);
     // 成功提示由 RESEARCH_CANCELED 监听器统一处理并刷新资源
+  }
+
+  /** P1-UI: 构建通用命令按钮（停止/坚守/攻击移动），标注热键 */
+  private _buildCommandButtons(units: Unit[], gs: any): { label: string; cost: string; callback: () => void; hotkey?: string; disabled?: boolean }[] {
+    const btns: { label: string; cost: string; callback: () => void; hotkey?: string; disabled?: boolean }[] = [];
+    const ids = units.map(u => u.id);
+    btns.push({
+      label: '停止', cost: 'S', hotkey: 'S',
+      callback: () => {
+        for (const id of ids) {
+          gs.commandExecutor?.execute({ type: 'stop', playerIndex: 0, unitIds: [id], frame: 0 });
+        }
+      },
+    });
+    btns.push({
+      label: '坚守', cost: 'H', hotkey: 'H',
+      callback: () => {
+        for (const id of ids) {
+          gs.commandExecutor?.execute({ type: 'hold_position', playerIndex: 0, unitIds: [id], frame: 0 });
+        }
+      },
+    });
+    btns.push({
+      label: '攻击移动', cost: 'A', hotkey: 'A',
+      callback: () => {
+        // 切换攻击移动模式（由 GameScene 处理）
+        if (gs.toggleAttackMove) gs.toggleAttackMove();
+      },
+    });
+    return btns;
   }
 
   private enterBuildMode(builderId: string, buildingDefId: string): void {

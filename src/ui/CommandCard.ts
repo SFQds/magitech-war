@@ -12,6 +12,8 @@ export interface CommandButton {
   spriteKey?: string;
   callback: () => void;
   disabled?: boolean;
+  /** P1-UI: 热键字母（如 'S'/'H'/'A'），显示在按钮右上角 */
+  hotkey?: string;
 }
 
 const BTN_W = 72;
@@ -74,6 +76,17 @@ export class CommandCard {
         fontFamily: 'Arial, sans-serif',
       });
       this.container.add(costText);
+
+      // P1-UI: 热键字母（右上角）
+      if (cmd.hotkey) {
+        const hotkeyText = this.scene.add.text(x + BTN_W - 12, y + 2, cmd.hotkey, {
+          fontSize: '11px',
+          color: isDisabled ? '#444444' : '#9b59b6',
+          fontFamily: 'Arial, sans-serif',
+          fontStyle: 'bold',
+        });
+        this.container.add(hotkeyText);
+      }
 
       // 可点击透明区域
       const hitArea = this.scene.add.rectangle(x, y, BTN_W, BTN_H, 0xffffff, 0)

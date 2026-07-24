@@ -749,8 +749,7 @@ export class GameScene extends Phaser.Scene {
 
     // A: 攻击移动模式（切换）
     this.input.keyboard!.on('keydown-A', () => {
-      this.attackMoveMode = !this.attackMoveMode;
-      EventBus.emit(GameEvent.ATTACK_MOVE_TOGGLE, { active: this.attackMoveMode });
+      this.toggleAttackMove();
     });
 
     // F2: 全选作战单位
@@ -1269,6 +1268,12 @@ export class GameScene extends Phaser.Scene {
 
   private executeCommand(cmd: AnyCommand): void {
     this.commandExecutor.execute(cmd);
+  }
+
+  /** P1-UI: 切换攻击移动模式（供 HUDScene 命令按钮调用） */
+  toggleAttackMove(): void {
+    this.attackMoveMode = !this.attackMoveMode;
+    EventBus.emit(GameEvent.ATTACK_MOVE_TOGGLE, { active: this.attackMoveMode });
   }
 
   // ============ 建造系统 ============
