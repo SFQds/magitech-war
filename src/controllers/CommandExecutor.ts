@@ -17,6 +17,8 @@ import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import { UNIT_DEFS, TECH_DEFS, BUILDING_DEFS, getBuildingCost, getFactionBonuses, createBuilding, getUnitCostWithFaction } from '../config/unitData';
 import { HERO_DEFS } from '../config/heroData';
+import { SuperWeaponSystem } from '../systems/SuperWeaponSystem';
+import type { SuperWeaponCommand } from '../types/commands';
 import { HeroSystem } from '../systems/HeroSystem';
 
 /** 命令执行结果 */
@@ -64,6 +66,7 @@ export class CommandExecutor {
       case 'use_ability': return this.execAbility(cmd as AbilityCommand);
       case 'stop':
       case 'hold_position': return this.execStop(cmd);
+      case 'superweapon': return this.execSuperWeapon(cmd as SuperWeaponCommand);
       default: return fail('未知命令');
     }
   }
@@ -383,6 +386,17 @@ export class CommandExecutor {
         });
       }
     }
+    return ok();
+  }
+
+  private execSuperWeapon(cmd: SuperWeaponCommand): CommandResult {
+    const units = this.entities.aliveUnits;
+    const buildings = this.entities.aliveBuildings;
+    const err = SuperWeaponSystem.activate(
+      cmd.playerIndex, cmd.weaponId, cmd.target.x, cmd.target.y,
+      this.world, units, buildings,
+    );
+    if (err) return fail(err);
     return ok();
   }
 }

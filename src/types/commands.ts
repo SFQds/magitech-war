@@ -22,7 +22,8 @@ export type CommandType =
   | 'gather'
   | 'deploy'
   | 'use_ability'
-  | 'spawn';
+  | 'spawn'
+  | 'superweapon';
 
 // ============ 命令接口 ============
 
@@ -124,6 +125,13 @@ export interface SpawnCommand extends Command {
   position: Point;
 }
 
+/** 超级武器命令 */
+export interface SuperWeaponCommand extends Command {
+  type: 'superweapon';
+  weaponId: string;
+  target: Point;
+}
+
 /** 联合命令类型 */
 export type AnyCommand =
   | MoveCommand
@@ -138,7 +146,8 @@ export type AnyCommand =
   | AbilityCommand
   | StopCommand
   | HoldPositionCommand
-  | SpawnCommand;
+  | SpawnCommand
+  | SuperWeaponCommand;
 
 // ============ 命令队列 ============
 

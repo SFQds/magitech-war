@@ -11,6 +11,7 @@ import type { Building } from '../entities/Building';
 import type { StrategyDirective } from './StrategyManager';
 import type { AIDifficulty } from './AIController';
 import { GuildSystem, ALCHEMY_POTIONS } from '../systems/GuildSystem';
+import { SuperWeaponSystem, SUPER_WEAPONS, GUILD_SUPER_WEAPON } from '../systems/SuperWeaponSystem';
 import type { FogOfWar } from '../core/FogOfWar';
 
 /** 目标权重基础分 */
@@ -82,6 +83,8 @@ export class MilitaryAI {
 
   /** 侦察 tick 计数（每隔 SCOUT_INTERVAL_TICKS 分发一次侦察任务） */
   private _scoutTickCounter = 0;
+  /** 超武 AI 使用冷却（避免频繁检查） */
+  private _superWeaponCheckTimer = 0;
 
   evaluate(
     units: Unit[],
@@ -298,6 +301,9 @@ export class MilitaryAI {
 
     // === P1-AI药剂: AI 使用炼金药剂和虚空过载 ===
     this._useGuildAbilities(units, enemyUnits, commands);
+
+    // === 超级武器 AI: 敌人大规模聚集时使用 ===
+    this._useSuperWeapon(enemyUnits, enemyBuildings, ownBuildings, commands);
 
     // === 侦察调度：空闲侦察单位主动探索未探区域 ===
     this._dispatchScouts(ownCombat, units, buildings, commands);
@@ -577,6 +583,77 @@ export class MilitaryAI {
           target: { x: Math.round(best.tileX), y: Math.round(best.tileY) },
           frame: 0,
         });
+      }
+    }
+  }
+
+  /** AI 超级武器使用：敌人大规模聚集（>=5）或敌人靠近关键建筑时使用 */
+  private _useSuperWeapon(
+    enemyUnits: Unit[],
+    enemyBuildings: Building[],
+    ownBuildings: Building[],
+    commands: AnyCommand[],
+  ): void {
+    // 每 10 ticks 检查一次（避免频繁决策）
+    this._superWeaponCheckTimer++;
+    if (this._superWeaponCheckTimer < 10) return;
+    this._superWeaponCheckTimer = 0;
+
+    const guilds = this.world.players[this.playerIndex]?.guilds ?? [];
+    if (guilds.length === 0) return;
+
+    const crystal = this.world.players[this.playerIndex]?.resources.crystal ?? 0;
+
+    for (const guild of guilds) {
+      const weaponId = GUILD_SUPER_WEAPON[guild];
+      if (!weaponId) continue;
+      const def = SUPER_WEAPONS[weaponId];
+      if (!def) continue;
+
+      // 检查是否可用
+      const states = SuperWeaponSystem.getStates(this.playerIndex);
+      const state = states.find(s => s.weaponId === weaponId);
+      if (!state || state.cooldownTimer > 0 || state.active) continue;
+      if (crystal < def.crystalCost) continue;
+
+      // 条件：敌方 >= 5 且在视野中
+      if (enemyUnits.length >= 5) {
+        // 找敌方最密集的区域
+        let cx = 0, cy = 0;
+        for (const e of enemyUnits) { cx += e.tileX; cy += e.tileY; }
+        cx = Math.round(cx / enemyUnits.length);
+        cy = Math.round(cy / enemyUnits.length);
+
+        commands.push({
+          type: 'superweapon',
+          playerIndex: this.playerIndex,
+          unitIds: [],
+          weaponId,
+          target: { x: cx, y: cy },
+          frame: 0,
+        });
+        return; // 一次 AI tick 只用一个超武
+      }
+
+      // 条件：敌方建筑 && 己方有兵力
+      if (enemyBuildings.length > 0 && ownBuildings.length > 0) {
+        // 瞄准最近敌方建筑
+        const cc = ownBuildings[0];
+        let closest = enemyBuildings[0];
+        let closestDist = Infinity;
+        for (const b of enemyBuildings) {
+          const d = Math.abs(cc.tileX - b.tileX) + Math.abs(cc.tileY - b.tileY);
+          if (d < closestDist) { closestDist = d; closest = b; }
+        }
+        commands.push({
+          type: 'superweapon',
+          playerIndex: this.playerIndex,
+          unitIds: [],
+          weaponId,
+          target: { x: Math.round(closest.tileX), y: Math.round(closest.tileY) },
+          frame: 0,
+        });
+        return;
       }
     }
   }
