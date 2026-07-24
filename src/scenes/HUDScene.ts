@@ -13,6 +13,7 @@ import { SelectionPanel } from '../ui/SelectionPanel';
 import { CommandCard } from '../ui/CommandCard';
 import { ProductionQueueUI } from '../ui/ProductionQueue';
 import { Minimap } from '../ui/Minimap';
+import { SuperWeaponBar } from '../ui/SuperWeaponBar';
 import { CameraController } from '../core/CameraController';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
@@ -27,6 +28,7 @@ export class HUDScene extends Phaser.Scene {
   private commandCard!: CommandCard;
   private productionQueue!: ProductionQueueUI;
   private minimap!: Minimap;
+  private superWeaponBar!: SuperWeaponBar;
   private attackMoveText!: Phaser.GameObjects.Text;
   /** P1-10 修复：保存所有 EventBus 监听器引用，shutdown 时逐个 off */
   private _eventHandlers: { event: string; handler: (data: unknown) => void }[] = [];
@@ -77,6 +79,10 @@ export class HUDScene extends Phaser.Scene {
     if (this.minimap) {
       const gs = this.scene.get('GameScene') as any;
       this.minimap.update(gs?.units ?? [], gs?.buildings ?? [], 0);
+    }
+    // P1-超武: 每帧刷新超武按钮冷却显示
+    if (this.superWeaponBar) {
+      this.superWeaponBar.update();
     }
   }
 
@@ -291,6 +297,21 @@ export class HUDScene extends Phaser.Scene {
       this.refreshResourceDisplay();
       if (!this.minimap) { const gs = this.scene.get('GameScene') as any; if (gs?.world?.map) this.initMinimap(gs.world.map, gs.world.fogOfWar); }
       this.scheduleMinimapUpdate();
+      // P1-超武: 初始化超武栏（小地图上方）
+      if (!this.superWeaponBar) {
+        this.superWeaponBar = new SuperWeaponBar(this, 0, 1280 - 160, 720 - 80 - 160 - 70);
+        this.superWeaponBar.onActivate((weaponId: string) => {
+          const gs = this.scene.get('GameScene') as any;
+          if (gs?._pendingSuperWeaponTarget) {
+            const t = gs._pendingSuperWeaponTarget;
+            const result = gs.commandExecutor?.execute({
+              type: 'superweapon', playerIndex: 0, unitIds: [], weaponId, target: { x: t.x, y: t.y }, frame: 0,
+            });
+            if (result && !result.ok) this.showToast(result.reason);
+            else if (result) this.refreshResourceDisplay();
+          }
+        });
+      }
     });
   }
 

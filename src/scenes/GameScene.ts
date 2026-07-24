@@ -15,6 +15,7 @@ import { ProductionSystem } from '../systems/ProductionSystem';
 import { GuildSystem } from '../systems/GuildSystem';
 import { ALCHEMY_POTIONS } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
+import { SuperWeaponSystem } from '../systems/SuperWeaponSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
 import { TechSystem } from '../systems/TechSystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
@@ -212,6 +213,10 @@ export class GameScene extends Phaser.Scene {
 
     // 初始化 per-player 科技效果缓存
     this.initTechEffects();
+
+    // P1-超武: 初始化双方超武状态（按行会解锁）
+    SuperWeaponSystem.initPlayer(0, [...this._playerGuilds]);
+    SuperWeaponSystem.initPlayer(1, [...aiGuilds]);
 
     // 初始化子系统
     this.cameraCtrl = new CameraController(this.cameras.main, mapW, mapH, tileSize);
@@ -463,6 +468,15 @@ export class GameScene extends Phaser.Scene {
   private setupInputCallbacks(): void {
     // 单击：选中单位 或 建筑
     this.inputCtrl.onSingleClick((tile) => {
+      // P1-超武: 瞄准模式下单击确认目标
+      const hud = this.scene.get('HUDScene') as any;
+      if (hud?.superWeaponBar?.aimingWeaponId) {
+        (this as any)._pendingSuperWeaponTarget = { x: tile.x, y: tile.y };
+        hud.superWeaponBar.confirmTarget(tile.x, tile.y);
+        (this as any)._pendingSuperWeaponTarget = null;
+        return;
+      }
+
       // 建造模式：单击确认放置
       if (this.buildController.isActive) {
         this.confirmBuild(tile.x, tile.y);
@@ -753,8 +767,14 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
-    // ESC：退出建造模式 或 退出攻击移动模式
+    // ESC：退出建造模式 或 退出攻击移动模式 或 取消超武瞄准
     this.input.keyboard!.on('keydown-ESC', () => {
+      // P1-超武: 先取消超武瞄准
+      const hud = this.scene.get('HUDScene') as any;
+      if (hud?.superWeaponBar?.aimingWeaponId) {
+        hud.superWeaponBar.cancelAim();
+        return;
+      }
       if (this.buildController.isActive) {
         this.cancelBuildMode();
         return;
@@ -764,6 +784,14 @@ export class GameScene extends Phaser.Scene {
         EventBus.emit(GameEvent.ATTACK_MOVE_TOGGLE, { active: false });
       }
     });
+
+    // P1-超武: 快捷键 1-4 对应超武槽
+    for (let slot = 1; slot <= 4; slot++) {
+      this.input.keyboard!.on(`keydown-${slot}` as any, () => {
+        const hud2 = this.scene.get('HUDScene') as any;
+        if (hud2?.superWeaponBar) hud2.superWeaponBar.hotkey(slot);
+      });
+    }
 
     // P0-B1: Q key applies alchemy potion to selected units
     // P0-C6 修复：多选施法只扣 1 次水晶（原来每单位各扣 1 次，N 选扣 N 倍可秒空水晶）。
@@ -1087,6 +1115,11 @@ export class GameScene extends Phaser.Scene {
         );
       }
     }
+
+    // P1-超武: 推进冷却计时 + 应用持续效果
+    SuperWeaponSystem.update(ds);
+    SuperWeaponSystem.applyActiveEffects(0, this.units, this.buildings, ds);
+    SuperWeaponSystem.applyActiveEffects(1, this.units, this.buildings, ds);
   }
 
   private stepHeroRevive(): void {
