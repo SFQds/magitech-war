@@ -238,3 +238,246 @@ describe('ResourceSystem.updateResources — 工业值再生与衰减', () => {
     expect(player.resources.industry).toBeGreaterThanOrEqual(0);
   });
 });
+
+
+describe('ResourceSystem.gather - 边界', () => {
+  it('field.isActive=false 但 amount>0 返回 0', () => {
+    const w = makeWorker();
+    const f = new ResourceField(5, 0, 'crystal', 100);
+    f.isActive = false;
+    expect(ResourceSystem.gather(w, f)).toBe(0);
+    expect(f.amount).toBe(100);
+  });
+});
+
+describe('ResourceSystem.updateGathering - 工人状态分支', () => {
+  it('死亡工人被跳过 (无事件)', () => {
+    const w = makeWorker();
+    w.takeDamage(999, 'physical');
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL);
+    expect(ev).toHaveLength(0);
+  });
+
+  it('非 gathering 状态工人被跳过', () => {
+    const w = makeWorker();
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    w.state = 'idle'; // bindToField 设 gathering，这里覆盖
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL);
+    expect(ev).toHaveLength(0);
+  });
+
+  it('targetResourceId=null 的 gathering 工人复位 idle', () => {
+    const w = makeWorker();
+    w.targetResourceId = null;
+    ResourceSystem.updateGathering([w], [], [makePlayer(0)], GATHER_TICK_INTERVAL);
+    expect(w.state).toBe('idle');
+  });
+
+  it('targetResourceId 指向不存在的 field 复位 idle 且 targetResourceId 清空', () => {
+    const w = makeWorker();
+    w.targetResourceId = 'ghost_field';
+    const ev = ResourceSystem.updateGathering([w], [], [makePlayer(0)], GATHER_TICK_INTERVAL);
+    expect(w.state).toBe('idle');
+    expect(w.targetResourceId).toBeNull();
+    expect(ev).toHaveLength(0);
+  });
+
+  it('部分 tick (deltaSec=0.5) 累积 timer 不产出', () => {
+    const w = makeWorker(0, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], 0.5, [makeRefinery(0, 0, 0)], 1.0, 1.0);
+    expect(ev).toHaveLength(0);
+    expect(w.gatherTimer).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe('ResourceSystem.updateGathering - 精炼厂与倍率', () => {
+  it('无 buildings 参数视为无精炼厂 (采集上限 3)', () => {
+    const w = makeWorker(0, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL, undefined, 1.0, 1.0);
+    expect(ev[0].amount).toBe(GATHER_NO_REFINERY_CAP);
+  });
+
+  it('精炼厂恰好 15 格 (Manhattan) 满速采集 (边界 <=15)', () => {
+    const w = makeWorker(0, 15, 0);
+    const f = new ResourceField(15, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const r = makeRefinery(0, 0, 0);
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL, [r], 1.0, 1.0);
+    expect(ev[0].amount).toBe(GATHER_BASE_AMOUNT);
+  });
+
+  it('精炼厂 16 格降速 (超出 15 边界)', () => {
+    const w = makeWorker(0, 16, 0);
+    const f = new ResourceField(16, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const r = makeRefinery(0, 0, 0);
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL, [r], 1.0, 1.0);
+    expect(ev[0].amount).toBe(GATHER_NO_REFINERY_CAP);
+  });
+
+  it('gMultP1=2 对 player-1 工人采集翻倍', () => {
+    const w = makeWorker(1, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const r = makeRefinery(1, 0, 0);
+    const p0 = makePlayer(0);
+    const p1 = makePlayer(1);
+    const ev = ResourceSystem.updateGathering([w], [f], [p0, p1], GATHER_TICK_INTERVAL, [r], 1.0, 2.0);
+    expect(ev[0].amount).toBe(GATHER_BASE_AMOUNT * 2);
+    expect(p1.resources.crystal).toBe(GATHER_BASE_AMOUNT * 2);
+  });
+
+  it('undefined 倍率默认 1.0', () => {
+    const w = makeWorker(0, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL, [makeRefinery(0, 0, 0)]);
+    expect(ev[0].amount).toBe(GATHER_BASE_AMOUNT);
+  });
+
+  it('mult=0 时 gathered=0 不发事件不递减 currentGatherers', () => {
+    const w = makeWorker(0, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL, [makeRefinery(0, 0, 0)], 0.0, 1.0);
+    expect(ev).toHaveLength(0);
+  });
+
+  it('owner 越界 (无对应 player) 不发事件但仍复位', () => {
+    const w = makeWorker(5, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 3);
+    bindToField(w, f);
+    const ev = ResourceSystem.updateGathering([w], [f], [], GATHER_TICK_INTERVAL, [], 1.0, 1.0);
+    expect(ev).toHaveLength(0);
+  });
+
+  it('水晶已满 MAX_CRYSTAL 后不再增加', () => {
+    const w = makeWorker(0, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const p = makePlayer(0, MAX_CRYSTAL);
+    ResourceSystem.updateGathering([w], [f], [p], GATHER_TICK_INTERVAL, [makeRefinery(0, 0, 0)], 1.0, 1.0);
+    expect(p.resources.crystal).toBe(MAX_CRYSTAL);
+  });
+
+  it('gather 事件携带正确 workerId/fieldId/playerIndex', () => {
+    const w = makeWorker(0, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(w, f);
+    const ev = ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL, [makeRefinery(0, 0, 0)], 1.0, 1.0);
+    expect(ev[0].workerId).toBe(w.id);
+    expect(ev[0].fieldId).toBe(f.id);
+    expect(ev[0].playerIndex).toBe(0);
+  });
+
+  it('有精炼厂时矿枯竭也递减 currentGatherers 并复位工人', () => {
+    const f = new ResourceField(5, 0, 'crystal', 10);
+    const w = makeWorker(0, 5, 0);
+    bindToField(w, f, 2);
+    const r = makeRefinery(0, 0, 0);
+    ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL, [r], 1.0, 1.0);
+    expect(w.state).toBe('idle');
+    expect(f.currentGatherers).toBe(1);
+  });
+
+  it('currentGatherers=0 时不递减成负数', () => {
+    const w = makeWorker(0, 5, 0);
+    const f = new ResourceField(5, 0, 'crystal', 0);
+    bindToField(w, f, 0);
+    ResourceSystem.updateGathering([w], [f], [makePlayer(0)], GATHER_TICK_INTERVAL, [makeRefinery(0, 0, 0)], 1.0, 1.0);
+    expect(f.currentGatherers).toBe(0);
+  });
+});
+
+describe('ResourceSystem.updateResources - 边界', () => {
+  it('死亡完工建筑不计入供给/工业', () => {
+    const p = makePlayer(0);
+    const b = new Building(0, 'arcane_empire', 0, 0, 800, 'structure', 'production', 'bld_cc_empire', 20, 10);
+    b.complete();
+    b.takeDamage(99999, 'physical');
+    ResourceSystem.updateResources([p], [], [b], 0);
+    expect(p.resources.supplyCap).toBe(0);
+  });
+
+  it('无建筑的玩家 supplyCap=0 industryCap=0', () => {
+    const p = makePlayer(0);
+    p.resources.supplyCap = 999;
+    ResourceSystem.updateResources([p], [], [], 0);
+    expect(p.resources.supplyCap).toBe(0);
+    expect(p.resources.industryCap).toBe(0);
+  });
+
+  it('巨大 deltaSec 工业回升不超过 cap', () => {
+    const p = makePlayer(0);
+    p.resources.industry = 0;
+    const b = new Building(0, 'arcane_empire', 0, 0, 800, 'structure', 'production', 'bld_cc_empire', 20, 10);
+    b.complete();
+    ResourceSystem.updateResources([p], [], [b], 9999);
+    expect(p.resources.industry).toBeLessThanOrEqual(10);
+    expect(p.resources.industry).toBeGreaterThanOrEqual(0);
+  });
+
+  it('工业回升恰好被 min 钳到 cap', () => {
+    const p = makePlayer(0);
+    p.resources.industry = 9.9;
+    const b = new Building(0, 'arcane_empire', 0, 0, 800, 'structure', 'production', 'bld_cc_empire', 20, 10);
+    b.complete();
+    ResourceSystem.updateResources([p], [], [b], 10);
+    expect(p.resources.industry).toBe(10);
+  });
+
+  it('衰减按 10%/秒 比例 deltaSec=0.5', () => {
+    const p = makePlayer(0);
+    p.resources.industry = 50;
+    const b = new Building(0, 'arcane_empire', 0, 0, 800, 'structure', 'production', 'bld_cc_empire', 20, 10);
+    b.complete();
+    ResourceSystem.updateResources([p], [], [b], 0.5);
+    expect(p.resources.industry).toBeCloseTo(47.5, 5);
+  });
+
+  it('负工业值钳制到 0 (deltaSec>0 路径)', () => {
+    const p = makePlayer(0);
+    p.resources.industry = -5;
+    const b = new Building(0, 'arcane_empire', 0, 0, 800, 'structure', 'production', 'bld_cc_empire', 20, 10);
+    b.complete();
+    ResourceSystem.updateResources([p], [], [b], 1.0);
+    expect(p.resources.industry).toBe(0);
+  });
+
+  it('deltaSec=0 初始化: 工业超 cap 瞬间截到 cap', () => {
+    const p = makePlayer(0);
+    p.resources.industry = 100;
+    const b = new Building(0, 'arcane_empire', 0, 0, 800, 'structure', 'production', 'bld_cc_empire', 20, 10);
+    b.complete();
+    ResourceSystem.updateResources([p], [], [b], 0);
+    expect(p.resources.industry).toBe(10);
+  });
+
+  it('deltaSec=0 初始化: 负工业钳到 0', () => {
+    const p = makePlayer(0);
+    p.resources.industry = -3;
+    const b = new Building(0, 'arcane_empire', 0, 0, 800, 'structure', 'production', 'bld_cc_empire', 20, 10);
+    b.complete();
+    ResourceSystem.updateResources([p], [], [b], 0);
+    expect(p.resources.industry).toBe(0);
+  });
+
+  it('多玩家 cap 独立计算 (各算各的建筑)', () => {
+    const p0 = makePlayer(0);
+    const p1 = makePlayer(1);
+    const b0 = new Building(0, 'arcane_empire', 0, 0, 800, 'structure', 'production', 'bld_cc_empire', 20, 10);
+    b0.complete();
+    const b1 = new Building(1, 'hammer_federation', 5, 5, 800, 'structure', 'production', 'bld_cc_federation', 15, 8);
+    b1.complete();
+    ResourceSystem.updateResources([p0, p1], [], [b0, b1], 0);
+    expect(p0.resources.supplyCap).toBe(20);
+    expect(p1.resources.supplyCap).toBe(15);
+  });
+});

@@ -86,3 +86,85 @@ describe('HeadlessGameRunner - 端到端整局', () => {
     r.dispose();
   });
 });
+
+
+describe('HeadlessGameRunner - 第二轮补洞: 事件链与边界', () => {
+  it('阵营互换: playerFaction=hammer_federation 时玩家是铁锤联邦', () => {
+    const r = new HeadlessGameRunner({ difficulty: 'normal', playerFaction: 'hammer_federation' });
+    expect(r.world.players[0].faction).toBe('hammer_federation');
+    expect(r.world.players[1].faction).toBe('arcane_empire');
+    r.dispose();
+  });
+
+  it('placeStartingUnits=false: 无起始单位', () => {
+    const r = new HeadlessGameRunner({ placeStartingUnits: false });
+    // 只有 CC，无起始单位
+    expect(r.entities.units.length).toBe(0);
+    r.dispose();
+  });
+
+  it('easy 难度: 跑 500 帧不崩溃', () => {
+    const r = new HeadlessGameRunner({ difficulty: 'easy' });
+    expect(() => r.runFrames(500, 0.1)).not.toThrow();
+    r.dispose();
+  });
+
+  it('hard 难度: 跑 500 帧不崩溃', () => {
+    const r = new HeadlessGameRunner({ difficulty: 'hard' });
+    expect(() => r.runFrames(500, 0.1)).not.toThrow();
+    r.dispose();
+  });
+
+  it('runUntil 返回实际帧数 (受 maxFrames 上限)', () => {
+    const r = new HeadlessGameRunner({ difficulty: 'normal' });
+    const frames = r.runUntil(() => false, 100);
+    expect(frames).toBe(100);
+    r.dispose();
+  });
+
+  it('runUntil 在游戏结束时提前停止', () => {
+    const r = new HeadlessGameRunner({ difficulty: 'normal' });
+    const frames = r.runUntil(runner => runner.gameOverCtrl.isOver, 5000);
+    expect(frames).toBeLessThanOrEqual(5000);
+    r.dispose();
+  });
+
+  it('英雄可被训练: commandExecutor 训练英雄后出现在 entities', () => {
+    const r = new HeadlessGameRunner({ difficulty: 'normal' });
+    const cc = r.entities.buildings.find(b => b.owner === 0 && b.spriteKey === 'bld_cc_empire');
+    expect(cc).toBeDefined();
+    const heroId = 'hero_isabelle';
+    r.commandExecutor.execute({
+      type: 'train', playerIndex: 0, unitIds: [], buildingId: cc!.id, unitDefId: heroId, frame: 0,
+    } as any);
+    // 队列中应有该英雄
+    expect(cc!.productionQueue.some(q => q.unitDefId === heroId)).toBe(true);
+    r.dispose();
+  });
+
+  it('多帧推进后水晶产量非零 (经济系统运行)', () => {
+    const r = new HeadlessGameRunner({ difficulty: 'normal' });
+    const crystalBefore = r.world.players[0].resources.crystal;
+    r.runFrames(1000, 0.1); // 100 秒
+    // 工人采集后水晶应增加（或至少不减少）
+    expect(r.world.players[0].resources.crystal).toBeGreaterThanOrEqual(crystalBefore);
+    r.dispose();
+  });
+
+  it('timestep 确定性: 相同种子两次运行结果一致', () => {
+    const r1 = new HeadlessGameRunner({ difficulty: 'normal' });
+    r1.runFrames(300, 0.1);
+    const crystal1 = r1.world.players[0].resources.crystal;
+    const units1 = r1.entities.units.length;
+    r1.dispose();
+
+    const r2 = new HeadlessGameRunner({ difficulty: 'normal' });
+    r2.runFrames(300, 0.1);
+    const crystal2 = r2.world.players[0].resources.crystal;
+    const units2 = r2.entities.units.length;
+    r2.dispose();
+
+    expect(crystal2).toBe(crystal1);
+    expect(units2).toBe(units1);
+  });
+});

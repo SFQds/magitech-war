@@ -223,3 +223,77 @@ describe('ProductionSystem.updateProduction handles undefined owner gracefully',
     expect(b.productionQueue.map(p => p.unitDefId)).toEqual(['b', 'c']); // only 1 advanced
   });
 });
+
+
+describe('ProductionSystem - 第二轮补洞: 边界', () => {
+  it('空队列 + state=idle 保持 idle (不改变)', () => {
+    const b = makeBuilding();
+    b.state = 'idle';
+    ProductionSystem.updateProduction([b], [makePlayerState(0)], new Map(), 1);
+    expect(b.state).toBe('idle');
+  });
+
+  it('rallyPoint {0,0} 被使用 (不被视为 nullish)', () => {
+    const b = makeBuilding();
+    b.rallyPoint = { x: 0, y: 0 };
+    b.productionQueue.push(item('a', 0.01));
+    const completed = ProductionSystem.updateProduction([b], [makePlayerState(0)], new Map(), 0.1);
+    expect(completed[0].position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('完成后 state=researching 保持 researching (不改为 idle)', () => {
+    const b = makeBuilding();
+    b.state = 'researching';
+    b.productionQueue.push(item('a', 0.01));
+    ProductionSystem.updateProduction([b], [makePlayerState(0)], new Map(), 0.1);
+    expect(b.state).toBe('researching');
+  });
+
+  it('overshoot deltaSec 只产 1 个完成 (不重复计数)', () => {
+    const b = makeBuilding();
+    b.productionQueue.push(item('a', 0.01));
+    const completed = ProductionSystem.updateProduction([b], [makePlayerState(0)], new Map(), 10);
+    expect(completed).toHaveLength(1);
+  });
+
+  it('非连续索引 0 和 2 完成, 保留索引 1', () => {
+    const b = makeBuilding();
+    b.productionQueue.push(item('a', 0.01), item('b', 10), item('c', 0.01));
+    const p = makePlayerState(0, ['mechanists_guild']);
+    const completed = ProductionSystem.updateProduction([b], [p], new Map(), 0.1);
+    expect(b.productionQueue.map(p => p.unitDefId)).toEqual(['b']);
+    expect(completed.map(c => c.unitDefId).sort()).toEqual(['a', 'c']);
+  });
+
+  it('负 productionSpeedBonus 减速生产', () => {
+    const b = makeBuilding();
+    b.productionSpeedBonus = -0.5;
+    b.productionQueue.push(item('a', 10));
+    ProductionSystem.updateProduction([b], [makePlayerState(0)], new Map(), 1);
+    expect(b.productionQueue[0].timeRemaining).toBeCloseTo(9.5, 5);
+  });
+
+  it('player guilds=undefined 回退非机械师 (1 槽)', () => {
+    const b = makeBuilding();
+    b.productionQueue.push(item('a', 10), item('b', 10), item('c', 10));
+    const p = makePlayerState(0);
+    (p as any).guilds = undefined;
+    ProductionSystem.updateProduction([b], [p], new Map(), 1);
+    // 非机械师: 只推进 index 0
+    expect(b.productionQueue[0].timeRemaining).toBeCloseTo(9, 5);
+    expect(b.productionQueue[1].timeRemaining).toBe(10);
+    expect(b.productionQueue[2].timeRemaining).toBe(10);
+  });
+
+  it('机械师推进 5 项队列只前 3 个 (min(slots, queueLen))', () => {
+    const b = makeBuilding();
+    b.productionQueue.push(item('a', 10), item('b', 10), item('c', 10), item('d', 10), item('e', 10));
+    const p = makePlayerState(0, ['mechanists_guild']);
+    ProductionSystem.updateProduction([b], [p], new Map(), 1);
+    expect(b.productionQueue[0].timeRemaining).toBeLessThan(10);
+    expect(b.productionQueue[1].timeRemaining).toBeLessThan(10);
+    expect(b.productionQueue[2].timeRemaining).toBeLessThan(10);
+    expect(b.productionQueue[3].timeRemaining).toBe(10);
+    expect(b.productionQueue[4].timeRemaining).toBe(10);
+  });
+});

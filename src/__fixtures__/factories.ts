@@ -16,6 +16,8 @@ import { EntityRegistry } from '../core/EntityRegistry';
 import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { ResourceField } from '../entities/ResourceField';
+import { Hero } from '../entities/Hero';
+import { HERO_DEFS } from '../config/heroData';
 import { TechSystem } from '../systems/TechSystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
 import { UnitSpawner } from '../controllers/UnitSpawner';
@@ -84,6 +86,33 @@ export function makeInfantry(owner = 0, tileX = 5, tileY = 5, hp = 100): Unit {
 /** 造一个工人 */
 export function makeWorker(owner = 0, tileX = 5, tileY = 0): Unit {
   return makeUnit({ owner, tileX, tileY, hp: 80, attackDamage: 5, spriteKey: 'unit_worker' });
+}
+
+export interface MakeHeroOptions {
+  owner?: number;
+  tileX?: number;
+  tileY?: number;
+  heroId?: string;
+  level?: number;
+}
+
+/** 造一个英雄（默认伊莎贝尔，owner 0）。按 owner 自动选阵营与对应英雄 id。 */
+export function makeHero(opts: MakeHeroOptions = {}): Hero {
+  const { owner = 0, tileX = 5, tileY = 5, heroId, level } = opts;
+  const faction = factionForOwner(owner);
+  const id = heroId ?? (owner === 0 ? 'hero_isabelle' : 'hero_marcus');
+  const hero = new Hero(owner, faction, tileX, tileY, HERO_DEFS[id], id);
+  if (level !== undefined) {
+    while (hero.level < level) hero.gainXp(hero.xpToNextLevel);
+  }
+  return hero;
+}
+
+/** 造一个已死亡的单位（hp=0, isActive=false） */
+export function makeDeadUnit(opts: MakeUnitOptions = {}): Unit {
+  const u = makeUnit(opts);
+  u.takeDamage(99999, 'physical');
+  return u;
 }
 
 // ============ 建筑 ============

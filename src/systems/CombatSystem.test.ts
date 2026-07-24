@@ -11,7 +11,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { CombatSystem } from './CombatSystem';
-import { makeUnit as makeUnitBase, makeTurret } from '../__fixtures__/factories';
+import { makeUnit as makeUnitBase, makeTurret, makeBuilding, grassMap } from '../__fixtures__/factories';
+import { EntityRegistry } from '../core/EntityRegistry';
 import { FogOfWar, FogState } from '../core/FogOfWar';
 
 /** 造单位（位置参数风格薄包装，委托夹具库） */
@@ -210,5 +211,561 @@ describe('CombatSystem.calculateAOE — 范围伤害', () => {
     const events = CombatSystem.calculateAOE(5, 5, 2, 100, 'physical', 0, 'arcane_empire', [weak], []);
     expect(events[0].targetDied).toBe(true);
     expect(weak.isAlive).toBe(false);
+  });
+});
+
+// ===================== 第二轮补洞 =====================
+
+describe('CombatSystem.calculateDamage - 矩阵补全', () => {
+  it('crystal 行: light/heavy/bio/structure = 1.0, mechanical = 1.25', () => {
+    expect(CombatSystem.calculateDamage(100, 'crystal', 'light')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'crystal', 'heavy')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'crystal', 'bio')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'crystal', 'structure')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'crystal', 'mechanical')).toBe(125);
+  });
+
+  it('crystal vs shield = 0.5', () => {
+    expect(CombatSystem.calculateDamage(100, 'crystal', 'shield')).toBe(50);
+  });
+
+  it('physical vs shield/bio = 1.0, vs mechanical = 0.75', () => {
+    expect(CombatSystem.calculateDamage(100, 'physical', 'shield')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'physical', 'bio')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'physical', 'mechanical')).toBe(75);
+  });
+
+  it('magic vs light/bio/structure/mechanical = 1.0', () => {
+    expect(CombatSystem.calculateDamage(100, 'magic', 'light')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'magic', 'bio')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'magic', 'structure')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'magic', 'mechanical')).toBe(100);
+  });
+
+  it('alchemy vs light/heavy/mechanical = 1.0, bio = 0.9, structure = 1.5', () => {
+    expect(CombatSystem.calculateDamage(100, 'alchemy', 'light')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'alchemy', 'heavy')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'alchemy', 'bio')).toBe(90);
+    expect(CombatSystem.calculateDamage(100, 'alchemy', 'structure')).toBe(150);
+    expect(CombatSystem.calculateDamage(100, 'alchemy', 'mechanical')).toBe(100);
+  });
+
+  it('void vs light/heavy/shield/structure/mechanical = 1.0', () => {
+    expect(CombatSystem.calculateDamage(100, 'void', 'light')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'void', 'heavy')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'void', 'shield')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'void', 'structure')).toBe(100);
+    expect(CombatSystem.calculateDamage(100, 'void', 'mechanical')).toBe(100);
+  });
+});
+
+
+describe('CombatSystem.updateCombat - 主动攻击循环', () => {
+  function setup() {
+    const map = grassMap(16, 16);
+    const entities = new EntityRegistry();
+    return { map, entities };
+  }
+
+  it('死亡单位被跳过', () => {
+    const { entities, map } = setup();
+    const dead = makeUnit(0, 5, 5);
+    dead.takeDamage(999, 'physical');
+    entities.addUnit(dead);
+    const events = CombatSystem.updateCombat([dead], [], [dead], [], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(0);
+  });
+
+  it('attackTimer 每帧递减', () => {
+    const { entities, map } = setup();
+    const u = makeUnit(0, 5, 5);
+    u.attackTimer = 2.0;
+    entities.addUnit(u);
+    CombatSystem.updateCombat([u], [], [u], [], map, 0.5, undefined, entities);
+    expect(u.attackTimer).toBeCloseTo(1.5, 5);
+  });
+
+  it('attacking 状态射程内近战 -> 近战伤害事件', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 20, 'physical', 3, 5, 'unit_worker');
+    const target = makeUnit(1, 6, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(1);
+    expect(events[0].isMelee).toBe(true);
+    expect(events[0].attackEffect).toBe('melee');
+    expect(events[0].damage).toBe(20);
+    expect(events[0].attackerId).toBe(attacker.id);
+    expect(events[0].targetId).toBe(target.id);
+  });
+
+  it('远程单位 -> 弹道事件 isMelee=false', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 15, 'physical', 5, 7, 'unit_rifleman');
+    const target = makeUnit(1, 7, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(1);
+    expect(events[0].isMelee).toBe(false);
+    expect(events[0].attackEffect).toBe('proj_bullet');
+    expect(events[0].rawDamage).toBe(15);
+    expect(events[0].attackerTileX).toBe(5);
+    expect(events[0].targetTileX).toBe(7);
+  });
+
+  it('零攻击力单位被命攻击 -> stopAttacking 无事件', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 0, 'physical', 3, 5);
+    const target = makeUnit(1, 6, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(0);
+    expect(attacker.state).toBe('idle');
+  });
+
+  it('攻击击杀目标 -> stopAttacking', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 999, 'physical', 3, 5, 'unit_worker');
+    const target = makeUnit(1, 6, 5, 'light', 10);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events[0].targetDied).toBe(true);
+    expect(attacker.state).toBe('idle');
+    expect(attacker.targetEntityId).toBeNull();
+  });
+
+  it('attackTimer 攻击后重置为 cooldown', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 20, 'physical', 3, 5);
+    attacker.attackCooldown = 1.5;
+    const target = makeUnit(1, 6, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(attacker.attackTimer).toBe(1.5);
+  });
+
+  it('attackTimer>0 冷却中不攻击', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 20, 'physical', 3, 5);
+    const target = makeUnit(1, 6, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 1.0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(0);
+  });
+
+  it('追击目标超出射程 -> state=pursuing', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 20, 'physical', 3, 5);
+    const target = makeUnit(1, 12, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(attacker.state).toBe('pursuing');
+  });
+
+  it('追击进入射程 -> state=attacking 清空 path', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 20, 'physical', 3, 5);
+    const target = makeUnit(1, 6, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.state = 'pursuing';
+    attacker.targetEntityId = target.id;
+    attacker.path = [{ x: 6, y: 5 }];
+    attacker.attackTimer = 0;
+    CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(attacker.state).toBe('attacking');
+    expect(attacker.path).toHaveLength(0);
+  });
+});
+
+describe('CombatSystem.updateCombat - 自动索敌', () => {
+  function setup() {
+    const map = grassMap(16, 16);
+    const entities = new EntityRegistry();
+    return { map, entities };
+  }
+
+  it('idle 单位射程内有敌人 -> attackTarget', () => {
+    const { map, entities } = setup();
+    const self = makeUnit(0, 5, 5, 'light', 100, 10, 'physical', 3, 5);
+    const foe = makeUnit(1, 6, 5);
+    entities.addUnit(self);
+    entities.addUnit(foe);
+    CombatSystem.updateCombat([self], [], [self, foe], [], map, 0.016, undefined, entities);
+    expect(self.state).toBe('attacking');
+    expect(self.targetEntityId).toBe(foe.id);
+  });
+
+  it('idle 单位视野内但射程外 -> 追击', () => {
+    const { map, entities } = setup();
+    const self = makeUnit(0, 5, 5, 'light', 100, 10, 'physical', 2, 8);
+    const foe = makeUnit(1, 10, 5);
+    entities.addUnit(self);
+    entities.addUnit(foe);
+    CombatSystem.updateCombat([self], [], [self, foe], [], map, 0.016, undefined, entities);
+    expect(self.state).toBe('pursuing');
+  });
+
+  it('目标超出视野 -> 不索敌', () => {
+    const { map, entities } = setup();
+    const self = makeUnit(0, 5, 5, 'light', 100, 10, 'physical', 2, 5);
+    const foe = makeUnit(1, 20, 5);
+    entities.addUnit(self);
+    entities.addUnit(foe);
+    CombatSystem.updateCombat([self], [], [self, foe], [], map, 0.016, undefined, entities);
+    expect(self.state).toBe('idle');
+    expect(self.targetEntityId).toBeNull();
+  });
+
+  it('moving 状态单位不自动索敌', () => {
+    const { map, entities } = setup();
+    const self = makeUnit(0, 5, 5, 'light', 100, 10, 'physical', 3, 5);
+    const foe = makeUnit(1, 6, 5);
+    self.state = 'moving';
+    entities.addUnit(self);
+    entities.addUnit(foe);
+    CombatSystem.updateCombat([self], [], [self, foe], [], map, 0.016, undefined, entities);
+    expect(self.state).toBe('moving');
+  });
+
+  it('工人 attackDamage<=0 不自动索敌', () => {
+    const { map, entities } = setup();
+    const worker = makeUnit(0, 5, 5, 'light', 100, 0, 'physical', 3, 5, 'unit_worker');
+    const foe = makeUnit(1, 6, 5);
+    entities.addUnit(worker);
+    entities.addUnit(foe);
+    CombatSystem.updateCombat([worker], [], [worker, foe], [], map, 0.016, undefined, entities);
+    expect(worker.state).toBe('idle');
+  });
+
+  it('holdPosition=true 不自动索敌', () => {
+    const { map, entities } = setup();
+    const self = makeUnit(0, 5, 5, 'light', 100, 10, 'physical', 3, 5);
+    const foe = makeUnit(1, 6, 5);
+    self.holdPosition = true;
+    entities.addUnit(self);
+    entities.addUnit(foe);
+    CombatSystem.updateCombat([self], [], [self, foe], [], map, 0.016, undefined, entities);
+    expect(self.state).toBe('idle');
+  });
+
+  it('aiLockedAction=retreat 不自动索敌', () => {
+    const { map, entities } = setup();
+    const self = makeUnit(0, 5, 5, 'light', 100, 10, 'physical', 3, 5);
+    const foe = makeUnit(1, 6, 5);
+    self.aiLockedAction = 'retreat';
+    entities.addUnit(self);
+    entities.addUnit(foe);
+    CombatSystem.updateCombat([self], [], [self, foe], [], map, 0.016, undefined, entities);
+    expect(self.state).toBe('idle');
+  });
+
+  it('已有 targetEntityId 的单位不进入自动索敌', () => {
+    const { map, entities } = setup();
+    const self = makeUnit(0, 5, 5, 'light', 100, 10, 'physical', 3, 5);
+    const foe = makeUnit(1, 6, 5);
+    const other = makeUnit(1, 5, 6);
+    self.attackTarget(foe.id);
+    entities.addUnit(self);
+    entities.addUnit(foe);
+    entities.addUnit(other);
+    CombatSystem.updateCombat([self], [], [self, foe, other], [], map, 0.016, undefined, entities);
+    expect(self.targetEntityId).toBe(foe.id);
+  });
+});
+
+describe('CombatSystem.updateCombat - 防御建筑循环', () => {
+  function setup() {
+    const map = grassMap(16, 16);
+    const entities = new EntityRegistry();
+    return { map, entities };
+  }
+
+  it('防御塔射程内攻击敌人 -> 近战事件', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(0, 5, 5, 5);
+    const foe = makeUnit(1, 6, 5);
+    entities.addBuilding(turret);
+    entities.addUnit(foe);
+    turret.attackTimer = 0;
+    const events = CombatSystem.updateCombat([], [turret], [foe], [turret], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(1);
+    expect(events[0].attackerId).toBe(turret.id);
+    expect(events[0].targetId).toBe(foe.id);
+    expect(events[0].damage).toBe(20);
+  });
+
+  it('防御塔击杀目标 -> targetEntityId 清空', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(0, 5, 5, 5);
+    turret.attackDamage = 999;
+    const foe = makeUnit(1, 6, 5, 'light', 10);
+    entities.addBuilding(turret);
+    entities.addUnit(foe);
+    turret.attackTimer = 0;
+    CombatSystem.updateCombat([], [turret], [foe], [turret], map, 0.016, undefined, entities);
+    expect(turret.targetEntityId).toBeNull();
+  });
+
+  it('constructing 建筑不攻击', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(0, 5, 5, 5);
+    turret.state = 'constructing';
+    const foe = makeUnit(1, 6, 5);
+    entities.addBuilding(turret);
+    entities.addUnit(foe);
+    turret.attackTimer = 0;
+    const events = CombatSystem.updateCombat([], [turret], [foe], [turret], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(0);
+  });
+
+  it('researching 建筑不攻击', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(0, 5, 5, 5);
+    turret.state = 'researching';
+    const foe = makeUnit(1, 6, 5);
+    entities.addBuilding(turret);
+    entities.addUnit(foe);
+    turret.attackTimer = 0;
+    const events = CombatSystem.updateCombat([], [turret], [foe], [turret], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(0);
+  });
+
+  it('attackTimer>0 建筑跳过本帧', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(0, 5, 5, 5);
+    const foe = makeUnit(1, 6, 5);
+    entities.addBuilding(turret);
+    entities.addUnit(foe);
+    turret.attackTimer = 1.0;
+    const events = CombatSystem.updateCombat([], [turret], [foe], [turret], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(0);
+  });
+
+  it('防御塔自动索敌射程内最近敌方单位', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(0, 5, 5, 5);
+    const near = makeUnit(1, 6, 5);
+    const far = makeUnit(1, 9, 5);
+    entities.addBuilding(turret);
+    entities.addUnit(near);
+    entities.addUnit(far);
+    turret.attackTimer = 0;
+    const events = CombatSystem.updateCombat([], [turret], [near, far], [turret], map, 0.016, undefined, entities);
+    expect(events[0].targetId).toBe(near.id);
+  });
+
+  it('防御塔也可索敌敌方建筑', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(0, 5, 5, 5);
+    const enemyBld = makeBuilding({ owner: 1, tileX: 6, tileY: 5 });
+    entities.addBuilding(turret);
+    entities.addBuilding(enemyBld);
+    turret.attackTimer = 0;
+    const events = CombatSystem.updateCombat([], [turret], [], [turret, enemyBld], map, 0.016, undefined, entities);
+    expect(events).toHaveLength(1);
+    expect(events[0].targetId).toBe(enemyBld.id);
+  });
+
+  it('玩家防御塔受迷雾限制: 迷雾内敌人不索敌', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(0, 5, 5, 5);
+    const foe = makeUnit(1, 6, 5);
+    entities.addBuilding(turret);
+    entities.addUnit(foe);
+    turret.attackTimer = 0;
+    const fog = new FogOfWar(16, 16);
+    const events = CombatSystem.updateCombat([], [turret], [foe], [turret], map, 0.016, fog, entities);
+    expect(events).toHaveLength(0);
+  });
+
+  it('AI 防御塔不受迷雾限制', () => {
+    const { map, entities } = setup();
+    const turret = makeTurret(1, 5, 5, 5);
+    const foe = makeUnit(0, 6, 5);
+    entities.addBuilding(turret);
+    entities.addUnit(foe);
+    turret.attackTimer = 0;
+    const fog = new FogOfWar(16, 16);
+    const events = CombatSystem.updateCombat([], [turret], [foe], [turret], map, 0.016, fog, entities);
+    expect(events).toHaveLength(1);
+  });
+});
+
+describe('CombatSystem.updateCombat - GuildSystem 交互', () => {
+  function setup() {
+    const map = grassMap(16, 16);
+    const entities = new EntityRegistry();
+    return { map, entities };
+  }
+
+  it('力量药剂 -> 攻击伤害 x1.30', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 100, 'physical', 3, 5);
+    attacker.alchemyBuffType = 'strength';
+    attacker.alchemyBuffValue = 0.3;
+    attacker.alchemyBuffTimer = 30;
+    const target = makeUnit(1, 6, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events[0].damage).toBe(130);
+  });
+
+  it('虚空过载 -> 攻击伤害 x1.50', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 100, 'physical', 3, 5);
+    attacker.isVoidOvercharged = true;
+    attacker.voidOverloadTimer = 30;
+    attacker.isVoidOptimized = false;
+    const target = makeUnit(1, 6, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events[0].damage).toBe(150);
+  });
+
+  it('虚空过载优化 -> 攻击伤害 x1.35', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 100, 'physical', 3, 5);
+    attacker.isVoidOvercharged = true;
+    attacker.voidOverloadTimer = 45;
+    attacker.isVoidOptimized = true;
+    const target = makeUnit(1, 6, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events[0].damage).toBe(135);
+  });
+
+  it('腐蚀弹: 近战命中临时扣减目标护甲后恢复', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 100, 'physical', 3, 5);
+    attacker.alchemyBuffType = 'corrosion';
+    attacker.alchemyBuffValue = 0.3;
+    attacker.alchemyBuffTimer = 30;
+    attacker.baseArmor = 0;
+    const target = makeUnit(1, 6, 5, 'light', 1000);
+    target.armor = 10;
+    target.baseArmor = 10;
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(target.armor).toBe(10); // 恢复
+  });
+
+  it('腐蚀弹: 远程弹道事件携带 corrosionPenalty 字段', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 100, 'physical', 5, 7, 'unit_rifleman');
+    attacker.alchemyBuffType = 'corrosion';
+    attacker.alchemyBuffValue = 0.3;
+    attacker.alchemyBuffTimer = 30;
+    attacker.baseArmor = 10;
+    const target = makeUnit(1, 7, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events[0].corrosionPenalty).toBe(3); // round(10*0.3)
+  });
+
+  it('无腐蚀: 远程弹道事件 corrosionPenalty=undefined', () => {
+    const { entities, map } = setup();
+    const attacker = makeUnit(0, 5, 5, 'light', 100, 15, 'physical', 5, 7, 'unit_rifleman');
+    const target = makeUnit(1, 7, 5);
+    entities.addUnit(attacker);
+    entities.addUnit(target);
+    attacker.attackTarget(target.id);
+    attacker.attackTimer = 0;
+    const events = CombatSystem.updateCombat([attacker], [], [attacker, target], [], map, 0.016, undefined, entities);
+    expect(events[0].corrosionPenalty).toBeUndefined();
+  });
+});
+
+describe('CombatSystem.findNearestEnemy - 边界', () => {
+  it('死亡敌方单位被跳过', () => {
+    const self = makeUnit(0, 5, 5);
+    const dead = makeUnit(1, 6, 5);
+    dead.takeDamage(999, 'physical');
+    const enemy = CombatSystem.findNearestEnemy(self, [dead], []);
+    expect(enemy).toBeNull();
+  });
+
+  it('死亡敌方建筑被跳过', () => {
+    const self = makeUnit(0, 5, 5);
+    const deadBld = makeTurret(1, 6, 5);
+    deadBld.takeDamage(99999, 'physical');
+    const enemy = CombatSystem.findNearestEnemy(self, [], [deadBld]);
+    expect(enemy).toBeNull();
+  });
+
+  it('空 units + 空 buildings -> null', () => {
+    const self = makeUnit(0, 5, 5);
+    const enemy = CombatSystem.findNearestEnemy(self, [], []);
+    expect(enemy).toBeNull();
+  });
+
+  it('玩家单位索敌建筑受迷雾限制', () => {
+    const self = makeUnit(0, 5, 5);
+    const enemyBld = makeTurret(1, 6, 5);
+    const fog = new FogOfWar(16, 16);
+    const enemy = CombatSystem.findNearestEnemy(self, [], [enemyBld], fog);
+    expect(enemy).toBeNull();
+  });
+});
+
+describe('CombatSystem.calculateAOE - 边界', () => {
+  it('d===radius 边界: 恰在半径上受伤', () => {
+    const foe = makeUnit(1, 7, 5); // dist 2 from (5,5)
+    const events = CombatSystem.calculateAOE(5, 5, 2, 50, 'physical', 0, 'arcane_empire', [foe], []);
+    expect(events).toHaveLength(1);
+  });
+
+  it('死亡单位不在 AOE 范围内不受伤害', () => {
+    const dead = makeUnit(1, 5, 5, 'light', 10);
+    dead.takeDamage(999, 'physical');
+    const events = CombatSystem.calculateAOE(5, 5, 2, 50, 'physical', 0, 'arcane_empire', [dead], []);
+    expect(events).toHaveLength(0);
+  });
+
+  it('excludeTargetId 匹配建筑 -> 排除', () => {
+    const bld = makeBuilding({ owner: 1, tileX: 5, tileY: 5 });
+    const events = CombatSystem.calculateAOE(5, 5, 2, 50, 'physical', 0, 'arcane_empire', [], [bld], bld.id);
+    expect(events).toHaveLength(0);
+  });
+
+  it('空 units + 空 buildings -> []', () => {
+    const events = CombatSystem.calculateAOE(5, 5, 2, 50, 'physical', 0, 'arcane_empire', [], []);
+    expect(events).toHaveLength(0);
   });
 });

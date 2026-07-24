@@ -494,3 +494,237 @@ describe('GuildSystem update skip behaviors', () => {
     expect(mage.shieldHp).toBe(0);
   });
 });
+
+
+describe('GuildSystem - 第二轮补洞', () => {
+  beforeEach(() => EventBus.clear());
+  afterEach(() => EventBus.clear());
+
+  describe('充能 if 非行为与边界', () => {
+    it('单次 update 60s 只产 1 充能 (if 非 while, 余 30 进 timer)', () => {
+      const u = makeMageUnit(0);
+      const timers = new Map<number, number>();
+      GuildSystem.update([makePlayerState(0, ['mages_guild'])], [u], [], 60, new Map(), timers);
+      expect(u.abilityCharges).toBe(1);
+      expect(timers.get(0)).toBe(30);
+    });
+
+    it('charges 已达 MAX_CHARGES 不再增加', () => {
+      const u = makeMageUnit(0);
+      u.abilityCharges = 3;
+      const timers = new Map<number, number>();
+      GuildSystem.update([makePlayerState(0, ['mages_guild'])], [u], [], 30, new Map(), timers);
+      expect(u.abilityCharges).toBe(3);
+    });
+  });
+
+  describe('自动护盾边界', () => {
+    it('hp 恰好 50% 不触发 (严格 <0.5)', () => {
+      const mage = makeMageUnit(0);
+      mage.maxHp = 100; mage.hp = 50;
+      mage.abilityCharges = 3; // 已满, update 不会增加, 也不触发护盾
+      GuildSystem.update([makePlayerState(0, ['mages_guild'])], [mage], [], 30, new Map(), new Map());
+      expect(mage.shieldHp).toBe(0);
+      expect(mage.abilityCharges).toBe(3); // 未消耗
+    });
+
+    it('hp=49 (略低于 50%) 触发护盾', () => {
+      const mage = makeMageUnit(0);
+      mage.maxHp = 100; mage.hp = 49;
+      mage.abilityCharges = 2;
+      GuildSystem.update([makePlayerState(0, ['mages_guild'])], [mage], [], 30, new Map(), new Map());
+      expect(mage.shieldHp).toBe(150);
+    });
+
+    it('charges=3 时消耗 2 剩 1', () => {
+      const mage = makeMageUnit(0);
+      mage.maxHp = 100; mage.hp = 40;
+      mage.abilityCharges = 3;
+      GuildSystem.update([makePlayerState(0, ['mages_guild'])], [mage], [], 30, new Map(), new Map());
+      expect(mage.abilityCharges).toBe(1);
+    });
+  });
+
+  describe('magesChargeStrike 边界', () => {
+    it('多次施法不覆盖 baseAttackDamage', () => {
+      const u = makeUnit({ hp: 100, attackDamage: 40 });
+      u.abilityCharges = 3;
+      GuildSystem.magesChargeStrike(u);
+      GuildSystem.magesRestoreAfterAttack(u);
+      u.abilityCharges = 3;
+      GuildSystem.magesChargeStrike(u);
+      expect(u.baseAttackDamage).toBe(40);
+      expect(u.attackDamage).toBe(60);
+    });
+
+    it('奇数 baseAttackDamage 41 * 1.5 = 62 (round)', () => {
+      const u = makeUnit({ hp: 100, attackDamage: 41 });
+      u.abilityCharges = 1;
+      GuildSystem.magesChargeStrike(u);
+      expect(u.attackDamage).toBe(Math.round(41 * 1.5));
+    });
+  });
+
+  describe('magesGroupShield 边界', () => {
+    it('恰好 range 距离的盟友受盾 (<=range)', () => {
+      const caster = makeUnit({ owner: 0, tileX: 5, tileY: 5, hp: 100 });
+      caster.abilityCharges = 2;
+      const ally = makeUnit({ owner: 0, tileX: 10, tileY: 5, hp: 100 });
+      GuildSystem.magesGroupShield(caster, [ally], 5);
+      expect(ally.shieldHp).toBe(150);
+    });
+
+    it('施法者自身也在 allUnits 中时也受盾', () => {
+      const caster = makeUnit({ owner: 0, tileX: 5, tileY: 5, hp: 100 });
+      caster.abilityCharges = 2;
+      GuildSystem.magesGroupShield(caster, [caster], 5);
+      expect(caster.shieldHp).toBe(150);
+    });
+  });
+
+  describe('magesElementalSurge 边界', () => {
+    it('attackTimer>2.0 不被降低 (max 守卫)', () => {
+      const caster = makeUnit({ owner: 0, tileX: 5, tileY: 5, hp: 100 });
+      caster.abilityCharges = 3;
+      const enemy = makeUnit({ owner: 1, tileX: 6, tileY: 5, hp: 1000 });
+      enemy.attackTimer = 5;
+      GuildSystem.magesElementalSurge(caster, [enemy], 8);
+      expect(enemy.attackTimer).toBe(5);
+    });
+
+    it('自定义 damage=120 应用 120 伤害', () => {
+      const caster = makeUnit({ owner: 0, tileX: 5, tileY: 5, hp: 100 });
+      caster.abilityCharges = 3;
+      const enemy = makeUnit({ owner: 1, tileX: 6, tileY: 5, hp: 1000 });
+      enemy.armor = 0; enemy.baseArmor = 0;
+      const before = enemy.hp;
+      GuildSystem.magesElementalSurge(caster, [enemy], 8, 120);
+      expect(enemy.hp).toBe(before - 120);
+    });
+  });
+
+  describe('getMechanistPenalty 无上界', () => {
+    it('queueIndex=10 返回 1.0 (100% 惩罚, 无上界钳制)', () => {
+      expect(GuildSystem.getMechanistPenalty(10, false)).toBeCloseTo(1.0);
+    });
+
+    it('queueIndex=10 with optimized tech 返回 0.5', () => {
+      expect(GuildSystem.getMechanistPenalty(10, true)).toBeCloseTo(0.5);
+    });
+  });
+
+  describe('ALCHEMY_POTIONS 数据完整性', () => {
+    it('四种药剂 id/crystalCost/duration 完整', () => {
+      const ids = ALCHEMY_POTIONS.map(p => p.id);
+      expect(ids).toContain('potion_strength');
+      expect(ids).toContain('potion_ironskin');
+      expect(ids).toContain('potion_swift');
+      expect(ids).toContain('potion_corrosion');
+      for (const p of ALCHEMY_POTIONS) {
+        expect(p.crystalCost).toBeGreaterThan(0);
+        expect(p.duration).toBeGreaterThan(0);
+        expect(p.value).toBeGreaterThan(0);
+      }
+    });
+
+    it('corrosion 药剂 cost=60 duration=30', () => {
+      const p = ALCHEMY_POTIONS.find(x => x.effect === 'corrosion')!;
+      expect(p.crystalCost).toBe(60);
+      expect(p.duration).toBe(30);
+    });
+  });
+
+  describe('炼金药剂边界', () => {
+    it('ironskin 在 baseArmor=0 时 armor=0', () => {
+      const u = makeUnit({ hp: 100 });
+      u.baseArmor = 0; u.armor = 0;
+      const ironPotion = ALCHEMY_POTIONS.find(p => p.effect === 'ironskin')!;
+      GuildSystem.applyAlchemyPotion(u, ironPotion);
+      expect(u.armor).toBe(0);
+      expect(u.hadIronskin).toBe(true);
+    });
+
+    it('ironskin buff 不影响 damageMult (返回 1.0)', () => {
+      const u = makeUnit({ hp: 100 });
+      u.alchemyBuffType = 'ironskin';
+      u.alchemyBuffValue = 0.4;
+      u.alchemyBuffTimer = 10;
+      expect(GuildSystem.getAlchemyDamageMult(u)).toBe(1.0);
+    });
+
+    it('strength buff 到期清零 buffType 和 buffValue', () => {
+      const u = makeUnit({ hp: 100 });
+      u.alchemyBuffType = 'strength';
+      u.alchemyBuffValue = 0.3;
+      u.alchemyBuffTimer = 1;
+      GuildSystem.update([makePlayerState(0, ['alchemists_society'])], [u], [], 1, new Map(), new Map());
+      expect(u.alchemyBuffType).toBe('none');
+      expect(u.alchemyBuffValue).toBe(0);
+    });
+
+    it('applyAlchemyPotion: hadIronskin 但 armor 已等于 base 不恢复', () => {
+      const u = makeUnit({ hp: 100 });
+      u.baseArmor = 10; u.armor = 10;
+      u.hadIronskin = true;
+      const strPotion = ALCHEMY_POTIONS.find(p => p.effect === 'strength')!;
+      GuildSystem.applyAlchemyPotion(u, strPotion);
+      expect(u.armor).toBe(10);
+    });
+  });
+
+  describe('getEffectiveAlchemyArmorBonus 边界', () => {
+    it('ironskin Unit 返回 round(baseArmor*value)', () => {
+      const u = makeUnit({ hp: 100 });
+      u.baseArmor = 10;
+      u.alchemyBuffType = 'ironskin';
+      u.alchemyBuffValue = 0.4;
+      u.alchemyBuffTimer = 10;
+      expect(GuildSystem.getEffectiveAlchemyArmorBonus(u)).toBe(4);
+    });
+
+    it('strength buff Unit 返回 0', () => {
+      const u = makeUnit({ hp: 100 });
+      u.alchemyBuffType = 'strength';
+      u.alchemyBuffValue = 0.3;
+      u.alchemyBuffTimer = 10;
+      expect(GuildSystem.getEffectiveAlchemyArmorBonus(u)).toBe(0);
+    });
+
+    it('timer<=0 的 ironskin Unit 返回 0', () => {
+      const u = makeUnit({ hp: 100 });
+      u.baseArmor = 10;
+      u.alchemyBuffType = 'ironskin';
+      u.alchemyBuffValue = 0.4;
+      u.alchemyBuffTimer = 0;
+      expect(GuildSystem.getEffectiveAlchemyArmorBonus(u)).toBe(0);
+    });
+  });
+
+  describe('虚空过载边界', () => {
+    it('activateVoidOverload: 已过载且死亡返回 false 不改状态', () => {
+      const u = makeUnit({ hp: 100 });
+      u.isVoidOvercharged = true;
+      u.takeDamage(999, 'physical');
+      expect(GuildSystem.activateVoidOverload(u, false)).toBe(false);
+    });
+
+    it('getVoidOverloadDamageMult: isVoidOptimized 为 undefined 走非优化 1.5', () => {
+      const u = makeUnit({ hp: 100 });
+      u.isVoidOvercharged = true;
+      u.voidOverloadTimer = 10;
+      delete (u as any).isVoidOptimized;
+      expect(GuildSystem.getVoidOverloadDamageMult(u)).toBeCloseTo(1.5);
+    });
+  });
+
+  describe('非 alchemy 玩家腐蚀边界', () => {
+    it('非 alchemy 玩家只对自己单位 tick 腐蚀, 不 tick 敌方', () => {
+      const enemy = makeUnit({ owner: 1, hp: 100 });
+      enemy.alchemyBuffType = 'corrosion';
+      enemy.alchemyBuffValue = 0.3;
+      enemy.alchemyBuffTimer = 5;
+      GuildSystem.update([makePlayerState(0, [])], [enemy], [], 5, new Map(), new Map());
+      expect(enemy.alchemyBuffTimer).toBe(5);
+    });
+  });
+});

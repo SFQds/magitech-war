@@ -19,7 +19,8 @@ import {
   INDUSTRY_REGEN_PER_OUTPUT,
   AI_RESCUE_CRYSTAL_MIN,
 } from './balance';
-import { getUnitCostWithFaction, UNIT_DEFS } from './unitData';
+import { getUnitCostWithFaction, UNIT_DEFS, BUILDING_DEFS, TECH_DEFS } from './unitData';
+import { HERO_DEFS } from './heroData';
 
 describe('balance.ts — 全局平衡常量（单一事实来源）', () => {
   it('水晶上限 = 20000', () => {
@@ -98,5 +99,57 @@ describe('UNIT_DEFS — 真实数据完整性', () => {
 
   it('虚空探针 favoredBy void_institute', () => {
     expect(UNIT_DEFS['unit_void_probe'].favoredBy).toEqual(['void_institute']);
+  });
+});
+
+describe('balance.ts - 关系不变量与值域合理性', () => {
+  it('GATHER_NO_REFINERY_CAP < GATHER_BASE_AMOUNT', () => {
+    expect(GATHER_NO_REFINERY_CAP).toBeLessThan(GATHER_BASE_AMOUNT);
+  });
+
+  it('GATHER_BASE_AMOUNT < MAX_CRYSTAL', () => {
+    expect(GATHER_BASE_AMOUNT).toBeLessThan(MAX_CRYSTAL);
+  });
+
+  it('GATHER_TICK_INTERVAL 是正有限数', () => {
+    expect(GATHER_TICK_INTERVAL).toBeGreaterThan(0);
+    expect(Number.isFinite(GATHER_TICK_INTERVAL)).toBe(true);
+  });
+
+  it('INDUSTRY_REGEN_BASE 和 INDUSTRY_REGEN_PER_OUTPUT 为正', () => {
+    expect(INDUSTRY_REGEN_BASE).toBeGreaterThan(0);
+    expect(INDUSTRY_REGEN_PER_OUTPUT).toBeGreaterThan(0);
+  });
+
+  it('AI_RESCUE_CRYSTAL_MIN < MAX_CRYSTAL', () => {
+    expect(AI_RESCUE_CRYSTAL_MIN).toBeLessThan(MAX_CRYSTAL);
+  });
+
+  it('所有 balance 常量是有限数', () => {
+    const all = [MAX_CRYSTAL, GATHER_BASE_AMOUNT, GATHER_NO_REFINERY_CAP, GATHER_TICK_INTERVAL, INDUSTRY_REGEN_BASE, INDUSTRY_REGEN_PER_OUTPUT, AI_RESCUE_CRYSTAL_MIN];
+    for (const v of all) expect(Number.isFinite(v)).toBe(true);
+  });
+
+  it('所有 balance 常量非负', () => {
+    const all = [MAX_CRYSTAL, GATHER_BASE_AMOUNT, GATHER_NO_REFINERY_CAP, GATHER_TICK_INTERVAL, INDUSTRY_REGEN_BASE, INDUSTRY_REGEN_PER_OUTPUT, AI_RESCUE_CRYSTAL_MIN];
+    for (const v of all) expect(v).toBeGreaterThanOrEqual(0);
+  });
+
+  it('AI_RESCUE_CRYSTAL_MIN >= GATHER_BASE_AMOUNT', () => {
+    expect(AI_RESCUE_CRYSTAL_MIN).toBeGreaterThanOrEqual(GATHER_BASE_AMOUNT);
+  });
+});
+
+describe('balance.ts - config cost 一致性', () => {
+  it('MAX_CRYSTAL 超过所有 unit/building/hero/tech 水晶造价', () => {
+    const allCosts = [
+      ...Object.values(UNIT_DEFS).map(d => d.cost.crystal),
+      ...Object.values(BUILDING_DEFS).map(d => d.cost.crystal),
+      ...Object.values(HERO_DEFS).map(d => d.cost.crystal),
+      ...Object.values(TECH_DEFS).map(d => d.crystal),
+    ];
+    for (const c of allCosts) {
+      expect(c).toBeLessThanOrEqual(MAX_CRYSTAL);
+    }
   });
 });

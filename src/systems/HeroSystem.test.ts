@@ -457,3 +457,147 @@ describe('HeroSystem _exec* direct calls', () => {
     expect(fullAlly.hp).toBe(100); // already full
   });
 });
+
+
+describe('HeroSystem - 第二轮补洞: 边界与 L4 变体', () => {
+  beforeEach(() => EventBus.clear());
+  afterEach(() => EventBus.clear());
+
+  it('Isabelle aura 恰好 Manhattan 距离=auraRadius(8) 治疗盟友 (<=)', () => {
+    const world = makeWorld(20, 20, true);
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    const ally = makeUnit({ owner: 0, tileX: 13, tileY: 5, hp: 10 });
+    ally.maxHp = 100;
+    HeroSystem.update([hero], [hero, ally], [], world, 1.0);
+    expect(ally.hp).toBe(12);
+  });
+
+  it('Isabelle aura 不溢出治疗 (满血盟友保持 maxHp)', () => {
+    const world = makeWorld(16, 16, true);
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    const ally = makeUnit({ owner: 0, tileX: 6, tileY: 5, hp: 100 });
+    ally.maxHp = 100;
+    HeroSystem.update([hero], [hero, ally], [], world, 1.0);
+    expect(ally.hp).toBe(100);
+  });
+
+  it('reviveTimer=-1 (就绪) 的英雄保持 -1 不递减', () => {
+    const world = makeWorld(16, 16, true);
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    hero.hp = 0;
+    hero.reviveTimer = -1;
+    HeroSystem.update([hero], [hero], [], world, 5);
+    expect(hero.reviveTimer).toBe(-1);
+  });
+
+  it('reviveTimer 恰好减到 0 时设为 -1 (就绪)', () => {
+    const world = makeWorld(16, 16, true);
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    hero.hp = 0;
+    hero.reviveTimer = 5;
+    HeroSystem.update([hero], [hero], [], world, 5);
+    expect(hero.reviveTimer).toBe(-1);
+  });
+
+  it('Isabelle auto slot1 仅 2 个敌人不触发 (需 >=3)', () => {
+    const world = makeWorld(16, 16, true);
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    hero.level = 3;
+    const e1 = makeUnit({ owner: 1, tileX: 6, tileY: 5, hp: 100 });
+    const e2 = makeUnit({ owner: 1, tileX: 7, tileY: 5, hp: 100 });
+    HeroSystem.update([hero], [hero, e1, e2], [], world, 0.05);
+    expect(hero.skillCooldowns[1]).toBe(0);
+  });
+
+  it('Isabelle auto slot2 恰好 hpPercent=0.35 不触发 (严格 <0.35)', () => {
+    const world = makeWorld(16, 16, true);
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    hero.level = 5;
+    hero.maxHp = 100; hero.hp = 35;
+    const ally = makeUnit({ owner: 0, tileX: 6, tileY: 5, hp: 10 });
+    ally.maxHp = 100;
+    HeroSystem.update([hero], [hero, ally], [], world, 0.05);
+    expect(hero.skillCooldowns[2]).toBe(0);
+  });
+
+  it('Isabelle rain 治疗 150 在未满血时不被 cap (hp+150 < maxHp)', () => {
+    const world = makeWorld(16, 16, true);
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    hero.level = 5;
+    hero.maxHp = 100; hero.hp = 30; // hpPercent=0.3 < 0.35
+    const ally = makeUnit({ owner: 0, tileX: 6, tileY: 5, hp: 10 });
+    ally.maxHp = 200;
+    HeroSystem.update([hero], [hero, ally], [], world, 0.05);
+    expect(ally.hp).toBeCloseTo(160, 0);
+  });
+
+  it('Marcus auto slot1 L4 治疗 8% maxHp', () => {
+    const world = makeWorld(20, 20, true);
+    const hero = makeHero('hero_marcus', 0, 5, 5);
+    hero.level = 4;
+    hero.maxHp = 1000; hero.hp = 400;
+    const mech = makeUnit({ owner: 0, tileX: 6, tileY: 5, hp: 100, spriteKey: 'unit_magitech_mech' });
+    mech.armorType = 'mechanical';
+    // 6 riflemen 防止 slot0 airdrop 抢占 slot1
+    const rifles = Array.from({ length: 6 }, (_, i) => makeUnit({ owner: 0, tileX: 7 + i, tileY: 5, spriteKey: 'unit_rifleman' }));
+    HeroSystem.update([hero], [hero, mech, ...rifles], [], world, 0.05);
+    expect(hero.hp).toBe(480);
+  });
+
+  it('Marcus slot2 仅 2 敌人不触发 (需 >=3)', () => {
+    const world = makeWorld(16, 16, true);
+    const hero = makeHero('hero_marcus', 0, 5, 5);
+    hero.level = 5;
+    hero.maxHp = 1000; hero.hp = 400;
+    const e1 = makeUnit({ owner: 1, tileX: 6, tileY: 5, hp: 100 });
+    const e2 = makeUnit({ owner: 1, tileX: 7, tileY: 5, hp: 100 });
+    HeroSystem.update([hero], [hero, e1, e2], [], world, 0.05);
+    expect(hero.skillCooldowns[2]).toBe(0);
+  });
+
+  it('Marcus slot2 3 敌人但 hp>=50% 不触发', () => {
+    const world = makeWorld(16, 16, true);
+    const hero = makeHero('hero_marcus', 0, 5, 5);
+    hero.level = 5;
+    hero.maxHp = 1000; hero.hp = 600;
+    const e1 = makeUnit({ owner: 1, tileX: 6, tileY: 5, hp: 100 });
+    const e2 = makeUnit({ owner: 1, tileX: 7, tileY: 5, hp: 100 });
+    const e3 = makeUnit({ owner: 1, tileX: 8, tileY: 5, hp: 100 });
+    HeroSystem.update([hero], [hero, e1, e2, e3], [], world, 0.05);
+    expect(hero.skillCooldowns[2]).toBe(0);
+  });
+
+  it('activateSkill slotIndex 越界 (5) 返回 success=false', () => {
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    const r = HeroSystem.activateSkill(hero, 5, { units: [], buildings: [] });
+    expect(r.success).toBe(false);
+  });
+
+  it('activateSkill Marcus slot1 通过 activateSkill 路径治疗自己', () => {
+    const hero = makeHero('hero_marcus', 0, 5, 5);
+    hero.level = 3;
+    hero.maxHp = 1000; hero.hp = 500;
+    const r = HeroSystem.activateSkill(hero, 1, { units: [hero], buildings: [] });
+    expect(r.success).toBe(true);
+    expect(hero.hp).toBeGreaterThan(500);
+  });
+
+  it('getSkillInfo slot2 L4 unlocked=false, L5 unlocked=true', () => {
+    const hero = makeHero('hero_isabelle', 0, 5, 5);
+    hero.level = 4;
+    expect(HeroSystem.getSkillInfo(hero, 2)!.unlocked).toBe(false);
+    hero.level = 5;
+    expect(HeroSystem.getSkillInfo(hero, 2)!.unlocked).toBe(true);
+  });
+
+  it('trainHero marcus 构造正确 stats', () => {
+    const h = HeroSystem.trainHero('hero_marcus', 0, 'hammer_federation', 5, 5)!;
+    expect(h).toBeInstanceOf(Hero);
+    expect(h.spriteKey).toBe('hero_marcus');
+    expect(h.auraRadius).toBe(12);
+  });
+
+  it('trainHero 未知 heroId 返回 null', () => {
+    expect(HeroSystem.trainHero('hero_ghost', 0, 'arcane_empire', 5, 5)).toBeNull();
+  });
+});
