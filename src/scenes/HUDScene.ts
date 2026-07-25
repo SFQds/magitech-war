@@ -16,6 +16,8 @@ import { Minimap } from '../ui/Minimap';
 import { SuperWeaponBar } from '../ui/SuperWeaponBar';
 import { HeroPanel } from '../ui/HeroPanel';
 import { PauseMenu } from '../ui/PauseMenu';
+import { FpsCounter } from '../ui/FpsCounter';
+import { Tooltip } from '../ui/Tooltip';
 import { CameraController } from '../core/CameraController';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
@@ -33,6 +35,8 @@ export class HUDScene extends Phaser.Scene {
   private superWeaponBar!: SuperWeaponBar;
   private heroPanel!: HeroPanel;
   private pauseMenu!: PauseMenu;
+  private fpsCounter!: FpsCounter;
+  private tooltip!: Tooltip;
   private attackMoveText!: Phaser.GameObjects.Text;
   /** P1-10 修复：保存所有 EventBus 监听器引用，shutdown 时逐个 off */
   private _eventHandlers: { event: string; handler: (data: unknown) => void }[] = [];
@@ -76,7 +80,9 @@ export class HUDScene extends Phaser.Scene {
       }
     });
 
-    // P1-10 修复：注册场景关闭清理 — 逐个 off 所有 EventBus 监听器
+    // P1-UI 批7: FPS 计数器 + Tooltip
+    this.fpsCounter = new FpsCounter(this);
+    this.tooltip = new Tooltip(this);
     this.events.on('shutdown', () => {
       for (const { event, handler } of this._eventHandlers) {
         EventBus.off(event, handler);
@@ -104,6 +110,10 @@ export class HUDScene extends Phaser.Scene {
     // P1-超武: 每帧刷新超武按钮冷却显示
     if (this.superWeaponBar) {
       this.superWeaponBar.update();
+    }
+    // P1-UI 批7: FPS 刷新
+    if (this.fpsCounter) {
+      this.fpsCounter.update(1 / 60);
     }
   }
 
