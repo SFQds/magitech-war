@@ -14,6 +14,7 @@ import { CommandCard } from '../ui/CommandCard';
 import { ProductionQueueUI } from '../ui/ProductionQueue';
 import { Minimap } from '../ui/Minimap';
 import { SuperWeaponBar } from '../ui/SuperWeaponBar';
+import { HeroPanel } from '../ui/HeroPanel';
 import { CameraController } from '../core/CameraController';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
@@ -29,6 +30,7 @@ export class HUDScene extends Phaser.Scene {
   private productionQueue!: ProductionQueueUI;
   private minimap!: Minimap;
   private superWeaponBar!: SuperWeaponBar;
+  private heroPanel!: HeroPanel;
   private attackMoveText!: Phaser.GameObjects.Text;
   /** P1-10 修复：保存所有 EventBus 监听器引用，shutdown 时逐个 off */
   private _eventHandlers: { event: string; handler: (data: unknown) => void }[] = [];
@@ -45,6 +47,7 @@ export class HUDScene extends Phaser.Scene {
 
     this.resourceDisplay = new ResourceDisplay(this);
     this.selectionPanel = new SelectionPanel(this, 10, 720 - 80 - 130);
+    this.heroPanel = new HeroPanel(this, 10, 720 - 80 - 130 - 290);
     this.commandCard = new CommandCard(this);
     this.productionQueue = new ProductionQueueUI(this);
 
@@ -99,11 +102,18 @@ export class HUDScene extends Phaser.Scene {
     this._on(GameEvent.SELECTION_CHANGED, (data: unknown) => {
       const d = data as SelectionData;
       if (d.playerIndex !== 0) return;
-      if (d.unitIds.length === 0) { this.selectionPanel.showUnits([]); this.commandCard.clear(); return; }
+      if (d.unitIds.length === 0) { this.selectionPanel.showUnits([]); this.commandCard.clear(); this.heroPanel.hide(); return; }
 
       const gs = this.scene.get('GameScene') as any;
       const units = d.unitIds.map((id: string) => gs.units?.find((u: Unit) => u.id === id)).filter(Boolean) as Unit[];
       this.selectionPanel.showUnits(units);
+
+      // P1-UI 批4: 单选英雄时显示英雄详情面板
+      if (units.length === 1 && units[0] instanceof Hero) {
+        this.heroPanel.show(units[0] as Hero);
+      } else {
+        this.heroPanel.hide();
+      }
 
       // P1-UI 批3: 多选时显示头像网格
       if (units.length > 1) {
