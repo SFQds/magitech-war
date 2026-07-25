@@ -15,6 +15,7 @@ import { ProductionQueueUI } from '../ui/ProductionQueue';
 import { Minimap } from '../ui/Minimap';
 import { SuperWeaponBar } from '../ui/SuperWeaponBar';
 import { HeroPanel } from '../ui/HeroPanel';
+import { PauseMenu } from '../ui/PauseMenu';
 import { CameraController } from '../core/CameraController';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
@@ -31,6 +32,7 @@ export class HUDScene extends Phaser.Scene {
   private minimap!: Minimap;
   private superWeaponBar!: SuperWeaponBar;
   private heroPanel!: HeroPanel;
+  private pauseMenu!: PauseMenu;
   private attackMoveText!: Phaser.GameObjects.Text;
   /** P1-10 修复：保存所有 EventBus 监听器引用，shutdown 时逐个 off */
   private _eventHandlers: { event: string; handler: (data: unknown) => void }[] = [];
@@ -48,6 +50,13 @@ export class HUDScene extends Phaser.Scene {
     this.resourceDisplay = new ResourceDisplay(this);
     this.selectionPanel = new SelectionPanel(this, 10, 720 - 80 - 130);
     this.heroPanel = new HeroPanel(this, 10, 720 - 80 - 130 - 290);
+
+    // P1-UI 批6: 暂停菜单
+    this.pauseMenu = new PauseMenu(this, {
+      onResume: () => {},
+      onRestart: () => { this.scene.stop('GameScene'); this.scene.start('GameScene', (this.scene.get('GameScene') as any)?.registry?.get('lastStartData') ?? {}); },
+      onMainMenu: () => { this.scene.stop('GameScene'); this.scene.start('MenuScene'); },
+    });
     this.commandCard = new CommandCard(this);
     this.productionQueue = new ProductionQueueUI(this);
 
@@ -57,6 +66,15 @@ export class HUDScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(250).setScrollFactor(0).setAlpha(0);
 
     this.setupEvents();
+
+    // P1-UI 批6: ESC 暂停菜单（HUDScene 层，优先于 GameScene 的 ESC）
+    this.input.keyboard!.on('keydown-ESC', () => {
+      if (this.pauseMenu?.isVisible) {
+        this.pauseMenu.hide();
+      } else {
+        this.pauseMenu?.show();
+      }
+    });
 
     // P1-10 修复：注册场景关闭清理 — 逐个 off 所有 EventBus 监听器
     this.events.on('shutdown', () => {

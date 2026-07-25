@@ -768,8 +768,10 @@ export class GameScene extends Phaser.Scene {
 
     // ESC：退出建造模式 或 退出攻击移动模式 或 取消超武瞄准
     this.input.keyboard!.on('keydown-ESC', () => {
-      // P1-超武: 先取消超武瞄准
+      // P1-UI 批6: 暂停菜单可见时 GameScene 不响应 ESC
       const hud = this.scene.get('HUDScene') as any;
+      if (hud?.pauseMenu?.isVisible) return;
+      // P1-超武: 先取消超武瞄准
       if (hud?.superWeaponBar?.aimingWeaponId) {
         hud.superWeaponBar.cancelAim();
         return;
