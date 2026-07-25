@@ -222,7 +222,7 @@ export class MenuScene extends Phaser.Scene {
 
     // === 开始按钮 ===
     const startY = height - 70;
-    const startBtn = this.add.text(cx, startY, '▶  开始游戏', {
+    const startBtn = this.add.text(cx - 90, startY, '▶  开始游戏', {
       fontSize: '22px', color: '#ffffff', backgroundColor: '#4a3060',
       padding: { x: 40, y: 12 }, fontFamily: 'Arial, sans-serif',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -239,6 +239,17 @@ export class MenuScene extends Phaser.Scene {
         aiDifficulty: diff,
         playerGuilds: [...this.selectedGuildIds],
       });
+    });
+
+    // === 图鉴按钮 ===
+    const codexBtn = this.add.text(cx + 90, startY, '📖  图鉴', {
+      fontSize: '20px', color: '#c8a2c8', backgroundColor: '#2a1a3a',
+      padding: { x: 28, y: 10 }, fontFamily: 'Arial, sans-serif',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    codexBtn.on('pointerover', () => codexBtn.setStyle({ backgroundColor: '#3a2a5a' }));
+    codexBtn.on('pointerout', () => codexBtn.setStyle({ backgroundColor: '#2a1a3a' }));
+    codexBtn.on('pointerdown', () => {
+      this.scene.start('CodexScene');
     });
 
     // === 初始化显示 ===
