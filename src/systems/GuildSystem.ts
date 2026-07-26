@@ -27,8 +27,8 @@ const MAGE_GUILD_UNITS = new Set([
   'unit_battle_mage',
   'unit_arcane_guard',
   'unit_arcane_heavy',
-  // P2-D2 修复：移除 'unit_arcane_cannon'——该单位在 unitData.ts 从未定义，
-  // 保留会让法师公会充能对该 ID 永远不生效（虽不报错但暗示缺失单位）。
+  // L3 批次: 秘法炮台现已定义（UNIT_DEFS），重新加入充能列表以启用充能×3机制
+  'unit_arcane_cannon',
 ]);
 
 // ============================================================

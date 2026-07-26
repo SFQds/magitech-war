@@ -16,6 +16,7 @@ import { GuildSystem } from '../systems/GuildSystem';
 import { ALCHEMY_POTIONS } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
 import { BuildingSystem } from '../systems/BuildingSystem';
+import { UnitSpecialSystem } from '../systems/UnitSpecialSystem';
 import { SuperWeaponSystem } from '../systems/SuperWeaponSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
 import { TechSystem } from '../systems/TechSystem';
@@ -1110,6 +1111,8 @@ export class GameScene extends Phaser.Scene {
     const result = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds);
     // 公会专属建筑机制（维修站光环等）— 每帧推进
     BuildingSystem.update(this.units, this.buildings, ds, this.world);
+    // L3 单位特殊机制（移动工坊光环/不稳定水晶倒计时）— 每帧推进
+    UnitSpecialSystem.update(this.units, ds, this.world);
     // 处理英雄派生指令（如马库斯空投）— P0-3：标记为免费召唤（不占用补给）
     for (const spawn of result.spawnCommands) {
       for (let i = 0; i < spawn.count; i++) {

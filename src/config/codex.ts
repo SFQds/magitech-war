@@ -35,6 +35,11 @@ export const CODEX_ENTRIES: CodexEntry[] = [
   // ============ L3 专属单位 ============
   { id: 'unit_arcane_guard', name: '奥术守卫', category: 'unit', spriteKey: 'unit_arcane_guard', desc: '奥术帝国专属精英重步兵。两米二银白巨像，左臂外悬淡金符文环。护盾激活前有4秒窗口，破碎后30秒再生。' },
   { id: 'unit_hammer_squad', name: '铁锤步兵团', category: 'unit', spriteKey: 'unit_hammer_squad', desc: '铁锤联邦专属5人编队。AOE攻击各成员独立计算，不会一炮五杀。队形散开速度全大陆最快，因为不需要命令。' },
+  { id: 'unit_arcane_cannon', name: '秘法炮台', category: 'unit', spriteKey: 'unit_arcane_cannon', desc: '法师公会+奥术帝国专属。浮空水晶炮塔，充能后下一发伤害×3。需研究奥术遗产。' },
+  { id: 'unit_mobile_workshop', name: '移动工坊', category: 'unit', spriteKey: 'unit_mobile_workshop', desc: '机械行会+铁锤联邦专属。履带维修载具，周围友方机械单位持续回血。需研究机甲装配技术。' },
+  { id: 'unit_alchemy_colossus', name: '炼金巨像', category: 'unit', spriteKey: 'unit_alchemy_colossus', desc: '炼金协会专属。HP800的巨型生物炼金体，死亡时自爆造成300范围炼金伤害。需研究高级药剂。' },
+  { id: 'unit_unstable_crystal', name: '不稳定水晶炸弹', category: 'unit', spriteKey: 'unit_unstable_crystal', desc: '虚空研究院专属。部署后10秒爆炸，造成500范围水晶伤害（不分敌我）。需研究虚空增幅。' },
+  { id: 'unit_rune_titan', name: '符文泰坦', category: 'unit', spriteKey: 'unit_rune_titan', desc: '奥术帝国+机械行会组合专属。HP1200的符文机械巨像，混合物理+魔法伤害。需研究奥术遗产+机甲装配。' },
 
   // ============ 英雄 ============
   { id: 'hero_isabelle', name: '伊莎贝尔·默库里', category: 'hero', spriteKey: 'hero_isabelle', desc: '默库里合金发明者，帝国学院有史以来最高魔力纯度记录保持者。被除名后出走。贤者之石光环+护盾+炼金转化+贤者之雨。' },

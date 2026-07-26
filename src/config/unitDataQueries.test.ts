@@ -155,15 +155,18 @@ describe('getUnitCostWithFaction', () => {
 // ============ getBuildingProduces ============
 
 describe('getBuildingProduces', () => {
-  it('兵营可训练 5 种单位', () => {
+  it('兵营可训练 6 种单位（含 L3 炼金巨像）', () => {
     const p = getBuildingProduces('bld_barracks');
-    expect(p).toEqual(['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier', 'unit_assault_worker']);
+    expect(p).toEqual(['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier', 'unit_assault_worker', 'unit_alchemy_colossus']);
   });
 
-  it('工厂可训练车辆类单位', () => {
+  it('工厂可训练车辆类单位（含 L3 mobile_workshop/unstable_crystal/rune_titan）', () => {
     const p = getBuildingProduces('bld_factory');
     expect(p).toContain('unit_magitech_mech');
     expect(p).toContain('unit_transport');
+    expect(p).toContain('unit_mobile_workshop');
+    expect(p).toContain('unit_unstable_crystal');
+    expect(p).toContain('unit_rune_titan');
   });
 
   it('采矿场 produces 为空数组', () => {

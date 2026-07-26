@@ -45,4 +45,9 @@ export const PNG_SPRITE_KEYS = [
   'neutral_ancient_shrine',
   'neutral_abandoned_mine',
   'neutral_watchtower',
+  'unit_arcane_cannon',
+  'unit_mobile_workshop',
+  'unit_alchemy_colossus',
+  'unit_unstable_crystal',
+  'unit_rune_titan',
 ] as const;

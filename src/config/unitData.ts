@@ -151,6 +151,58 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     attackEffect: 'proj_cannon',
     favoredBy: ['alchemists_society'],
   },
+
+  // ============================================================
+  // L3 单位 — 行会专属 / 组合专属（需对应行会 + 科技前置）
+  // 机制: arcane_cannon→充能×3(待实现); mobile_workshop→移动维修光环(待实现);
+  //       alchemy_colossus→死亡自爆300 AOE(待实现); unstable_crystal→部署10s后爆炸500 AOE(待实现);
+  //       rune_titan→符文双模式(待实现)
+  // ============================================================
+  unit_arcane_cannon: {
+    displayName: '秘法炮台',
+    tier: 'L3',
+    cost: { crystal: 600, supply: 4, time: 30 },
+    stats: { hp: 350, armor: 'structure', armorValue: 8, category: 'infantry', speed: 0.5, damage: 40, dmgType: 'magic', range: 7, cooldown: 2.5, sight: 8 },
+    attackEffect: 'proj_magic_bolt',
+    techReq: ['tech:arcane_legacy'],
+    exclusiveTo: { faction: 'arcane_empire', guild: 'mages_guild' },
+  },
+  unit_mobile_workshop: {
+    displayName: '移动工坊',
+    tier: 'L3',
+    cost: { crystal: 450, supply: 3, time: 25 },
+    stats: { hp: 300, armor: 'mechanical', armorValue: 5, category: 'vehicle', speed: 1.8, damage: 0, dmgType: 'physical', range: 0, cooldown: 1, sight: 6 },
+    attackEffect: 'melee',
+    techReq: ['tech:mech_assembly'],
+    exclusiveTo: { faction: 'hammer_federation', guild: 'mechanists_guild' },
+  },
+  unit_alchemy_colossus: {
+    displayName: '炼金巨像',
+    tier: 'L3',
+    cost: { crystal: 700, supply: 5, time: 35 },
+    stats: { hp: 800, armor: 'bio', armorValue: 3, category: 'infantry', speed: 1.4, damage: 45, dmgType: 'alchemy', range: 1, cooldown: 1.8, sight: 6 },
+    attackEffect: 'melee',
+    techReq: ['tech:advanced_potions'],
+    exclusiveTo: { guild: 'alchemists_society' },
+  },
+  unit_unstable_crystal: {
+    displayName: '不稳定水晶炸弹',
+    tier: 'L3',
+    cost: { crystal: 300, supply: 2, time: 15 },
+    stats: { hp: 120, armor: 'light', armorValue: 0, category: 'infantry', speed: 2.8, damage: 0, dmgType: 'crystal', range: 0, cooldown: 1, sight: 5 },
+    attackEffect: 'melee',
+    techReq: ['tech:void_amplify'],
+    exclusiveTo: { guild: 'void_institute' },
+  },
+  unit_rune_titan: {
+    displayName: '符文泰坦',
+    tier: 'L3',
+    cost: { crystal: 900, supply: 6, time: 40 },
+    stats: { hp: 1200, armor: 'mechanical', armorValue: 12, category: 'vehicle', speed: 1.2, damage: 70, dmgType: 'physical', range: 5, cooldown: 2.0, sight: 7 },
+    attackEffect: 'proj_cannon',
+    techReq: ['tech:arcane_legacy', 'tech:mech_assembly'],
+    exclusiveTo: { faction: 'arcane_empire', guild: 'mechanists_guild' },
+  },
 };
 
 // ============================================================
@@ -200,14 +252,14 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     cost: { crystal: 300, industry: 20, time: 20 },
     hp: 800,
     provides: { supply: 20, industry: 0 },
-    produces: ['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier', 'unit_assault_worker'],
+    produces: ['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier', 'unit_assault_worker', 'unit_alchemy_colossus'],
   },
   bld_factory: {
     displayName: '工厂',
     cost: { crystal: 500, industry: 40, time: 30 },
     hp: 1000,
     provides: { supply: 20, industry: 30 },
-    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport', 'unit_hammer_squad', 'unit_void_probe'],
+    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport', 'unit_hammer_squad', 'unit_void_probe', 'unit_mobile_workshop', 'unit_unstable_crystal', 'unit_rune_titan'],
   },
   bld_refinery: {
     displayName: '采矿场',
@@ -243,7 +295,7 @@ bld_ancient_archive: {
     cost: { crystal: 350, industry: 20, time: 25 },
     hp: 600,
     provides: { supply: 0, industry: 10 },
-    produces: ['unit_arcane_guard'],
+    produces: ['unit_arcane_guard', 'unit_arcane_cannon'],
     // 批3: 追加法师公会科技线（teleport/charge/resonance/elemental_storm 超武解锁）
     researches: [
       'tech:arcane_legacy', 'tech:battle_mage_training', 'tech:mech_assembly', 'tech:production_line_optimized',

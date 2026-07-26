@@ -12,6 +12,7 @@ import { MovementSystem } from './MovementSystem';
 import type { GameMap } from '../core/GameMap';
 import type { FogOfWar } from '../core/FogOfWar';
 import { GuildSystem } from './GuildSystem';
+import { UnitSpecialSystem } from './UnitSpecialSystem';
 import { UNIT_DEFS, getFactionBonuses } from '../config/unitData';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { distance } from '../utils/MathUtils';
@@ -164,8 +165,9 @@ export class CombatSystem {
 
         // 冷却完毕 → 攻击（应用行会buff修正）
         if (unit.attackTimer <= 0) {
-          // 攻击力：炼金力量药剂 + 虚空过载
+          // 攻击力：炼金力量药剂 + 虚空过载 + L3 特殊（秘法炮台充能×3）
           let effectiveDmgMult = GuildSystem.getAlchemyDamageMult(unit) * GuildSystem.getVoidOverloadDamageMult(unit);
+          effectiveDmgMult *= UnitSpecialSystem.getAttackDamageMult(unit);
           let effectiveDmg = Math.round(unit.attackDamage * effectiveDmgMult); // P2: single round instead of triple
           // 目标护甲修正：炼金腐蚀弹（P1-E3 修复：读攻击者的 corrosion buff，而非 target）
           const corrosionPenalty = unit instanceof Unit
@@ -173,7 +175,7 @@ export class CombatSystem {
             : 0;
           // 攻击方护甲增益（铁皮药剂 + 虚空过载护甲仅在攻击方被反击时需要；暂不在此处处理）
           
-          const damage = CombatSystem.calculateDamage(effectiveDmg, unit.attackType, target.armorType, unit.faction);
+          const damage = CombatSystem.calculateDamage(effectiveDmg, UnitSpecialSystem.getAttackDamageType(unit, target.armorType, unit.attackType), target.armorType, unit.faction);
           unit.attackTimer = unit.attackCooldown;
           // P0-7 修复：充能打击为一次性攻击增益，攻击后自动恢复原始攻击力
           GuildSystem.magesRestoreAfterAttack(unit);

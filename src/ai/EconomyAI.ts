@@ -320,6 +320,18 @@ export class EconomyAI {
     const tt = this.world.techTrees.get(this.playerIndex);
     // 反制单位优先于常规偏好单位
     const trainPriority = [...counterUnits, ...directive.preferredUnits.filter(id => !counterUnits.includes(id))];
+    // L3 批次: late 阶段追加公会专属 L3 单位（科技已研究时）
+    if (directive.phase === 'late') {
+      const l3Candidates = ['unit_rune_titan', 'unit_alchemy_colossus', 'unit_arcane_cannon', 'unit_mobile_workshop', 'unit_unstable_crystal'];
+      for (const id of l3Candidates) {
+        if (trainPriority.includes(id)) continue;
+        const def = UNIT_DEFS[id];
+        if (!def?.exclusiveTo?.guild || aiGuilds.includes(def.exclusiveTo.guild)) {
+          if (def?.techReq && !def.techReq.every(tid => tt?.isResearched(tid))) continue;
+          trainPriority.push(id);
+        }
+      }
+    }
     for (const unitDefId of trainPriority) {
       if (unitDefId === 'unit_worker') continue;
       if (supply >= supplyCap) continue;
@@ -343,6 +355,12 @@ export class EconomyAI {
 if (unitDefId === 'unit_grenadier') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_assault_worker') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_void_probe') return b.spriteKey === 'bld_factory';
+        // L3 单位生产者映射
+        if (unitDefId === 'unit_arcane_cannon') return b.spriteKey === 'bld_ancient_archive';
+        if (unitDefId === 'unit_mobile_workshop') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_alchemy_colossus') return b.spriteKey === 'bld_barracks';
+        if (unitDefId === 'unit_unstable_crystal') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_rune_titan') return b.spriteKey === 'bld_factory';
 	        return false;
       });
       if (!producer) continue;

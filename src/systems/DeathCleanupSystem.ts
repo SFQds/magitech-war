@@ -20,6 +20,7 @@ import { UNIT_DEFS, TECH_DEFS, getUnitCostWithFaction } from '../config/unitData
 import { HERO_DEFS } from '../config/heroData';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
+import { UnitSpecialSystem } from './UnitSpecialSystem';
 
 export interface DeathCleanupCallbacks {
   removeUnitSprite: (id: string) => void;
@@ -60,6 +61,9 @@ export class DeathCleanupSystem {
       const isHeroReviving = u instanceof Hero && (u as Hero).reviveTimer !== 0;
       if (isHeroReviving) continue;
       if ((u as Unit).isCargo) continue;
+
+      // L3 单位死亡自爆（炼金巨像：300 范围炼金伤害）- 在清理前触发，可链式击杀其他单位
+      UnitSpecialSystem.onUnitDeath(u as Unit, this.entities.units);
 
       const player = this.world.players[u.owner];
       if (player) {
