@@ -61,7 +61,13 @@ export class HUDScene extends Phaser.Scene {
       onRestart: () => { this.scene.stop('GameScene'); this.scene.start('GameScene', (this.scene.get('GameScene') as any)?.registry?.get('lastStartData') ?? {}); },
       onMainMenu: () => { this.scene.stop('GameScene'); this.scene.start('MenuScene'); },
     });
+    // 审1: Tooltip 必须在 CommandCard 之前实例化(onHover 回调引用)
+    this.tooltip = new Tooltip(this);
     this.commandCard = new CommandCard(this);
+    this.commandCard.onHover((lines, x, y) => {
+      if (lines) this.tooltip.show(x, y, lines);
+      else this.tooltip.hide();
+    });
     this.productionQueue = new ProductionQueueUI(this);
 
     this.attackMoveText = this.add.text(1280 / 2, 720 - 90, '⚔ 攻击移动模式', {
@@ -72,7 +78,13 @@ export class HUDScene extends Phaser.Scene {
     this.setupEvents();
 
     // P1-UI 批6: ESC 暂停菜单（HUDScene 层，优先于 GameScene 的 ESC）
+    // 审3: 建造模式/瞄准模式时先避让，让 GameScene 处理
     this.input.keyboard!.on('keydown-ESC', () => {
+      const gs = this.scene.get('GameScene') as any;
+      const isBuilding = gs?.buildController?.isActive;
+      const isAiming = this.superWeaponBar?.aimingWeaponId;
+      const isAttackMove = gs?.attackMoveMode;
+      if (isBuilding || isAiming || isAttackMove) return; // 让 GameScene 处理
       if (this.pauseMenu?.isVisible) {
         this.pauseMenu.hide();
       } else {
@@ -80,9 +92,8 @@ export class HUDScene extends Phaser.Scene {
       }
     });
 
-    // P1-UI 批7: FPS 计数器 + Tooltip
+    // P1-UI 批7: FPS 计数器 (Tooltip 已在前面实例化)
     this.fpsCounter = new FpsCounter(this);
-    this.tooltip = new Tooltip(this);
     this.events.on('shutdown', () => {
       for (const { event, handler } of this._eventHandlers) {
         EventBus.off(event, handler);
@@ -357,16 +368,13 @@ export class HUDScene extends Phaser.Scene {
       // P1-超武: 初始化超武栏（小地图上方）
       if (!this.superWeaponBar) {
         this.superWeaponBar = new SuperWeaponBar(this, 0, 1280 - 160, 720 - 80 - 160 - 70);
-        this.superWeaponBar.onActivate((weaponId: string) => {
+        this.superWeaponBar.onActivate((weaponId: string, tileX: number, tileY: number) => {
           const gs = this.scene.get('GameScene') as any;
-          if (gs?._pendingSuperWeaponTarget) {
-            const t = gs._pendingSuperWeaponTarget;
-            const result = gs.commandExecutor?.execute({
-              type: 'superweapon', playerIndex: 0, unitIds: [], weaponId, target: { x: t.x, y: t.y }, frame: 0,
-            });
-            if (result && !result.ok) this.showToast(result.reason);
-            else if (result) this.refreshResourceDisplay();
-          }
+          const result = gs?.commandExecutor?.execute({
+            type: 'superweapon', playerIndex: 0, unitIds: [], weaponId, target: { x: tileX, y: tileY }, frame: 0,
+          });
+          if (result && !result.ok) this.showToast(result.reason);
+          else if (result) this.refreshResourceDisplay();
         });
       }
     });
@@ -419,11 +427,12 @@ export class HUDScene extends Phaser.Scene {
   }
 
   /** P1-UI: 构建通用命令按钮（停止/坚守/攻击移动），标注热键 */
-  private _buildCommandButtons(units: Unit[], gs: any): { label: string; cost: string; callback: () => void; hotkey?: string; disabled?: boolean }[] {
-    const btns: { label: string; cost: string; callback: () => void; hotkey?: string; disabled?: boolean }[] = [];
+  private _buildCommandButtons(units: Unit[], gs: any): { label: string; cost: string; callback: () => void; hotkey?: string; disabled?: boolean; tooltipLines?: string[] }[] {
+    const btns: { label: string; cost: string; callback: () => void; hotkey?: string; disabled?: boolean; tooltipLines?: string[] }[] = [];
     const ids = units.map(u => u.id);
     btns.push({
       label: '停止', cost: 'S', hotkey: 'S',
+      tooltipLines: ['停止', '停止当前动作，取消移动/攻击/采集'],
       callback: () => {
         for (const id of ids) {
           gs.commandExecutor?.execute({ type: 'stop', playerIndex: 0, unitIds: [id], frame: 0 });
@@ -432,6 +441,7 @@ export class HUDScene extends Phaser.Scene {
     });
     btns.push({
       label: '坚守', cost: 'H', hotkey: 'H',
+      tooltipLines: ['坚守', '原地不动，不会自动追击敌人'],
       callback: () => {
         for (const id of ids) {
           gs.commandExecutor?.execute({ type: 'hold_position', playerIndex: 0, unitIds: [id], frame: 0 });
@@ -440,8 +450,8 @@ export class HUDScene extends Phaser.Scene {
     });
     btns.push({
       label: '攻击移动', cost: 'A', hotkey: 'A',
+      tooltipLines: ['攻击移动', '移动到目标点，途中遇敌自动攻击'],
       callback: () => {
-        // 切换攻击移动模式（由 GameScene 处理）
         if (gs.toggleAttackMove) gs.toggleAttackMove();
       },
     });

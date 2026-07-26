@@ -84,6 +84,11 @@ export class SuperWeaponSystem {
     SuperWeaponSystem.states.set(playerIndex, weapons);
   }
 
+  /** 审4: 重置全部超武状态（重开/换关时调用，防止 static Map 泄漏） */
+  static reset(): void {
+    SuperWeaponSystem.states.clear();
+  }
+
   /** 每帧更新：冷却计时 + 持续时间推进 */
   static update(deltaSec: number): void {
     for (const [, weapons] of SuperWeaponSystem.states) {
@@ -238,14 +243,15 @@ export class SuperWeaponSystem {
     buildings: Building[],
     deltaSec: number,
   ): void {
+    // 审5: 持续伤害统一走 Unit.takeDamage，由 Entity 内部结算护盾/护甲/死亡，
+    // 确保触发 UNIT_KILLED/HERO_DIED/护盾吸收/XP 奖励等事件，不再手动改 hp/isActive。
     switch (weaponId) {
       case 'elemental_storm':
         // 持续魔法 AOE: 每秒 40 伤害
         for (const u of units) {
           if (u.owner === playerIndex || !u.isAlive) continue;
           if (Math.abs(u.tileX - tx) <= 6 && Math.abs(u.tileY - ty) <= 6) {
-            u.hp = Math.max(0, u.hp - 40 * deltaSec);
-            if (u.hp <= 0) { u.hp = 0; u.isActive = false; }
+            u.takeDamage(40 * deltaSec, 'magic');
           }
         }
         break;
@@ -254,8 +260,7 @@ export class SuperWeaponSystem {
         for (const u of units) {
           if (u.owner === playerIndex || !u.isAlive) continue;
           if (Math.abs(u.tileX - tx) <= 5 && Math.abs(u.tileY - ty) <= 5) {
-            u.hp = Math.max(0, u.hp - 25 * deltaSec);
-            if (u.hp <= 0) { u.hp = 0; u.isActive = false; }
+            u.takeDamage(25 * deltaSec, 'alchemy');
           }
         }
         break;
@@ -264,8 +269,7 @@ export class SuperWeaponSystem {
         for (const u of units) {
           if (u.owner === playerIndex || !u.isAlive) continue;
           if (Math.abs(u.tileX - tx) <= 6 && Math.abs(u.tileY - ty) <= 6) {
-            u.hp = Math.max(0, u.hp - 30 * deltaSec);
-            if (u.hp <= 0) { u.hp = 0; u.isActive = false; }
+            u.takeDamage(30 * deltaSec, 'void');
           }
         }
         break;

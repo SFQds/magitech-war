@@ -27,7 +27,7 @@ export class SuperWeaponBar {
   private container: Phaser.GameObjects.Container;
   private playerIndex: number;
   private buttons: { bg: Phaser.GameObjects.Graphics; nameText: Phaser.GameObjects.Text; cdText: Phaser.GameObjects.Text; hitArea: Phaser.GameObjects.Rectangle; weaponId: string }[] = [];
-  private _onActivate: ((weaponId: string) => void) | null = null;
+  private _onActivate: ((weaponId: string, tileX: number, tileY: number) => void) | null = null;
   /** 当前瞄准中的超武 ID（null=未瞄准） */
   private _aimingWeaponId: string | null = null;
   private _aimHint: Phaser.GameObjects.Text;
@@ -49,8 +49,8 @@ export class SuperWeaponBar {
     this._buildButtons();
   }
 
-  /** 设置激活回调 */
-  onActivate(cb: (weaponId: string) => void): void { this._onActivate = cb; }
+  /** 设置激活回调（携带目标坐标，避免依赖外部 bypass 字段） */
+  onActivate(cb: (weaponId: string, tileX: number, tileY: number) => void): void { this._onActivate = cb; }
 
   private _buildButtons(): void {
     const states = SuperWeaponSystem.getStates(this.playerIndex);
@@ -124,15 +124,14 @@ export class SuperWeaponBar {
     this._redrawAll();
   }
 
-  /** 瞄准模式下点击地图坐标，激活超武 */
+  /** 瞄准模式下点击地图坐标，激活超武。tileX/tileY 经回调直接传入命令，不依赖外部 bypass 字段 */
   confirmTarget(tileX: number, tileY: number): boolean {
     if (!this._aimingWeaponId) return false;
     const weaponId = this._aimingWeaponId;
     this._aimingWeaponId = null;
     this._aimHint.setAlpha(0);
     this._redrawAll();
-    if (this._onActivate) this._onActivate(weaponId);
-    // 实际激活由 HUDScene 通过 commandExecutor 发命令
+    if (this._onActivate) this._onActivate(weaponId, tileX, tileY);
     return true;
   }
 

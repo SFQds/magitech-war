@@ -121,14 +121,14 @@ describe('SuperWeaponBar - 瞄准模式', () => {
     bar.destroy();
   });
 
-  it('onActivate 回调在 confirmTarget 时被调用', () => {
+  it('onActivate 回调在 confirmTarget 时被调用并携带目标坐标', () => {
     const { scene } = makeScene();
     const bar = new SuperWeaponBar(scene, 0, 100, 100);
     const cb = vi.fn();
     bar.onActivate(cb);
     (bar as any)._onClick('elemental_storm');
-    bar.confirmTarget(5, 5);
-    expect(cb).toHaveBeenCalledWith('elemental_storm');
+    bar.confirmTarget(5, 7);
+    expect(cb).toHaveBeenCalledWith('elemental_storm', 5, 7);
     bar.destroy();
   });
 });

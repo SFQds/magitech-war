@@ -468,12 +468,10 @@ export class GameScene extends Phaser.Scene {
   private setupInputCallbacks(): void {
     // 单击：选中单位 或 建筑
     this.inputCtrl.onSingleClick((tile) => {
-      // P1-超武: 瞄准模式下单击确认目标
+      // P1-超武: 瞄准模式下单击确认目标（坐标由 confirmTarget 经回调直接传入命令）
       const hud = this.scene.get('HUDScene') as any;
       if (hud?.superWeaponBar?.aimingWeaponId) {
-        (this as any)._pendingSuperWeaponTarget = { x: tile.x, y: tile.y };
         hud.superWeaponBar.confirmTarget(tile.x, tile.y);
-        (this as any)._pendingSuperWeaponTarget = null;
         return;
       }
 
@@ -881,6 +879,9 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this._gameOver) return;
+    // 审2: 暂停菜单可见时跳过游戏推进(真正暂停)
+    const hudPause = (this.scene.get('HUDScene') as any)?.pauseMenu?.isVisible;
+    if (hudPause) return;
     // P1-C8: tab hidden = explicit pause (avoid rAF throttle causing inconsistent game time)
     // P2-质疑28: 但宽限期/游戏计时器仍需用墙钟时间推进，防止切标签暂停作弊
     if (typeof document !== 'undefined' && document.hidden) {
@@ -1352,6 +1353,8 @@ export class GameScene extends Phaser.Scene {
       this.scene.stop('HUDScene');
     }
     this.entities.clear();
+    // 审4: 重置超武 static Map，防止跨会话状态泄漏
+    SuperWeaponSystem.reset();
   }
 
 }

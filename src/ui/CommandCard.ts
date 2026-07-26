@@ -14,6 +14,8 @@ export interface CommandButton {
   disabled?: boolean;
   /** P1-UI: 热键字母（如 'S'/'H'/'A'），显示在按钮右上角 */
   hotkey?: string;
+  /** 审1: hover tooltip 内容（字符串数组，每行一条），不传则不显示 */
+  tooltipLines?: string[];
 }
 
 const BTN_W = 72;
@@ -24,12 +26,19 @@ const GAP = 8;
 export class CommandCard {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
+  /** 审1: hover 回调 (lines, x, y) | null=隐藏 */
+  private _onHover: ((lines: string[] | null, x: number, y: number) => void) | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.container = scene.add.container(0, 0);
     this.container.setDepth(150);
     this.container.setScrollFactor(0);
+  }
+
+  /** 审1: 设置 hover tooltip 回调 */
+  onHover(cb: (lines: string[] | null, x: number, y: number) => void): void {
+    this._onHover = cb;
   }
 
   setCommands(commands: CommandButton[]): void {
@@ -94,12 +103,16 @@ export class CommandCard {
       if (!isDisabled) {
         hitArea.setInteractive({ useHandCursor: true });
         hitArea.on('pointerdown', cmd.callback);
-        hitArea.on('pointerover', () => {
+        hitArea.on('pointerover', (pointer: Phaser.Input.Pointer) => {
           bg.clear();
           bg.fillStyle(0x3a2a5a, 1);
           bg.fillRoundedRect(x, y, BTN_W, BTN_H, 6);
           bg.lineStyle(2, 0x9b59b6, 1);
           bg.strokeRoundedRect(x, y, BTN_W, BTN_H, 6);
+          // 审1: hover tooltip
+          if (this._onHover && cmd.tooltipLines) {
+            this._onHover(cmd.tooltipLines, pointer.x + 12, pointer.y + 12);
+          }
         });
         hitArea.on('pointerout', () => {
           bg.clear();
@@ -107,6 +120,7 @@ export class CommandCard {
           bg.fillRoundedRect(x, y, BTN_W, BTN_H, 6);
           bg.lineStyle(1, 0x5e3d78, 1);
           bg.strokeRoundedRect(x, y, BTN_W, BTN_H, 6);
+          if (this._onHover) this._onHover(null, 0, 0);
         });
       }
       this.container.add(hitArea);
