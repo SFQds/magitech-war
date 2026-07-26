@@ -37,6 +37,7 @@ import { ResourceSystem } from '../systems/ResourceSystem';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { GuildSystem } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
+import { BuildingSystem } from '../systems/BuildingSystem';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import { makeStubScene } from './phaserStub';
@@ -283,6 +284,8 @@ export class HeadlessGameRunner {
   private stepGuildAndHero(ds: number): void {
     GuildSystem.update(this.world.players, this.entities.units, this.entities.buildings, ds, this.world.techTrees, this.world.arcaneChargeTimers);
     const result = HeroSystem.update(this.entities.heroes, this.entities.units, this.entities.buildings, this.world, ds);
+    // 公会专属建筑机制（维修站光环等）— 与 GameScene 同步
+    BuildingSystem.update(this.entities.units, this.entities.buildings, ds, this.world);
     for (const spawn of result.spawnCommands) {
       for (let i = 0; i < spawn.count; i++) {
         this.spawner.spawnUnit(spawn.unitDefId, { x: spawn.position.x + i * 0.5, y: spawn.position.y }, spawn.playerIndex, true);

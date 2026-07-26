@@ -335,6 +335,46 @@ describe('GuildSystem alchemy potions', () => {
   });
 });
 
+
+describe('GuildSystem.getPotionCost — 批C 炼金工坊药剂折扣', () => {
+  it('无 bld_alchemy_lab → 返回原价', () => {
+    expect(GuildSystem.getPotionCost(0, [], 50)).toBe(50);
+  });
+
+  it('有完成的 bld_alchemy_lab → 消耗 -25%（向上取整）', () => {
+    const lab = makeBuilding({ owner: 0, tileX: 0, tileY: 0, spriteKey: 'bld_alchemy_lab' });
+    // 50 * 0.75 = 37.5 → ceil = 38
+    expect(GuildSystem.getPotionCost(0, [lab], 50)).toBe(38);
+    // 40 * 0.75 = 30
+    expect(GuildSystem.getPotionCost(0, [lab], 40)).toBe(30);
+  });
+
+  it('建造中的 bld_alchemy_lab 不提供折扣', () => {
+    const lab = makeBuilding({ owner: 0, tileX: 0, tileY: 0, spriteKey: 'bld_alchemy_lab', completed: false });
+    expect(GuildSystem.getPotionCost(0, [lab], 50)).toBe(50);
+  });
+
+  it('敌方 bld_alchemy_lab 不影响我方', () => {
+    const enemyLab = makeBuilding({ owner: 1, tileX: 0, tileY: 0, spriteKey: 'bld_alchemy_lab' });
+    expect(GuildSystem.getPotionCost(0, [enemyLab], 50)).toBe(50);
+  });
+
+  it('折扣后最少 1 水晶', () => {
+    const lab = makeBuilding({ owner: 0, tileX: 0, tileY: 0, spriteKey: 'bld_alchemy_lab' });
+    // 1 * 0.75 = 0.75 → ceil = 1，但 max(1,...) 保底
+    expect(GuildSystem.getPotionCost(0, [lab], 1)).toBe(1);
+  });
+
+  it('ALCHEMY_POTIONS 4 种药剂在有工坊时折扣正确', () => {
+    const lab = makeBuilding({ owner: 0, tileX: 0, tileY: 0, spriteKey: 'bld_alchemy_lab' });
+    for (const p of ALCHEMY_POTIONS) {
+      const discounted = GuildSystem.getPotionCost(0, [lab], p.crystalCost);
+      expect(discounted).toBeLessThan(p.crystalCost); // 必须打折
+      expect(discounted).toBeGreaterThanOrEqual(1);
+    }
+  });
+});
+
 describe('GuildSystem alchemy getters', () => {
   it('all getters return neutral when timer<=0', () => {
     const u = makeUnit({ hp: 100 });

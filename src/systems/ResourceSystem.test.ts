@@ -22,6 +22,7 @@ import {
   bindToField,
   makeRefinery,
   makePlayer,
+  makeBuilding,
 } from '../__fixtures__/factories';
 import type { PlayerState } from '../types/entity';
 import {
@@ -479,5 +480,78 @@ describe('ResourceSystem.updateResources - 边界', () => {
     ResourceSystem.updateResources([p0, p1], [], [b0, b1], 0);
     expect(p0.resources.supplyCap).toBe(20);
     expect(p1.resources.supplyCap).toBe(15);
+  });
+});
+
+
+describe('ResourceSystem.updateGathering — 批D 虚空共鸣器加成', () => {
+  it('共鸣器在 15 格内 → 采集 ×1.5（玩家多得 50%，矿脉额外抽取）', () => {
+    const worker = makeWorker(0, 5, 0);
+    const field = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(worker, field);
+    const refinery = makeRefinery(0, 0, 0);
+    const resonator = makeBuilding({ owner: 0, tileX: 0, tileY: 1, spriteKey: 'bld_void_resonator' });
+    const player = makePlayer(0);
+    const events = ResourceSystem.updateGathering(
+      [worker], [field], [player], GATHER_TICK_INTERVAL, [refinery, resonator], 1.0, 1.0,
+    );
+    expect(events[0].amount).toBe(15); // 基础 10 × 1.5
+    expect(player.resources.crystal).toBe(15);
+    expect(field.amount).toBe(1000 - 15); // gather() 扣 10 + 额外抽 5
+  });
+
+  it('共鸣器超出 15 格 → 无加成（按精炼厂满速 10）', () => {
+    const worker = makeWorker(0, 5, 0);
+    const field = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(worker, field);
+    const refinery = makeRefinery(0, 0, 0);
+    const resonator = makeBuilding({ owner: 0, tileX: 21, tileY: 0, spriteKey: 'bld_void_resonator' }); // 距 (5,0)=16 >15
+    const player = makePlayer(0);
+    const events = ResourceSystem.updateGathering(
+      [worker], [field], [player], GATHER_TICK_INTERVAL, [refinery, resonator], 1.0, 1.0,
+    );
+    expect(events[0].amount).toBe(GATHER_BASE_AMOUNT);
+    expect(field.amount).toBe(1000 - 10);
+  });
+
+  it('敌方共鸣器不影响我方采集', () => {
+    const worker = makeWorker(0, 5, 0);
+    const field = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(worker, field);
+    const refinery = makeRefinery(0, 0, 0);
+    const enemyResonator = makeBuilding({ owner: 1, tileX: 0, tileY: 1, spriteKey: 'bld_void_resonator' });
+    const player = makePlayer(0);
+    const events = ResourceSystem.updateGathering(
+      [worker], [field], [player], GATHER_TICK_INTERVAL, [refinery, enemyResonator], 1.0, 1.0,
+    );
+    expect(events[0].amount).toBe(GATHER_BASE_AMOUNT); // 10，无加成
+  });
+
+  it('共鸣器额外抽取不超过矿脉剩余储量', () => {
+    const worker = makeWorker(0, 5, 0);
+    const field = new ResourceField(5, 0, 'crystal', 12);
+    bindToField(worker, field);
+    const refinery = makeRefinery(0, 0, 0);
+    const resonator = makeBuilding({ owner: 0, tileX: 0, tileY: 1, spriteKey: 'bld_void_resonator' });
+    const player = makePlayer(0);
+    const events = ResourceSystem.updateGathering(
+      [worker], [field], [player], GATHER_TICK_INTERVAL, [refinery, resonator], 1.0, 1.0,
+    );
+    expect(events[0].amount).toBe(12); // 基础 10 + 额外 min(5, 剩余2)=2
+    expect(field.amount).toBe(0);
+    expect(field.isDepleted).toBe(true);
+  });
+
+  it('无共鸣器时不受影响（仅精炼厂满速 10）', () => {
+    const worker = makeWorker(0, 5, 0);
+    const field = new ResourceField(5, 0, 'crystal', 1000);
+    bindToField(worker, field);
+    const refinery = makeRefinery(0, 0, 0);
+    const player = makePlayer(0);
+    const events = ResourceSystem.updateGathering(
+      [worker], [field], [player], GATHER_TICK_INTERVAL, [refinery], 1.0, 1.0,
+    );
+    expect(events[0].amount).toBe(GATHER_BASE_AMOUNT);
+    expect(field.amount).toBe(1000 - 10);
   });
 });

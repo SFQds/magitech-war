@@ -297,12 +297,15 @@ describe('CommandExecutor - research / cancel_research', () => {
   });
 
   it('批3: 公会专属科技 exclusiveTo.guild 不符 -> fail；加对应行会后可研究', () => {
-    // tech:solvent_bomb 需 alchemists_society，CC 已把它加入 researches（兜底载体）
-    const ccId = seedCC();
+    // 批C: tech:solvent_bomb 现由 bld_alchemy_lab 承载（CC 不再列炼金科技）
+    // 手动放一个 alchemy_lab 给 player 0，绕过建造门控隔离测试研究层 guild 门控
+    const lab = new Building(0, 'arcane_empire', 8, 8, 600, 'structure', 'tech', 'bld_alchemy_lab', 0, 10);
+    lab.complete();
+    setup.entities.addBuilding(lab);
     // player 0 guilds = [] -> 应被 guild 门控拦截
     const res = setup.commandExecutor.execute({
       type: 'research', playerIndex: 0, unitIds: [], frame: 0,
-      buildingId: ccId, techDefId: 'tech:solvent_bomb',
+      buildingId: lab.id, techDefId: 'tech:solvent_bomb',
     } as AnyCommand);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toContain('行会');
@@ -310,18 +313,20 @@ describe('CommandExecutor - research / cancel_research', () => {
     setup.world.players[0].guilds.push('alchemists_society');
     const res2 = setup.commandExecutor.execute({
       type: 'research', playerIndex: 0, unitIds: [], frame: 0,
-      buildingId: ccId, techDefId: 'tech:solvent_bomb',
+      buildingId: lab.id, techDefId: 'tech:solvent_bomb',
     } as AnyCommand);
     expect(res2.ok).toBe(true);
   });
 
   it('批3: 公会科技前置未满足时仍 fail（即使行会符合）', () => {
-    // tech:corrosion_amp 需 alchemists_society 且 prerequisites=[tech:advanced_potions]
-    const ccId = seedCC();
+    // 批C: tech:corrosion_amp 现由 bld_alchemy_lab 承载
+    const lab = new Building(0, 'arcane_empire', 8, 8, 600, 'structure', 'tech', 'bld_alchemy_lab', 0, 10);
+    lab.complete();
+    setup.entities.addBuilding(lab);
     setup.world.players[0].guilds.push('alchemists_society');
     const res = setup.commandExecutor.execute({
       type: 'research', playerIndex: 0, unitIds: [], frame: 0,
-      buildingId: ccId, techDefId: 'tech:corrosion_amp',
+      buildingId: lab.id, techDefId: 'tech:corrosion_amp',
     } as AnyCommand);
     expect(res.ok).toBe(false); // 前置 advanced_potions 未研究
   });

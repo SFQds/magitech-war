@@ -179,11 +179,9 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     // P1-D10: industry 50->65 to match federation CC (reduce early-game economic asymmetry)
     provides: { supply: 50, industry: 65 },
     produces: ['unit_worker', 'hero_isabelle', 'hero_sebastian'],
-    // 批3: CC 作为炼金协会/虚空研究院科技的兜底研究载体（这两行会暂无专属科技建筑，下一轮补 alchemy_lab/void_resonator）
+    // 批C/D: 炼金/虚空科技迁移到专属建筑 bld_alchemy_lab/bld_void_resonator（CC 仅保留通用科技）
     researches: [
       'tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce',
-      'tech:advanced_potions', 'tech:corrosion_amp', 'tech:solvent_bomb',
-      'tech:void_amplify', 'tech:overload_mastery', 'tech:void_rift',
     ],
   },
   bld_cc_federation: {
@@ -192,11 +190,9 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     provides: { supply: 50, industry: 65 },
     produces: ['unit_worker', 'hero_marcus', 'hero_eileen'],
-    // 批3: CC 作为炼金协会/虚空研究院科技的兜底研究载体
+    // 批C/D: 炼金/虚空科技迁移到专属建筑 bld_alchemy_lab/bld_void_resonator（CC 仅保留通用科技）
     researches: [
       'tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce',
-      'tech:advanced_potions', 'tech:corrosion_amp', 'tech:solvent_bomb',
-      'tech:void_amplify', 'tech:overload_mastery', 'tech:void_rift',
     ],
   },
   bld_barracks: {
@@ -270,6 +266,50 @@ bld_ancient_archive: {
     // 批1: 显式化原 AI 约定 — 流水线车间是铁锤联邦专属科技建筑
     exclusiveTo: { faction: 'hammer_federation' },
   },
+
+  // ============================================================
+  // 批B/C/D/A: 4 公会专属建筑（需对应行会 + 解锁科技）
+  // 机制: 维修站→BuildingSystem光环; 炼金工坊→药剂折扣+研究载体;
+  //       虚空共鸣器→ResourceSystem加速采集; 传送门→成对瞬传(待实现)
+  // ============================================================
+  bld_repair_depot: {
+    displayName: '维修站',
+    cost: { crystal: 300, industry: 20, time: 25 },
+    hp: 500,
+    provides: { supply: 0, industry: 0 },
+    produces: [],
+    // 机制在 BuildingSystem._updateRepairDepots: 周围6格友方机械每秒回血 maxHp*3%
+    exclusiveTo: { guild: 'mechanists_guild' },
+  },
+  bld_alchemy_lab: {
+    displayName: '炼金工坊',
+    cost: { crystal: 350, industry: 20, time: 25 },
+    hp: 600,
+    provides: { supply: 0, industry: 10 },
+    produces: [],
+    // 作为炼金协会科技载体（从 CC 迁移过来：advanced_potions/corrosion_amp/solvent_bomb）
+    researches: ['tech:advanced_potions', 'tech:corrosion_amp', 'tech:solvent_bomb'],
+    // 机制: 拥有此建筑时药剂调制消耗 -25%（在 GameScene Q键 / MilitaryAI 处查询）
+    exclusiveTo: { guild: 'alchemists_society' },
+  },
+  bld_void_resonator: {
+    displayName: '虚空共鸣器',
+    cost: { crystal: 400, industry: 30, time: 30 },
+    hp: 500,
+    provides: { supply: 0, industry: 0 },
+    produces: [],
+    // 机制在 ResourceSystem: 矿脉附近有共鸣器时采集 ×1.5（同时加速枯竭）
+    exclusiveTo: { guild: 'void_institute' },
+  },
+  bld_teleport_gate: {
+    displayName: '传送门',
+    cost: { crystal: 450, industry: 25, time: 30 },
+    hp: 600,
+    provides: { supply: 0, industry: 0 },
+    produces: [],
+    // 机制: 成对建造，单位进入一端瞬移到另一端（消耗水晶按距离）— 待批A 实现
+    exclusiveTo: { guild: 'mages_guild' },
+  },
 };
 
 // ============================================================
@@ -323,8 +363,9 @@ export function getDisplayName(defId: string): string {
 /** 推断建筑类别（防御建筑自动识别） */
 export function getBuildingCategory(defId: string): BuildingCategory {
   if (defId === 'bld_wall' || defId === 'bld_turret') return 'defense';
-  if (defId === 'bld_refinery' || defId === 'bld_power_plant') return 'resource';
-  if (defId === 'bld_ancient_archive' || defId === 'bld_assembly_workshop') return 'tech';
+  if (defId === 'bld_refinery' || defId === 'bld_power_plant' || defId === 'bld_void_resonator') return 'resource';
+  if (defId === 'bld_ancient_archive' || defId === 'bld_assembly_workshop' || defId === 'bld_alchemy_lab') return 'tech';
+  if (defId === 'bld_repair_depot' || defId === 'bld_teleport_gate') return 'utility';
   return 'production';
 }
 

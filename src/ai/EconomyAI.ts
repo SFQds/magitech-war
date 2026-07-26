@@ -165,6 +165,20 @@ export class EconomyAI {
     const hasTurret = buildings.some(
       b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_turret'
     );
+    // 批A-D: 公会专属建筑存在性标志（AI 按行会建造对应建筑）
+    const aiGuilds = this.world.players[this.playerIndex]?.guilds ?? [];
+    const hasRepairDepot = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_repair_depot'
+    );
+    const hasAlchemyLab = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_alchemy_lab'
+    );
+    const hasVoidResonator = buildings.some(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_void_resonator'
+    );
+    const teleportGateCount = buildings.filter(
+      b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_teleport_gate'
+    ).length;
 
     const cc = ownProductions.find(b =>
       b.spriteKey === 'bld_cc_empire' || b.spriteKey === 'bld_cc_federation'
@@ -210,6 +224,27 @@ export class EconomyAI {
     }
     if (!hasTechBuilding && buildCostThreshold(this.getBuildingCost(techBldId))) {
       commands.push(makeBuildCmd(this.playerIndex, techBldId, stratPos.tech));
+    }
+
+    // 批A-D: 公会专属建筑 — AI 按行会建造对应建筑（有经济基础后）
+    if (crystal > 500) {
+      if (aiGuilds.includes('mechanists_guild') && !hasRepairDepot &&
+          buildCostThreshold(this.getBuildingCost('bld_repair_depot'))) {
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_repair_depot', stratPos.rear));
+      }
+      if (aiGuilds.includes('alchemists_society') && !hasAlchemyLab &&
+          buildCostThreshold(this.getBuildingCost('bld_alchemy_lab'))) {
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_alchemy_lab', stratPos.tech));
+      }
+      if (aiGuilds.includes('void_institute') && !hasVoidResonator &&
+          buildCostThreshold(this.getBuildingCost('bld_void_resonator'))) {
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_void_resonator', stratPos.refinery));
+      }
+      // 传送门成对建造：最多建 2 座
+      if (aiGuilds.includes('mages_guild') && teleportGateCount < 2 &&
+          buildCostThreshold(this.getBuildingCost('bld_teleport_gate'))) {
+        commands.push(makeBuildCmd(this.playerIndex, 'bld_teleport_gate', stratPos.defense));
+      }
     }
 
     // P1-AI1: 供给不足时扩产第二兵营/工厂（突破 90 人口硬上限）

@@ -15,6 +15,7 @@ import { ProductionSystem } from '../systems/ProductionSystem';
 import { GuildSystem } from '../systems/GuildSystem';
 import { ALCHEMY_POTIONS } from '../systems/GuildSystem';
 import { HeroSystem } from '../systems/HeroSystem';
+import { BuildingSystem } from '../systems/BuildingSystem';
 import { SuperWeaponSystem } from '../systems/SuperWeaponSystem';
 import { TechTreeSystem } from '../systems/TechTreeSystem';
 import { TechSystem } from '../systems/TechSystem';
@@ -804,9 +805,10 @@ export class GameScene extends Phaser.Scene {
       if (now < (this._potionCooldownUntil ?? 0)) return;
       this._potionIndex = (this._potionIndex + 1) % ALCHEMY_POTIONS.length;
       const potion = ALCHEMY_POTIONS[this._potionIndex];
-      // 只 spend 1 次水晶，对选区内所有己方单位生效
-      if (!this.world.canAfford(0, { crystal: potion.crystalCost })) return;
-      this.world.spend(0, { crystal: potion.crystalCost });
+      // 批C: 炼金工坊药剂折扣 — 拥有 bld_alchemy_lab 时消耗 -25%
+      const potionCost = GuildSystem.getPotionCost(0, this.buildings, potion.crystalCost);
+      if (!this.world.canAfford(0, { crystal: potionCost })) return;
+      this.world.spend(0, { crystal: potionCost });
       for (const id of sel) {
         const unit = this.entities.getUnit(id);
         if (unit && unit.isAlive && unit.owner === 0) {
@@ -1106,6 +1108,8 @@ export class GameScene extends Phaser.Scene {
       this.world.arcaneChargeTimers,
     );
     const result = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds);
+    // 公会专属建筑机制（维修站光环等）— 每帧推进
+    BuildingSystem.update(this.units, this.buildings, ds, this.world);
     // 处理英雄派生指令（如马库斯空投）— P0-3：标记为免费召唤（不占用补给）
     for (const spawn of result.spawnCommands) {
       for (let i = 0; i < spawn.count; i++) {

@@ -300,7 +300,7 @@ export class MilitaryAI {
     }
 
     // === P1-AI药剂: AI 使用炼金药剂和虚空过载 ===
-    this._useGuildAbilities(units, enemyUnits, commands);
+    this._useGuildAbilities(units, buildings, enemyUnits, commands);
 
     // === 超级武器 AI: 敌人大规模聚集时使用 ===
     this._useSuperWeapon(enemyUnits, enemyBuildings, ownBuildings, commands);
@@ -357,7 +357,7 @@ export class MilitaryAI {
 
   /** AI 在战斗时自动使用炼金药剂和虚空过载 */
   private _useGuildAbilities(
-    allUnits: Unit[], enemyUnits: Unit[], _commands: AnyCommand[],
+    allUnits: Unit[], buildings: Building[], enemyUnits: Unit[], _commands: AnyCommand[],
   ): void {
     const guilds = this.world.players[this.playerIndex]?.guilds ?? [];
     const crystal = this.world.players[this.playerIndex]?.resources.crystal ?? 0;
@@ -376,8 +376,10 @@ export class MilitaryAI {
         // 轮换药剂类型（与玩家 Q 键一致）
         this._potionIndex = (this._potionIndex + 1) % ALCHEMY_POTIONS.length;
         const potion = ALCHEMY_POTIONS[this._potionIndex];
-        if (crystal >= potion.crystalCost) {
-          this.world.spend(this.playerIndex, { crystal: potion.crystalCost });
+        // 批C: 炼金工坊药剂折扣 — 拥有 bld_alchemy_lab 时消耗 -25%
+        const potionCost = GuildSystem.getPotionCost(this.playerIndex, buildings, potion.crystalCost);
+        if (crystal >= potionCost) {
+          this.world.spend(this.playerIndex, { crystal: potionCost });
           for (const unit of combatUnits) {
             GuildSystem.applyAlchemyPotion(unit, potion);
           }

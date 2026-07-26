@@ -55,6 +55,10 @@ export const CODEX_ENTRIES: CodexEntry[] = [
   // ============ 专属建筑 ============
   { id: 'bld_ancient_archive', name: '古代典籍馆', category: 'building', spriteKey: 'bld_ancient_archive', desc: '奥术帝国替代研究建筑，多一条法术线。小型圆形藏书室，穹顶+符文石柱。' },
   { id: 'bld_assembly_workshop', name: '流水线车间', category: 'building', spriteKey: 'bld_assembly_workshop', desc: '铁锤联邦替代兵营，3单位并行训练。三条传送带并行的厂房。' },
+  { id: 'bld_repair_depot', name: '维修站', category: 'building', spriteKey: 'bld_repair_depot', desc: '机械行会专属。周围6格友方机械单位每秒回血。铁灰厂房带机械臂，橙色警示灯。' },
+  { id: 'bld_alchemy_lab', name: '炼金工坊', category: 'building', spriteKey: 'bld_alchemy_lab', desc: '炼金协会专属。拥有此建筑时药剂调制消耗-25%，并作为炼金科技研究载体。紫色水晶蒸馏器与冒泡药剂瓶。' },
+  { id: 'bld_void_resonator', name: '虚空共鸣器', category: 'building', spriteKey: 'bld_void_resonator', desc: '虚空研究院专属。矿脉附近的采集增幅站，采集×1.5但加速矿脉枯竭。深紫水晶尖塔向地下钻探。' },
+  { id: 'bld_teleport_gate', name: '传送门', category: 'building', spriteKey: 'bld_teleport_gate', desc: '法师公会专属。成对建造，单位进入一端瞬移到另一端。两根紫色水晶柱之间悬浮发光圆环。' },
 
   // ============ 科技 ============
   { id: 'tech:advanced_mining', name: '高级采集 Lv1', category: 'tech', desc: '工兵采集+20%。200水晶，30秒。' },

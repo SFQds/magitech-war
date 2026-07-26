@@ -296,6 +296,18 @@ export class GuildSystem {
 
   // ========== 炼金协会实现 ==========
 
+  /** 批C: 炼金工坊药剂折扣 — 拥有完成的 bld_alchemy_lab 时药剂消耗 -25%。
+   *  由 GameScene Q键 / MilitaryAI 在 spend 前调用，传入建筑列表查询。
+   *  返回实际应扣的水晶数（向上取整，最少 1）。 */
+  static getPotionCost(playerIndex: number, buildings: Building[], baseCost: number): number {
+    const hasLab = buildings.some(b =>
+      b.isAlive && b.owner === playerIndex && b.state !== 'constructing' &&
+      b.spriteKey === 'bld_alchemy_lab'
+    );
+    if (!hasLab) return baseCost;
+    return Math.max(1, Math.ceil(baseCost * 0.75));
+  }
+
   /** 为单位施加炼金药剂效果 — P0-5/P1-R1 修复：铁皮药剂实时修改 armor 值
    *  P1-R1: 被腐蚀弹覆盖时也要恢复 ironskin 的护甲加成，防止护甲永久偏高 */
   static applyAlchemyPotion(

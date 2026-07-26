@@ -93,6 +93,24 @@ export class ResourceSystem {
         // 科技采集加成
         const mult = unit.owner === 0 ? (gMultP0 ?? 1.0) : (gMultP1 ?? 1.0);
         gathered = Math.round(gathered * mult);
+        // 批D: 虚空共鸣器 — 矿脉 15 格内有己方共鸣器时采集 ×1.5（额外抽取加速矿脉枯竭）
+        const resonators = buildings?.filter(b =>
+          b.isAlive && b.spriteKey === 'bld_void_resonator' && b.owner === unit.owner
+        ) ?? [];
+        const hasResonator = resonators.some(r =>
+          Math.abs(r.tileX - field.tileX) + Math.abs(r.tileY - field.tileY) <= 15
+        );
+        if (hasResonator && gathered > 0) {
+          // 玩家额外获得 50% 水晶，代价是从矿脉额外抽取等量储量（加速矿脉枯竭）
+          // 注意：gather() 已先扣 gathered 量，此处 field.amount 是剩余储量；
+          // extra 上限为 min(round(gathered*0.5), field.amount)，防止凭空产水晶
+          const desiredExtra = Math.round(gathered * 0.5);
+          const extra = Math.min(desiredExtra, field.amount);
+          if (extra > 0) {
+            field.amount = Math.max(0, field.amount - extra);
+            gathered += extra;
+          }
+        }
         if (gathered > 0) {
           const player = players[unit.owner];
           if (player) {
