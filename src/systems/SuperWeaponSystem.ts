@@ -15,6 +15,7 @@ import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
+import { TECH_DEFS } from '../config/unitData';
 
 /** 超级武器定义 */
 interface SuperWeaponDef {
@@ -130,14 +131,15 @@ export class SuperWeaponSystem {
     const player = world.players[playerIndex];
     if (!player) return '玩家不存在';
 
-    // 检查招式是否已解锁（对应行会科技）
-    const guild = def.guild;
+    // 批4: 启用超武科技门槛 — 必须先研究对应行会的超武解锁科技（tech:{weaponId}）
+    // 此前此处被注释掉（"第一期直接可用"），现正式启用，与公会科技树（批2/批3）打通。
     const unlockTechId = `tech:${weaponId}`;
     const tt = world.techTrees.get(playerIndex);
-    // 第一期：不检查科技解锁（直接可用），第二期再加科技门槛
-    // const unlocked = tt?.isResearched(unlockTechId) ?? false;
-    // if (!unlocked) return '科技未解锁';
-    const _unlockTechId = unlockTechId; // reserved for phase 2
+    const unlocked = tt?.isResearched(unlockTechId) ?? false;
+    if (!unlocked) {
+      const techName = TECH_DEFS[unlockTechId]?.name ?? unlockTechId;
+      return `需先研究「${techName}」`;
+    }
 
     if (!world.canAfford(playerIndex, { crystal: def.crystalCost, industry: 0 })) return '水晶不足';
 

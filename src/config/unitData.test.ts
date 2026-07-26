@@ -72,6 +72,14 @@ describe('UNIT_DEFS integrity', () => {
     }
   });
 
+  it('every unit exclusiveTo.guild references a valid guild id', () => {
+    for (const [id, def] of entries) {
+      if (def.exclusiveTo?.guild) {
+        expect(VALID_GUILDS.has(def.exclusiveTo.guild), `${id}.exclusiveTo.guild`).toBe(true);
+      }
+    }
+  });
+
   it('every unit favoredBy entry is a valid faction id or guild id', () => {
     const allowed = new Set([...VALID_FACTIONS, ...VALID_GUILDS]);
     for (const [id, def] of entries) {
@@ -128,6 +136,27 @@ describe('BUILDING_DEFS integrity', () => {
       }
     }
   });
+
+  it('every building exclusiveTo.faction references a valid FACTION_DEFS key', () => {
+    for (const [id, def] of entries) {
+      if (def.exclusiveTo?.faction) {
+        expect(VALID_FACTIONS.has(def.exclusiveTo.faction), `${id}.exclusiveTo.faction`).toBe(true);
+      }
+    }
+  });
+
+  it('every building exclusiveTo.guild references a valid guild id', () => {
+    for (const [id, def] of entries) {
+      if (def.exclusiveTo?.guild) {
+        expect(VALID_GUILDS.has(def.exclusiveTo.guild), `${id}.exclusiveTo.guild`).toBe(true);
+      }
+    }
+  });
+
+  it('批1: bld_ancient_archive 是奥术帝国专属、bld_assembly_workshop 是铁锤联邦专属（显式化原 AI 约定）', () => {
+    expect(BUILDING_DEFS['bld_ancient_archive'].exclusiveTo?.faction).toBe('arcane_empire');
+    expect(BUILDING_DEFS['bld_assembly_workshop'].exclusiveTo?.faction).toBe('hammer_federation');
+  });
 });
 
 describe('TECH_DEFS integrity', () => {
@@ -150,6 +179,25 @@ describe('TECH_DEFS integrity', () => {
         }
       }
     }
+  });
+
+  it('批2: every tech exclusiveTo.faction/guild references valid ids', () => {
+    for (const [id, def] of entries) {
+      if (def.exclusiveTo?.faction) {
+        expect(VALID_FACTIONS.has(def.exclusiveTo.faction), `${id}.exclusiveTo.faction`).toBe(true);
+      }
+      if (def.exclusiveTo?.guild) {
+        expect(VALID_GUILDS.has(def.exclusiveTo.guild), `${id}.exclusiveTo.guild`).toBe(true);
+      }
+    }
+  });
+
+  it('批2: 4 行会各有一个超武解锁科技，id 形如 tech:{weaponId}', () => {
+    // SuperWeaponSystem.activate 计算 unlockTechId = `tech:${weaponId}`
+    expect(TECH_DEFS['tech:elemental_storm'].exclusiveTo?.guild).toBe('mages_guild');
+    expect(TECH_DEFS['tech:orbital_cannon'].exclusiveTo?.guild).toBe('mechanists_guild');
+    expect(TECH_DEFS['tech:solvent_bomb'].exclusiveTo?.guild).toBe('alchemists_society');
+    expect(TECH_DEFS['tech:void_rift'].exclusiveTo?.guild).toBe('void_institute');
   });
 
   it('tech tree has no cycles (DFS)', () => {

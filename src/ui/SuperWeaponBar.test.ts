@@ -170,8 +170,9 @@ describe('SuperWeaponBar - 冷却中点击', () => {
   it('冷却中的超武点击不进入瞄准', () => {
     const { scene } = makeScene();
     const bar = new SuperWeaponBar(scene, 0, 100, 100);
-    // 激活超武触发冷却
-    const world: any = { players: [{ resources: { crystal: 10000, industry: 0 }, guilds: ['mages_guild'] }], techTrees: new Map(), canAfford: () => true, spend: () => {} };
+    // 批4: 超武激活需先研究解锁科技。注入一个 isResearched 恒 true 的 techTree mock。
+    const fakeTT = { isResearched: () => true, canResearch: () => true, completeTech: () => {}, getResearched: () => [], canProduce: () => true };
+    const world: any = { players: [{ resources: { crystal: 10000, industry: 0 }, guilds: ['mages_guild'] }], techTrees: new Map([[0, fakeTT]]), canAfford: () => true, spend: () => {} };
     SuperWeaponSystem.activate(0, 'elemental_storm', 5, 5, world, [], []);
     // 冷却中点击不应进入瞄准
     (bar as any)._onClick('elemental_storm');
@@ -191,7 +192,9 @@ describe('SuperWeaponBar - update 刷新', () => {
   it('激活后 update 显示持续倒计时', () => {
     const { scene } = makeScene();
     const bar = new SuperWeaponBar(scene, 0, 100, 100);
-    const world: any = { players: [{ resources: { crystal: 10000, industry: 0 }, guilds: ['mages_guild'] }], techTrees: new Map(), canAfford: () => true, spend: () => {} };
+    // 批4: 注入 isResearched 恒 true 的 techTree mock，使超武激活成功（需科技解锁）
+    const fakeTT = { isResearched: () => true, canResearch: () => true, completeTech: () => {}, getResearched: () => [], canProduce: () => true };
+    const world: any = { players: [{ resources: { crystal: 10000, industry: 0 }, guilds: ['mages_guild'] }], techTrees: new Map([[0, fakeTT]]), canAfford: () => true, spend: () => {} };
     SuperWeaponSystem.activate(0, 'elemental_storm', 5, 5, world, [], []);
     expect(() => bar.update()).not.toThrow();
     bar.destroy();

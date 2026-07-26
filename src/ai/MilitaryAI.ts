@@ -615,6 +615,9 @@ export class MilitaryAI {
       const state = states.find(s => s.weaponId === weaponId);
       if (!state || state.cooldownTimer > 0 || state.active) continue;
       if (crystal < def.crystalCost) continue;
+      // 批4: 超武需先研究解锁科技（tech:{weaponId}），否则 activate 会失败，提前跳过避免无效命令
+      const tt = this.world.techTrees.get(this.playerIndex);
+      if (!tt?.isResearched(`tech:${weaponId}`)) continue;
 
       // 条件：敌方 >= 5 且在视野中
       if (enemyUnits.length >= 5) {

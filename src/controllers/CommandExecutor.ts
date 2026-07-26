@@ -114,6 +114,11 @@ export class CommandExecutor {
     if (unitDef?.exclusiveTo?.faction && unitDef.exclusiveTo.faction !== faction) {
       return fail('exclusive faction mismatch');
     }
+    // 批1: enforce exclusiveTo.guild - 玩家行会列表不含该 guild 则禁止训练。
+    // 此前 exclusiveTo.guild 是死字段（接口声明但无人读取），现正式启用。
+    if (unitDef?.exclusiveTo?.guild && !(guilds ?? []).includes(unitDef.exclusiveTo.guild)) {
+      return fail('exclusive guild mismatch');
+    }
     if (!this.world.canAfford(cmd.playerIndex, { crystal: cost.crystal, supply: cost.supply })) return fail('资源不足');
 
     this.world.spend(cmd.playerIndex, { crystal: cost.crystal, supply: cost.supply });
@@ -202,6 +207,19 @@ export class CommandExecutor {
     const aiFaction = this.world.players[cmd.playerIndex]?.faction ?? 'hammer_federation';
     const cost = getBuildingCost(cmd.buildingDefId, aiFaction);
     if (!cost) return fail('建筑数据不存在');
+    // 批1: enforce building exclusiveTo — 阵营/行会不符禁止建造。
+    // 此前 bld_ancient_archive/bld_assembly_workshop 仅靠 AI 约定区分，玩家 UI 无门控，
+    // 任何阵营都能在建造菜单里点出来。现显式校验，与训练单位门控对齐。
+    const bldDef = BUILDING_DEFS[cmd.buildingDefId];
+    if (bldDef?.exclusiveTo) {
+      if (bldDef.exclusiveTo.faction && bldDef.exclusiveTo.faction !== aiFaction) {
+        return fail('exclusive faction mismatch');
+      }
+      const guilds = this.world.players[cmd.playerIndex]?.guilds ?? [];
+      if (bldDef.exclusiveTo.guild && !guilds.includes(bldDef.exclusiveTo.guild)) {
+        return fail('exclusive guild mismatch');
+      }
+    }
     // P0-1 修复：AI建造必须检查和扣除工业值（此前AI可零工业建造）
     if (!this.world.canAfford(cmd.playerIndex, { crystal: cost.crystal, industry: cost.industry })) return fail('资源不足');
 
@@ -266,6 +284,15 @@ export class CommandExecutor {
 
     const tech = TECH_DEFS[cmd.techDefId];
     if (!tech) return fail('未知科技');
+    // 批3: enforce tech exclusiveTo — 公会/阵营不符禁止研究。
+    // 公会专属科技（如各行超武解锁）仅对应行会玩家可研究。
+    const playerState = this.world.players[cmd.playerIndex];
+    if (tech.exclusiveTo?.faction && tech.exclusiveTo.faction !== playerState?.faction) {
+      return fail('该科技需对应阵营');
+    }
+    if (tech.exclusiveTo?.guild && !(playerState?.guilds ?? []).includes(tech.exclusiveTo.guild)) {
+      return fail('该行会科技需对应行会');
+    }
     // P2-C4: use TechTreeSystem.canResearch instead of inline prereq check
     const tt = this.world.techTrees.get(cmd.playerIndex);
     if (tt && !tt.canResearch(cmd.techDefId, tech)) return fail('前置科技未研究或已研究');

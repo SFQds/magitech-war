@@ -241,8 +241,17 @@ export class EconomyAI {
     );
     if (techBld) {
       const tt = this.world.techTrees.get(this.playerIndex);
+      // 批3: 过滤掉公会/阵营不符的科技（exclusiveTo.guild/faction 门控）
+      const aiGuilds = this.world.players[this.playerIndex]?.guilds ?? [];
+      const aiFaction = this.world.players[this.playerIndex]?.faction;
       const availTechs = (BUILDING_DEFS[techBld.spriteKey]?.researches ?? []).filter(
-        tid => !tt?.isResearched(tid) && this.getTechCost(tid) < crystal * resourceFactor
+        tid => {
+          const td = TECH_DEFS[tid];
+          if (!td) return false;
+          if (td.exclusiveTo?.guild && !aiGuilds.includes(td.exclusiveTo.guild)) return false;
+          if (td.exclusiveTo?.faction && td.exclusiveTo.faction !== aiFaction) return false;
+          return !tt?.isResearched(tid) && this.getTechCost(tid) < crystal * resourceFactor;
+        }
       );
       if (availTechs.length > 0) {
         // P2-AI2: sort by prerequisites count then crystal cost - prefer foundational/cheaper techs first.

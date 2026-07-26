@@ -209,8 +209,12 @@ export class HUDScene extends Phaser.Scene {
       if (units.length === 1 && units[0].spriteKey === 'unit_worker') {
         const btns: { label: string; cost: string; spriteKey?: string; callback: () => void; hotkey?: string }[] = [];
         const playerFaction = gs.world?.players?.[0]?.faction;
+        const playerGuilds: string[] = gs.world?.players?.[0]?.guilds ?? [];
         for (const [bldId, def] of Object.entries(BUILDING_DEFS)) {
           if (def.cost.crystal > 0) {
+            // 批1: 建筑 exclusiveTo 门控 — 阵营/行会不符不显示建造按钮
+            if (def.exclusiveTo?.faction && def.exclusiveTo.faction !== playerFaction) continue;
+            if (def.exclusiveTo?.guild && !playerGuilds.includes(def.exclusiveTo.guild)) continue;
             const cost = getBuildingCost(bldId, playerFaction);
             btns.push({ label: `建造${def.displayName}`, cost: cost ? `💎${cost.crystal}` : `💎?`, spriteKey: bldId, callback: () => this.enterBuildMode(units[0].id, bldId) });
           }
@@ -239,10 +243,13 @@ export class HUDScene extends Phaser.Scene {
       if (bld.state !== 'constructing' && def?.produces) {
         const gs2 = this.scene.get('GameScene') as any;
         const playerFaction = gs2.world?.players?.[0]?.faction;
+        const playerGuilds: string[] = gs2.world?.players?.[0]?.guilds ?? [];
         for (const uid of def.produces) {
           const ud = UNIT_DEFS[uid];
           // 跳过阵营专属兵种（非本阵营不显示按钮）
           if (ud?.exclusiveTo?.faction && ud.exclusiveTo.faction !== playerFaction) continue;
+          // 批1: 跳过行会专属兵种（玩家行会列表不含该 guild 不显示按钮）
+          if (ud?.exclusiveTo?.guild && !playerGuilds.includes(ud.exclusiveTo.guild)) continue;
           const techsMet = !ud?.techReq?.length || ud.techReq.every((tid: string) => gs2.getTechTree?.(0)?.isResearched(tid));
           const label = techsMet ? getDisplayName(uid) : `${getDisplayName(uid)} 🔒`;
           const callback = techsMet ? () => this.issueTrainCommand(bld.id, uid) : () => this.showToast('科技未解锁');
@@ -252,11 +259,18 @@ export class HUDScene extends Phaser.Scene {
       if (bld.state !== 'constructing' && def?.researches) {
         const gs2 = this.scene.get('GameScene') as any;
         const techTree = gs2.getTechTree?.(0);
+        const playerFaction = gs2.world?.players?.[0]?.faction;
+        const playerGuilds: string[] = gs2.world?.players?.[0]?.guilds ?? [];
         for (const tid of def.researches) {
           const td = TECH_DEFS[tid];
           if (!td) continue;
+          // 批3: 跳过公会/阵营不符的科技（未研究且不在研究中时才隐藏；
+          // 已研究或正在研究中仍显示，便于确认/取消）
+          const guildMismatch = td.exclusiveTo?.guild && !playerGuilds.includes(td.exclusiveTo.guild);
+          const factionMismatch = td.exclusiveTo?.faction && td.exclusiveTo.faction !== playerFaction;
           const researched = techTree?.isResearched(tid);
           const researching = bld.researchingTechId === tid;
+          if ((guildMismatch || factionMismatch) && !researched && !researching) continue;
           // 检查前置科技
           const prereqsMet = !td.prerequisites?.length || td.prerequisites.every((p: string) => techTree?.isResearched(p));
           const canResearch = !researched && !researching && prereqsMet;

@@ -4,7 +4,7 @@
  * 新增单位或建筑只需在这里加一条记录，
  * UNIT_COSTS、spawnUnit、HUD 按钮、建造成本全部自动同步。
  */
-import type { DamageType, ArmorType } from '../types/data';
+import type { DamageType, ArmorType, FactionId, GuildId } from '../types/data';
 import type { UnitAbility } from '../types/entity';
 import { Building } from '../entities/Building';
 import type { BuildingCategory } from '../entities/Building';
@@ -166,6 +166,9 @@ export interface BuildingDefData {
   researches?: string[];
   /** 防御建筑战斗属性（非零=可攻击） */
   combat?: { damage: number; dmgType: DamageType; range: number; cooldown: number };
+  /** 批1: 建筑 exclusivity gate. faction/guild 不符的玩家无法建造此建筑。
+   *  此前 bld_ancient_archive/bld_assembly_workshop 仅靠 AI 约定区分阵营，现显式化。 */
+  exclusiveTo?: { faction?: FactionId; guild?: GuildId };
 }
 
 export const BUILDING_DEFS: Record<string, BuildingDefData> = {
@@ -176,7 +179,12 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     // P1-D10: industry 50->65 to match federation CC (reduce early-game economic asymmetry)
     provides: { supply: 50, industry: 65 },
     produces: ['unit_worker', 'hero_isabelle', 'hero_sebastian'],
-    researches: ['tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce'],
+    // 批3: CC 作为炼金协会/虚空研究院科技的兜底研究载体（这两行会暂无专属科技建筑，下一轮补 alchemy_lab/void_resonator）
+    researches: [
+      'tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce',
+      'tech:advanced_potions', 'tech:corrosion_amp', 'tech:solvent_bomb',
+      'tech:void_amplify', 'tech:overload_mastery', 'tech:void_rift',
+    ],
   },
   bld_cc_federation: {
     displayName: '联邦指挥中心',
@@ -184,7 +192,12 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 2000,
     provides: { supply: 50, industry: 65 },
     produces: ['unit_worker', 'hero_marcus', 'hero_eileen'],
-    researches: ['tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce'],
+    // 批3: CC 作为炼金协会/虚空研究院科技的兜底研究载体
+    researches: [
+      'tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce',
+      'tech:advanced_potions', 'tech:corrosion_amp', 'tech:solvent_bomb',
+      'tech:void_amplify', 'tech:overload_mastery', 'tech:void_rift',
+    ],
   },
   bld_barracks: {
     displayName: '兵营',
@@ -235,7 +248,13 @@ bld_ancient_archive: {
     hp: 600,
     provides: { supply: 0, industry: 10 },
     produces: ['unit_arcane_guard'],
-    researches: ['tech:arcane_legacy', 'tech:battle_mage_training', 'tech:mech_assembly', 'tech:production_line_optimized'],
+    // 批3: 追加法师公会科技线（teleport/charge/resonance/elemental_storm 超武解锁）
+    researches: [
+      'tech:arcane_legacy', 'tech:battle_mage_training', 'tech:mech_assembly', 'tech:production_line_optimized',
+      'tech:teleport_network', 'tech:long_range_teleport', 'tech:charge_efficiency', 'tech:resonance_amp', 'tech:elemental_storm',
+    ],
+    // 批1: 显式化原 AI 约定 — 古代典籍馆是奥术帝国专属科技建筑
+    exclusiveTo: { faction: 'arcane_empire' },
   },
   bld_assembly_workshop: {
     displayName: '流水线车间',
@@ -243,7 +262,13 @@ bld_ancient_archive: {
     hp: 600,
     provides: { supply: 0, industry: 10 },
     produces: ['unit_hammer_squad'],
-    researches: ['tech:mech_assembly', 'tech:production_line_optimized'],
+    // 批3: 追加机械行会科技线（repair/mech_armor/orbital_cannon 超武解锁）
+    researches: [
+      'tech:mech_assembly', 'tech:production_line_optimized',
+      'tech:repair_protocol', 'tech:mech_armor', 'tech:orbital_cannon',
+    ],
+    // 批1: 显式化原 AI 约定 — 流水线车间是铁锤联邦专属科技建筑
+    exclusiveTo: { faction: 'hammer_federation' },
   },
 };
 
@@ -404,6 +429,9 @@ export interface TechDefData {
   time: number;
   desc: string;
   prerequisites?: string[];
+  /** 批2: 科技 exclusivity gate. faction/guild 不符的玩家无法研究此科技。
+   *  公会专属科技（如各行的超武解锁）仅对应行会玩家可研究。 */
+  exclusiveTo?: { faction?: FactionId; guild?: GuildId };
 }
 
 export const TECH_DEFS: Record<string, TechDefData> = {
@@ -462,5 +490,120 @@ export const TECH_DEFS: Record<string, TechDefData> = {
     crystal: 300,
     time: 35,
     desc: '机械行会并行训练惩罚-5%；虚空过载时长延长至45秒',
+  },
+
+  // ============================================================
+  // 批2: 公会专属科技树 — 4 行会各一条科技线 + 超武解锁科技
+  // 数据来源：GAME_DATA.md §八（法师公会科技/奥术帝国科技）+ §四 超级武器
+  //exclusiveTo.guild 门控在批3接入 execResearch/HUDScene/EconomyAI
+  // ============================================================
+
+  // --- 法师公会 (mages_guild) ---
+  'tech:teleport_network': {
+    name: '传送网络',
+    crystal: 500,
+    time: 60,
+    desc: '解锁建筑：传送门（成对建造，瞬时传送单位）',
+    exclusiveTo: { guild: 'mages_guild' },
+  },
+  'tech:long_range_teleport': {
+    name: '远程传送',
+    crystal: 600,
+    time: 70,
+    desc: '传送门距离翻倍',
+    prerequisites: ['tech:teleport_network'],
+    exclusiveTo: { guild: 'mages_guild' },
+  },
+  'tech:charge_efficiency': {
+    name: '充能效率',
+    crystal: 400,
+    time: 50,
+    desc: '奥术充能间隔 30s → 20s',
+    exclusiveTo: { guild: 'mages_guild' },
+  },
+  'tech:resonance_amp': {
+    name: '共鸣增幅',
+    crystal: 700,
+    time: 80,
+    desc: '相邻法师塔攻击 +15%',
+    exclusiveTo: { guild: 'mages_guild' },
+  },
+  'tech:elemental_storm': {
+    name: '元素风暴',
+    crystal: 2000,
+    time: 150,
+    desc: '解锁法师公会超级武器：元素风暴（12s 范围持续魔法伤害）',
+    exclusiveTo: { guild: 'mages_guild' },
+  },
+
+  // --- 机械行会 (mechanists_guild) ---
+  'tech:repair_protocol': {
+    name: '维修协议',
+    crystal: 450,
+    time: 55,
+    desc: '解锁建筑：维修站（周围机械自动回血）',
+    exclusiveTo: { guild: 'mechanists_guild' },
+  },
+  'tech:mech_armor': {
+    name: '机甲护甲',
+    crystal: 550,
+    time: 65,
+    desc: '机械单位护甲 +30%',
+    exclusiveTo: { guild: 'mechanists_guild' },
+  },
+  'tech:orbital_cannon': {
+    name: '轨道魔导炮',
+    crystal: 1800,
+    time: 140,
+    desc: '解锁机械行会超级武器：轨道魔导炮（单发 300 物理伤害）',
+    exclusiveTo: { guild: 'mechanists_guild' },
+  },
+
+  // --- 炼金协会 (alchemists_society) ---
+  'tech:advanced_potions': {
+    name: '高级药剂',
+    crystal: 450,
+    time: 55,
+    desc: '解锁建筑：炼金工坊（高级药剂，降低调制消耗）',
+    exclusiveTo: { guild: 'alchemists_society' },
+  },
+  'tech:corrosion_amp': {
+    name: '腐蚀增幅',
+    crystal: 550,
+    time: 65,
+    desc: '腐蚀弹护甲削减 30% → 50%',
+    prerequisites: ['tech:advanced_potions'],
+    exclusiveTo: { guild: 'alchemists_society' },
+  },
+  'tech:solvent_bomb': {
+    name: '万能溶剂炸弹',
+    crystal: 1900,
+    time: 145,
+    desc: '解锁炼金协会超级武器：万能溶剂炸弹（20s 范围降护甲+腐蚀）',
+    exclusiveTo: { guild: 'alchemists_society' },
+  },
+
+  // --- 虚空研究院 (void_institute) ---
+  'tech:void_amplify': {
+    name: '虚空增幅',
+    crystal: 500,
+    time: 60,
+    desc: '解锁建筑：虚空共鸣器（矿脉额外采集站，加速枯竭）',
+    exclusiveTo: { guild: 'void_institute' },
+  },
+  'tech:overload_mastery': {
+    name: '过载精通',
+    crystal: 600,
+    time: 70,
+    desc: '水晶过载不再损毁单位，仅进入冷却',
+    prerequisites: ['tech:void_amplify'],
+    exclusiveTo: { guild: 'void_institute' },
+  },
+  'tech:void_rift': {
+    name: '虚空裂隙',
+    crystal: 2100,
+    time: 155,
+    desc: '解锁虚空研究院超级武器：虚空裂隙（15s 持续伤害+随机传送）',
+    exclusiveTo: { guild: 'void_institute' },
   },
 };

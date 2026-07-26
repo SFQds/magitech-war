@@ -10,6 +10,8 @@ import type { GameSetup } from '../__fixtures__/factories';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import type { AnyCommand } from '../types/commands';
+import { BUILDING_DEFS } from '../config/unitData';
+import { Building } from '../entities/Building';
 
 let setup: GameSetup;
 
@@ -292,6 +294,106 @@ describe('CommandExecutor - research / cancel_research', () => {
     expect(setup.world.players[0].resources.crystal).toBe(crystalBefore + 100);
     expect(cc.researchingTechId).toBeNull();
     expect(cc.state).toBe('idle');
+  });
+
+  it('批3: 公会专属科技 exclusiveTo.guild 不符 -> fail；加对应行会后可研究', () => {
+    // tech:solvent_bomb 需 alchemists_society，CC 已把它加入 researches（兜底载体）
+    const ccId = seedCC();
+    // player 0 guilds = [] -> 应被 guild 门控拦截
+    const res = setup.commandExecutor.execute({
+      type: 'research', playerIndex: 0, unitIds: [], frame: 0,
+      buildingId: ccId, techDefId: 'tech:solvent_bomb',
+    } as AnyCommand);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toContain('行会');
+    // 加 alchemists_society 行会后，前置已满足（solvent_bomb 无 prerequisites）应可研究
+    setup.world.players[0].guilds.push('alchemists_society');
+    const res2 = setup.commandExecutor.execute({
+      type: 'research', playerIndex: 0, unitIds: [], frame: 0,
+      buildingId: ccId, techDefId: 'tech:solvent_bomb',
+    } as AnyCommand);
+    expect(res2.ok).toBe(true);
+  });
+
+  it('批3: 公会科技前置未满足时仍 fail（即使行会符合）', () => {
+    // tech:corrosion_amp 需 alchemists_society 且 prerequisites=[tech:advanced_potions]
+    const ccId = seedCC();
+    setup.world.players[0].guilds.push('alchemists_society');
+    const res = setup.commandExecutor.execute({
+      type: 'research', playerIndex: 0, unitIds: [], frame: 0,
+      buildingId: ccId, techDefId: 'tech:corrosion_amp',
+    } as AnyCommand);
+    expect(res.ok).toBe(false); // 前置 advanced_potions 未研究
+  });
+});
+
+describe('CommandExecutor - 批1 exclusiveTo 门控', () => {
+  it('build: arcane_empire 玩家不能建铁锤联邦专属 bld_assembly_workshop', () => {
+    seedCC(); // player 0 = arcane_empire
+    const res = setup.commandExecutor.execute({
+      type: 'build', playerIndex: 0, unitIds: [], frame: 0,
+      buildingDefId: 'bld_assembly_workshop', position: { x: 10, y: 10 },
+    } as AnyCommand);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toContain('faction');
+  });
+
+  it('build: arcane_empire 玩家可建自己的 bld_ancient_archive', () => {
+    seedCC();
+    const res = setup.commandExecutor.execute({
+      type: 'build', playerIndex: 0, unitIds: [], frame: 0,
+      buildingDefId: 'bld_ancient_archive', position: { x: 10, y: 10 },
+    } as AnyCommand);
+    expect(res.ok).toBe(true);
+  });
+
+  it('build: hammer_federation 玩家(player 1)不能建奥术帝国专属 bld_ancient_archive', () => {
+    // player 1 = hammer_federation (AI)。先给它一个 CC。
+    const cc1 = makeCommandCenter(1, 20, 20);
+    setup.entities.addBuilding(cc1);
+    const res = setup.commandExecutor.execute({
+      type: 'build', playerIndex: 1, unitIds: [], frame: 0,
+      buildingDefId: 'bld_ancient_archive', position: { x: 22, y: 22 },
+    } as AnyCommand);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toContain('faction');
+  });
+
+  it('train: arcane_empire 玩家不能训练 hammer_federation 专属 unit_hammer_squad', () => {
+    // 手动给 player 0 (arcane_empire) 放一个 bld_assembly_workshop，绕过建造门控隔离测试训练层 faction 门控。
+    const bld = new Building(0, 'arcane_empire', 8, 8, 600, 'structure', 'production', 'bld_assembly_workshop', 0, 10);
+    bld.complete();
+    setup.entities.addBuilding(bld);
+    const res = setup.commandExecutor.execute({
+      type: 'train', playerIndex: 0, unitIds: [], frame: 0,
+      buildingId: bld.id, unitDefId: 'unit_hammer_squad', count: 1,
+    } as AnyCommand);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toContain('faction');
+  });
+
+  it('build: exclusiveTo.guild 不符 -> fail；加对应行会后可建', () => {
+    // 临时给 bld_turret 加 exclusiveTo.guild=void_institute，验证 execBuild 读取 guild 门控。
+    const original = BUILDING_DEFS['bld_turret'].exclusiveTo;
+    BUILDING_DEFS['bld_turret'].exclusiveTo = { guild: 'void_institute' };
+    try {
+      seedCC(); // player 0 guilds = []
+      const res = setup.commandExecutor.execute({
+        type: 'build', playerIndex: 0, unitIds: [], frame: 0,
+        buildingDefId: 'bld_turret', position: { x: 10, y: 10 },
+      } as AnyCommand);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.reason).toContain('guild');
+      // 给 player 0 加 void_institute 行会后应可建
+      setup.world.players[0].guilds.push('void_institute');
+      const res2 = setup.commandExecutor.execute({
+        type: 'build', playerIndex: 0, unitIds: [], frame: 0,
+        buildingDefId: 'bld_turret', position: { x: 12, y: 12 },
+      } as AnyCommand);
+      expect(res2.ok).toBe(true);
+    } finally {
+      BUILDING_DEFS['bld_turret'].exclusiveTo = original;
+    }
   });
 });
 
