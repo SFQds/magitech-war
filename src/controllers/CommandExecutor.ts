@@ -229,13 +229,17 @@ export class CommandExecutor {
     // 尝试多个候选位置（避开已有建筑）
     // P2-D6: deploy command uses cmd.position; AI build falls back to CC-anchored search
     let safePos: { x: number; y: number } | null = null;
-    if ((cmd as any).type === 'deploy' && cmd.position && (cmd.position.x !== 0 || cmd.position.y !== 0)) {
-      const p = this.world.map.findNearbyPassable(cmd.position.x, cmd.position.y, 3);
+    // 修复: build 命令也使用 cmd.position（AI 的战略选址 stratPos），此前被忽略导致所有建筑挤在 CC+4
+    const cmdPos = (cmd as any).position;
+    if (cmdPos && (cmdPos.x !== 0 || cmdPos.y !== 0)) {
+      const p = this.world.map.findNearbyPassable(cmdPos.x, cmdPos.y, 5);
       if (p && !this.entities.hasBuildingAt(p.x, p.y)) safePos = p;
     }
     if (!safePos) {
-      for (let radius = 5; radius <= 20; radius += 3) {
-      const pos = this.world.map.findNearbyPassable(aiCC.tileX + 4, aiCC.tileY + 4, radius);
+      // 兜底: 从战略位置附近扩大搜索，再回退到 CC 锚点
+      const anchor = (cmdPos && (cmdPos.x !== 0 || cmdPos.y !== 0)) ? cmdPos : { x: aiCC.tileX + 4, y: aiCC.tileY + 4 };
+      for (let radius = 4; radius <= 25; radius += 2) {
+      const pos = this.world.map.findNearbyPassable(anchor.x, anchor.y, radius);
       if (pos && !this.entities.hasBuildingAt(pos.x, pos.y)) {
         safePos = pos;
         break;

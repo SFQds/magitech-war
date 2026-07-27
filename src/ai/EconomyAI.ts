@@ -206,6 +206,12 @@ export class EconomyAI {
     // P5: 计算战略位置（CC朝向敌方的方向、最近矿点等）
     const stratPos = this._computeStrategicPositions(cc, buildings, fields);
 
+    // 修复: 精炼厂优先于兵营/工厂建造 - 经济基础决定后续扩张能力
+    // 此前精炼厂排在兵营/工厂之后，AI 常因先花水晶造兵营导致精炼厂没钱建，水晶采集受限
+    if (!hasRefinery && buildCostThreshold(this.getBuildingCost('bld_refinery'))) {
+      commands.push(makeBuildCmd(this.playerIndex, 'bld_refinery', stratPos.refinery));
+    }
+
     if (directive.aggression < 0.7 || (!hasBarracks && !hasFactory)) {
       if (!hasBarracks && buildCostThreshold(this.getBuildingCost('bld_barracks'))) {
         commands.push(makeBuildCmd(this.playerIndex, 'bld_barracks', stratPos.production));
@@ -213,10 +219,6 @@ export class EconomyAI {
       if (!hasFactory && buildCostThreshold(this.getBuildingCost('bld_factory'))) {
         commands.push(makeBuildCmd(this.playerIndex, 'bld_factory', stratPos.production));
       }
-    }
-    // P5: 精炼厂建在最靠近水晶矿的位置
-    if (!hasRefinery && buildCostThreshold(this.getBuildingCost('bld_refinery'))) {
-      commands.push(makeBuildCmd(this.playerIndex, 'bld_refinery', stratPos.refinery));
     }
     // P5: 电厂建在后方（CC 远离矿点方向）
     if (!hasPowerPlant && hasFactory && buildCostThreshold(this.getBuildingCost('bld_power_plant'))) {
