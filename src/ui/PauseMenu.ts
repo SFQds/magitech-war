@@ -9,6 +9,10 @@ export interface PauseMenuCallbacks {
   onResume: () => void;
   onRestart: () => void;
   onMainMenu: () => void;
+  /** 保存游戏回调（可选，不提供则隐藏保存按钮） */
+  onSave?: () => void;
+  /** 读档回调（可选，不提供则隐藏读档按钮） */
+  onLoad?: () => void;
 }
 
 export class PauseMenu {
@@ -36,9 +40,10 @@ export class PauseMenu {
     const overlay = this.scene.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
     this.container.add(overlay);
 
-    // 面板背景
+    // 面板背景（根据按钮数量动态调整高度）
+    const hasSaveLoad = !!(this.callbacks.onSave || this.callbacks.onLoad);
     const panelW = 280;
-    const panelH = 260;
+    const panelH = hasSaveLoad ? 340 : 260;
     const panelBg = this.scene.add.rectangle(cx - panelW / 2, cy - panelH / 2, panelW, panelH, 0x1a1a2e, 0.95).setOrigin(0);
     this.container.add(panelBg);
 
@@ -55,11 +60,21 @@ export class PauseMenu {
     this.container.add(title);
 
     // 按钮配置
-    const btns = [
-      { label: '▶  继续', cb: () => this.hide(), y: cy - 20 },
-      { label: '🔄  重新开始', cb: () => { this.hide(); this.callbacks.onRestart(); }, y: cy + 30 },
-      { label: '🏠  返回主菜单', cb: () => { this.hide(); this.callbacks.onMainMenu(); }, y: cy + 80 },
+    const btns: { label: string; cb: () => void; y: number }[] = [
+      { label: '▶  继续', cb: () => this.hide(), y: cy - 40 },
     ];
+
+    if (this.callbacks.onSave) {
+      btns.push({ label: '💾  保存游戏', cb: () => { this.callbacks.onSave!(); }, y: cy + 10 });
+    }
+    if (this.callbacks.onLoad) {
+      btns.push({ label: '📂  读取存档', cb: () => { this.callbacks.onLoad!(); }, y: cy + 60 });
+    }
+
+    btns.push(
+      { label: '🔄  重新开始', cb: () => { this.hide(); this.callbacks.onRestart(); }, y: cy + 110 },
+      { label: '🏠  返回主菜单', cb: () => { this.hide(); this.callbacks.onMainMenu(); }, y: cy + 160 },
+    );
 
     for (const b of btns) {
       const btn = this.scene.add.text(cx, b.y, b.label, {

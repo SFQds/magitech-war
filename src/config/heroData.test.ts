@@ -120,8 +120,9 @@ describe('getFactionHero', () => {
     expect(getFactionHero('hammer_federation')).toBe('hero_marcus');
   });
 
-  it('未配置阵营 frostridge_kingdom -> undefined', () => {
-    expect(getFactionHero('frostridge_kingdom')).toBeUndefined();
+  it('已配置阵营 frostridge_kingdom -> hero_frost_a / hero_frost_b', () => {
+    expect(getFactionHero('frostridge_kingdom', 0)).toBe('hero_frost_a');
+    expect(getFactionHero('frostridge_kingdom', 1)).toBe('hero_frost_b');
   });
 
   it('空字符串 -> undefined', () => {

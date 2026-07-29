@@ -6,11 +6,15 @@
  * 无 Phaser 依赖。
  *
  * 当前实现：
- *  - 移动工坊 (unit_mobile_workshop, 机械行会+铁锤联邦)：周围4格友方机械每秒回血 maxHp*1.5%（移动版维修站，半径/效率减半）
- *  - 不稳定水晶炸弹 (unit_unstable_crystal, 虚空研究院)：生成后10秒爆炸，500范围水晶伤害（不分敌我）
- *  - 炼金巨像 (unit_alchemy_colossus, 炼金协会)：死亡时300范围炼金伤害（不分敌我）
- *  - 秘法炮台 (unit_arcane_cannon)：通过 MAGE_GUILD_UNITS 接入充能系统，充能后下一发×3（见 getAttackDamageMult）
- *  - 符文泰坦 (unit_rune_titan)：混合伤害（物理+魔法，取较高者见 getAttackDamageMult）
+ *  - 移动工坊 (unit_mobile_workshop): 周围4格友方机械每秒回血 maxHp*1.5%
+ *  - 不稳定水晶炸弹 (unit_unstable_crystal): 10秒爆炸，500范围水晶伤害
+ *  - 炼金巨像 (unit_alchemy_colossus): 死亡时300范围炼金伤害
+ *  - 秘法炮台 (unit_arcane_cannon): 充能×3（接入 MageGuildUnits）
+ *  - 符文泰坦 (unit_rune_titan): 混合伤害（物理/魔法取最优）
+ *  - 奥术壁垒 (unit_arcane_bastion): 坚守时 +10护甲 +100护盾
+ *  - 腐蚀巨兽 (unit_corrosion_beast): 攻击降低目标护甲(3/层, 上限15, 持续5s)
+ *  - 虚空行者 (unit_void_walker): 每8秒闪烁到3格内随机位置
+ *  - 魔导攻城炮 (unit_siege_engine): 对建筑×1.5伤害
  */
 
 import { Unit } from '../entities/Unit';
@@ -38,7 +42,45 @@ const COLOSSUS_DEATH_RADIUS = 4;
 /** 炼金巨像死亡自爆伤害 */
 const COLOSSUS_DEATH_DAMAGE = 300;
 
+/** 奥术壁垒坚守护甲加成 */
+const BASTION_HOLD_ARMOR_BONUS = 10;
+/** 奥术壁垒坚守护盾加成 */
+const BASTION_HOLD_SHIELD = 100;
+
+/** 腐蚀巨兽每层减甲值 */
+const CORROSION_ARMOR_PER_STACK = 3;
+/** 腐蚀巨兽最大减甲层数 */
+const CORROSION_MAX_STACKS = 5;
+/** 腐蚀巨兽减甲持续秒数 */
+const CORROSION_DURATION = 5;
+
+/** 虚空行者闪烁间隔（秒） */
+const VOID_WALKER_BLINK_INTERVAL = 8;
+/** 虚空行者闪烁范围（曼哈顿半径） */
+const VOID_WALKER_BLINK_RANGE = 3;
+
+/** 攻城炮对建筑伤害倍率 */
+const SIEGE_STRUCTURE_MULT = 1.5;
+
+// 批2: 霜脊守卫固守 — 驻守时护甲值翻倍
+const FROST_GUARD_HOLD_ARMOR_MULT = 2.0;
+// 批2: 深矿破坏者溅射 — 攻击对目标相邻单位造成 30% 伤害
+const DEEP_DESTROYER_SPLASH_RATIO = 0.3;
+const DEEP_DESTROYER_SPLASH_RADIUS = 2;
+// 批3: 翡翠斥候隐形 + 标记
+const JADE_SCOUT_SIGHT = 12;
+const JADE_MARK_DURATION = 30;
+const JADE_MARK_DMG_BONUS = 0.25; // 被标记单位受伤 +25%
+
 export class UnitSpecialSystem {
+  /** 腐蚀巨兽护甲扣减跟踪：目标 unitId → { 剩余秒数, 层数 } */
+  private static _corrosionStacks = new Map<string, { timer: number; stacks: number }>();
+
+  /** 虚空行者闪烁计时：unitId → 剩余秒数 */
+  private static _voidWalkerTimers = new Map<string, number>();
+  // 批3: 翡翠斥候标记目标 { timer: 剩余秒数 }
+  private static _markedTargets = new Map<string, number>();
+
   /**
    * 每帧更新 L3 单位的持续机制。
    * 由 GameScene 每帧调用（与 BuildingSystem 同位置）。
@@ -46,6 +88,12 @@ export class UnitSpecialSystem {
   static update(units: Unit[], deltaSec: number, world?: GameWorld): void {
     UnitSpecialSystem._updateMobileWorkshops(units, deltaSec);
     UnitSpecialSystem._updateUnstableCrystals(units, deltaSec, world);
+    UnitSpecialSystem._updateArcaneBastions(units);
+    UnitSpecialSystem._updateFrostGuards(units);
+    UnitSpecialSystem._tickCorrosionStacks(units, deltaSec);
+    UnitSpecialSystem._updateVoidWalkers(units, deltaSec, world);
+    UnitSpecialSystem._updateJadeScouts(units);
+    UnitSpecialSystem._tickMarks(units, deltaSec);
   }
 
   // ========== 移动工坊：移动维修光环 ==========
@@ -117,19 +165,184 @@ export class UnitSpecialSystem {
     return hits;
   }
 
+  // ========== 奥术壁垒：坚守时 +10护甲 +100护盾 ==========
+
+  private static _updateArcaneBastions(units: Unit[]): void {
+    for (const u of units) {
+      if (!u.isAlive || u.spriteKey !== 'unit_arcane_bastion') continue;
+      if (u.holdPosition) {
+        // 坚守时施加 buff（每帧刷新确保持续有效）
+        u.armor = u.baseArmor + BASTION_HOLD_ARMOR_BONUS;
+        if (u.shieldHp < BASTION_HOLD_SHIELD) {
+          u.shieldHp = BASTION_HOLD_SHIELD;
+          u.maxShieldHp = Math.max(u.maxShieldHp, BASTION_HOLD_SHIELD);
+        }
+      } else {
+        // 非坚守恢复基础护甲
+        u.armor = u.baseArmor;
+      }
+    }
+  }
+
+  // ========== 批2: 霜脊守卫：固守时护甲翻倍 ==========
+
+  private static _updateFrostGuards(units: Unit[]): void {
+    for (const u of units) {
+      if (!u.isAlive || u.spriteKey !== 'unit_frost_guard') continue;
+      if (u.holdPosition) {
+        u.armor = Math.round(u.baseArmor * FROST_GUARD_HOLD_ARMOR_MULT);
+      } else {
+        u.armor = u.baseArmor;
+      }
+    }
+  }
+
+  // ========== 批2: 深矿破坏者：攻击溅射 ==========
+
+  /** 由 CombatSystem 在深矿破坏者攻击命中时调用，对目标相邻单位造成溅射伤害 */
+  static onDeepDestroyerHit(attacker: Unit, target: Unit, units: Unit[], baseDamage: number, dmgType: string): void {
+    for (const u of units) {
+      if (!u.isAlive || u.id === target.id) continue;
+      if (u.owner === attacker.owner) continue;
+      const d = Math.abs(u.tileX - target.tileX) + Math.abs(u.tileY - target.tileY);
+      if (d > DEEP_DESTROYER_SPLASH_RADIUS) continue;
+      const splash = Math.round(baseDamage * DEEP_DESTROYER_SPLASH_RATIO);
+      if (splash > 0) u.takeDamage(splash, dmgType as any);
+    }
+  }
+
+  // ========== 批3: 翡翠斥候：隐形 + 标记 ==========
+
+  /** 隐形单位查询：被 CombatSystem.findNearestEnemy 调用，跳过隐形的敌方单位 */
+  static isUnitStealth(unit: Unit): boolean {
+    // 翡翠斥候永久隐形（无侦测机制时）；被标记或自身攻击时不破隐（简化）
+    return unit.isAlive && unit.spriteKey === 'unit_jade_scout';
+  }
+
+  /** 标记目标：由玩家/AI 命令翡翠斥候对目标施放，或简化为斥候靠近敌方时自动标记。
+   *  duration 默认 JADE_MARK_DURATION(30s)；卡林「市场操纵」传 20s。 */
+  static markTarget(targetId: string, duration: number = JADE_MARK_DURATION): void {
+    UnitSpecialSystem._markedTargets.set(targetId, duration);
+  }
+
+  /** 被标记单位受伤加成查询：由 CombatSystem.calculateDamage 调用 */
+  static getMarkBonus(targetId: string): number {
+    return UnitSpecialSystem._markedTargets.has(targetId) ? JADE_MARK_DMG_BONUS : 0;
+  }
+
+  private static _updateJadeScouts(units: Unit[]): void {
+    // 简化：翡翠斥候靠近敌方单位（3格内）时自动标记之
+    const scouts = units.filter(u => u.isAlive && u.spriteKey === 'unit_jade_scout');
+    if (scouts.length === 0) return;
+    for (const scout of scouts) {
+      for (const u of units) {
+        if (!u.isAlive || u.owner === scout.owner) continue;
+        const d = Math.abs(scout.tileX - u.tileX) + Math.abs(scout.tileY - u.tileY);
+        if (d <= 3) UnitSpecialSystem.markTarget(u.id);
+      }
+    }
+  }
+
+  private static _tickMarks(units: Unit[], deltaSec: number): void {
+    for (const [id, timer] of UnitSpecialSystem._markedTargets) {
+      const nt = timer - deltaSec;
+      if (nt <= 0) {
+        UnitSpecialSystem._markedTargets.delete(id);
+      } else {
+        UnitSpecialSystem._markedTargets.set(id, nt);
+      }
+    }
+  }
+
+  // ========== 腐蚀巨兽：攻击叠减护甲 ==========
+
+  /** 由 CombatSystem 在攻击命中时调用 */
+  static onCorrosionHit(targetId: string): void {
+    const entry = UnitSpecialSystem._corrosionStacks.get(targetId);
+    if (entry) {
+      entry.timer = CORROSION_DURATION; // 刷新持续时间
+      if (entry.stacks < CORROSION_MAX_STACKS) {
+        entry.stacks++;
+      }
+    } else {
+      UnitSpecialSystem._corrosionStacks.set(targetId, { timer: CORROSION_DURATION, stacks: 1 });
+    }
+  }
+
+  private static _tickCorrosionStacks(units: Unit[], deltaSec: number): void {
+    if (UnitSpecialSystem._corrosionStacks.size === 0) return;
+    for (const [id, entry] of UnitSpecialSystem._corrosionStacks) {
+      entry.timer -= deltaSec;
+      if (entry.timer <= 0) {
+        // 过期：恢复目标护甲
+        const unit = units.find(u => u.id === id);
+        if (unit && unit.isAlive) {
+          unit.armor = unit.baseArmor;
+        }
+        UnitSpecialSystem._corrosionStacks.delete(id);
+      } else {
+        // 持续减甲
+        const unit = units.find(u => u.id === id);
+        if (unit && unit.isAlive) {
+          const penalty = Math.min(entry.stacks * CORROSION_ARMOR_PER_STACK, CORROSION_MAX_STACKS * CORROSION_ARMOR_PER_STACK);
+          unit.armor = Math.max(0, unit.baseArmor - penalty);
+        }
+      }
+    }
+  }
+
+  /** 获取目标的腐蚀减甲值（供 CombatSystem 使用） */
+  static getCorrosionPenalty(targetId: string): number {
+    const entry = UnitSpecialSystem._corrosionStacks.get(targetId);
+    if (!entry || entry.timer <= 0) return 0;
+    return Math.min(entry.stacks * CORROSION_ARMOR_PER_STACK, CORROSION_MAX_STACKS * CORROSION_ARMOR_PER_STACK);
+  }
+
+  // ========== 虚空行者：每 8s 闪烁 ==========
+
+  private static _updateVoidWalkers(units: Unit[], deltaSec: number, world?: GameWorld): void {
+    if (!world) return;
+    for (const u of units) {
+      if (!u.isAlive || u.spriteKey !== 'unit_void_walker') continue;
+      let timer = UnitSpecialSystem._voidWalkerTimers.get(u.id) ?? VOID_WALKER_BLINK_INTERVAL;
+      timer -= deltaSec;
+      if (timer <= 0) {
+        // 闪烁：随机位移到 3 格内可通过且无单位的 tile
+        const newPos = world.map.findNearbyPassable(u.tileX, u.tileY, VOID_WALKER_BLINK_RANGE);
+        if (newPos && newPos.x !== u.tileX && newPos.y !== u.tileY) {
+          u.tileX = newPos.x;
+          u.tileY = newPos.y;
+          u.clearPath();
+          u.targetEntityId = null;
+        }
+        timer = VOID_WALKER_BLINK_INTERVAL;
+      }
+      UnitSpecialSystem._voidWalkerTimers.set(u.id, timer);
+    }
+    // 清除已死亡/不存在单位的 timer
+    for (const [id] of UnitSpecialSystem._voidWalkerTimers) {
+      if (!units.some(u => u.id === id && u.isAlive)) {
+        UnitSpecialSystem._voidWalkerTimers.delete(id);
+      }
+    }
+  }
+
   // ========== 攻击伤害修正 ==========
 
   /**
    * 返回某单位的攻击伤害乘数（由 CombatSystem 在计算伤害前调用）。
    *  - 秘法炮台：有充能时 ×3（消耗1层充能）
+   *  - 魔导攻城炮：对建筑目标 ×1.5（由 CombatSystem 传入 isStructure 判断）
    *  - 符文泰坦：混合伤害 ×1.0（混合处理在 getAttackDamageType 中切换为对目标护甲更有效的类型）
    * 其他单位返回 1.0。
    */
-  static getAttackDamageMult(unit: Unit): number {
+  static getAttackDamageMult(unit: Unit, targetIsStructure = false): number {
     if (unit.spriteKey === 'unit_arcane_cannon' && unit.abilityCharges > 0) {
-      // 消耗1层充能，下一发×3
       unit.abilityCharges -= 1;
       return 3.0;
+    }
+    if (unit.spriteKey === 'unit_siege_engine' && targetIsStructure) {
+      return SIEGE_STRUCTURE_MULT;
     }
     return 1.0;
   }
@@ -154,6 +367,8 @@ export class UnitSpecialSystem {
 
   /** 重置内部状态（测试用） */
   static resetForTest(): void {
-    // 当前无 static 状态，预留
+    UnitSpecialSystem._corrosionStacks.clear();
+    UnitSpecialSystem._voidWalkerTimers.clear();
+    UnitSpecialSystem._markedTargets.clear();
   }
 }

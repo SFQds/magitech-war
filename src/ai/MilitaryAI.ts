@@ -13,14 +13,17 @@ import type { AIDifficulty } from './AIController';
 import { GuildSystem, ALCHEMY_POTIONS } from '../systems/GuildSystem';
 import { SuperWeaponSystem, SUPER_WEAPONS, GUILD_SUPER_WEAPON } from '../systems/SuperWeaponSystem';
 import type { FogOfWar } from '../core/FogOfWar';
+import { FACTION_DEFS } from '../config/unitData';
 
 /** 目标权重基础分 */
 const BUILDING_PRIORITY: Record<string, number> = {
-  bld_cc_empire: 80,
-  bld_cc_federation: 80,
   bld_barracks: 60,
   bld_factory: 60,
 };
+// 批1: 数据驱动——所有 faction 的指挥中心统一权重 80，新增王国无需改此代码
+for (const fd of Object.values(FACTION_DEFS)) {
+  if (fd.ccBuilding) BUILDING_PRIORITY[fd.ccBuilding] = 80;
+}
 
 /** 建筑回复半径（tile） */
 const RECOVER_RADIUS = 3;

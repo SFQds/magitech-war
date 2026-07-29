@@ -7,6 +7,7 @@ import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { CombatSystem } from '../systems/CombatSystem';
 import { GuildSystem } from '../systems/GuildSystem';
+import { UnitSpecialSystem } from '../systems/UnitSpecialSystem';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import { tileToWorld } from '../utils/MathUtils';
@@ -65,7 +66,10 @@ export class ProjectileController {
         if (proj.corrosionPenalty > 0 && target instanceof Unit) {
           target.armor = Math.max(0, target.armor - proj.corrosionPenalty);
         }
-        target.takeDamage(proj.damage, proj.damageType);
+        // 批3: 翡翠斥候标记加成
+        const markBonus = UnitSpecialSystem.getMarkBonus(target.id);
+        const projDmg = markBonus > 0 ? Math.round(proj.damage * (1 + markBonus)) : proj.damage;
+        target.takeDamage(projDmg, proj.damageType);
         if (savedArmor !== target.armor) target.armor = savedArmor; // 恢复
         proj.isActive = false; toRemove.push(proj.id);
         flashTimers.set(proj.targetId, 0.12);
@@ -110,6 +114,14 @@ export class ProjectileController {
               playerIndex: proj.owner, killCount: aoeKillCount,
             });
           }
+        }
+
+        // 批2: 深矿破坏者攻击溅射 — 命中主目标后对相邻敌方单位造成 30% 水晶伤害
+        if (attackerUnit && attackerUnit.spriteKey === 'unit_deep_destroyer' && target instanceof Unit) {
+          UnitSpecialSystem.onDeepDestroyerHit(
+            attackerUnit, target, units,
+            proj.rawDamage ?? proj.damage, proj.damageType,
+          );
         }
       } else {
         const move = Math.min(proj.speed * deltaSec, dist * 0.95);

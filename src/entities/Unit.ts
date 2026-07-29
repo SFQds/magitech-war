@@ -47,6 +47,16 @@ export class Unit extends Entity {
   /** P1-C6 修复：追击路径重算计数器，定期刷新路径以跟踪移动目标 */
   pursueRetickTimer: number = 0;
 
+  // ===== 第二期英雄光环属性加成（每帧由 HeroSystem 重置后累加） =====
+  /** 护甲加成（来自英雄光环，如艾纳尔山之王座 +8），叠加到 takeDamage 的有效护甲上 */
+  auraArmorBonus: number = 0;
+  /** 攻击力乘数（来自英雄光环，如薇拉佣兵契约 +15%），叠加到攻击伤害结算上 */
+  auraAttackMult: number = 1.0;
+
+  // ===== 艾纳尔「磐石壁垒」持续护甲翻倍 buff（专用 timer，简化范式，不做通用 buff 框架） =====
+  /** 磐石壁垒剩余秒数；>0 时该单位 auraArmorBonus 额外 += baseArmor（等效护甲翻倍） */
+  _frostBastionTimer: number = 0;
+
   // ===== 行会系统 — 炼金协会药剂效果 =====
   /** 炼金药剂 buff 计时器（秒），0=无效果 */
   alchemyBuffTimer: number = 0;

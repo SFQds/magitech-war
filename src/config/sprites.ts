@@ -50,4 +50,23 @@ export const PNG_SPRITE_KEYS = [
   'unit_alchemy_colossus',
   'unit_unstable_crystal',
   'unit_rune_titan',
+  'unit_arcane_bastion',
+  'unit_corrosion_beast',
+  'unit_void_walker',
+  'unit_siege_engine',
+  // 批2: 霜脊王国
+  'unit_frost_guard',
+  'unit_crystal_catapult',
+  'unit_deep_destroyer',
+  'bld_cc_frostridge',
+  'bld_deep_mine',
+  'hero_frost_a',
+  'hero_frost_b',
+  // 批3: 翡翠邦联
+  'unit_jade_scout',
+  'unit_mercenary_sword',
+  'bld_cc_jade',
+  'bld_trade_post',
+  'hero_jade_a',
+  'hero_jade_b',
 ] as const;

@@ -11,6 +11,7 @@ import { GameMap } from '../core/GameMap';
 import { BinaryHeap } from '../utils/BinaryHeap';
 import { octile, tileKey, distance } from '../utils/MathUtils';
 import { GuildSystem } from './GuildSystem';
+import { FACTION_DEFS } from '../config/unitData';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 
@@ -331,6 +332,8 @@ export class MovementSystem {
     let speed = unit.speed;
     speed *= GuildSystem.getAlchemySpeedMult(unit);
     speed *= GuildSystem.getVoidOverloadSpeedMult(unit);
+    // 批3: 翡翠邦联移速被动 +10%
+    speed *= FACTION_DEFS[unit.faction]?.bonuses?.moveSpeedMult ?? 1.0;
     const moveAmount = speed * deltaSec;
     const ratio = moveAmount / dist;
     unit.tileX += dx * ratio;

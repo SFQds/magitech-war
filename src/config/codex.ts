@@ -40,6 +40,10 @@ export const CODEX_ENTRIES: CodexEntry[] = [
   { id: 'unit_alchemy_colossus', name: '炼金巨像', category: 'unit', spriteKey: 'unit_alchemy_colossus', desc: '炼金协会专属。HP800的巨型生物炼金体，死亡时自爆造成300范围炼金伤害。需研究高级药剂。' },
   { id: 'unit_unstable_crystal', name: '不稳定水晶炸弹', category: 'unit', spriteKey: 'unit_unstable_crystal', desc: '虚空研究院专属。部署后10秒爆炸，造成500范围水晶伤害（不分敌我）。需研究虚空增幅。' },
   { id: 'unit_rune_titan', name: '符文泰坦', category: 'unit', spriteKey: 'unit_rune_titan', desc: '奥术帝国+机械行会组合专属。HP1200的符文机械巨像，混合物理+魔法伤害。需研究奥术遗产+机甲装配。' },
+  { id: 'unit_arcane_bastion', name: '奥术壁垒', category: 'unit', spriteKey: 'unit_arcane_bastion', desc: '法师公会+铁锤联邦专属。部署后坚守护盾+10护甲+100护盾，远程魔法炮击。需研究奥术遗产。' },
+  { id: 'unit_corrosion_beast', name: '腐蚀巨兽', category: 'unit', spriteKey: 'unit_corrosion_beast', desc: '炼金协会+铁锤联邦专属。每次攻击降低目标护甲3点（上限15），持续5秒。需研究高级药剂。' },
+  { id: 'unit_void_walker', name: '虚空行者', category: 'unit', spriteKey: 'unit_void_walker', desc: '虚空研究院+奥术帝国专属。每8秒闪烁到3格内随机位置，虚空伤害。需研究虚空增幅。' },
+  { id: 'unit_siege_engine', name: '魔导攻城炮', category: 'unit', spriteKey: 'unit_siege_engine', desc: '机械行会专属。远程攻城武器，对建筑造成1.5倍伤害。需研究机甲装配技术。' },
 
   // ============ 英雄 ============
   { id: 'hero_isabelle', name: '伊莎贝尔·默库里', category: 'hero', spriteKey: 'hero_isabelle', desc: '默库里合金发明者，帝国学院有史以来最高魔力纯度记录保持者。被除名后出走。贤者之石光环+护盾+炼金转化+贤者之雨。' },
@@ -96,6 +100,23 @@ export const CODEX_ENTRIES: CodexEntry[] = [
   { id: 'neutral_ancient_shrine', name: '远古符文遗迹', category: 'neutral_building', spriteKey: 'neutral_ancient_shrine', desc: '占领后提供一次性科技加速(当前研究-50%时间)。被藤蔓覆盖的古老石阵，符文石碑发淡金光。' },
   { id: 'neutral_abandoned_mine', name: '废弃矿井', category: 'neutral_building', spriteKey: 'neutral_abandoned_mine', desc: '可派遣工兵修复为额外采矿场，产量为标准矿的60%。木质支撑半腐朽，锈蚀矿车里有暗紫水晶碎片。' },
   { id: 'neutral_watchtower', name: '废弃瞭望塔', category: 'neutral_building', spriteKey: 'neutral_watchtower', desc: '占领后提供大范围视野(15tiles)。高耸石砌塔楼，塔顶旧式油灯已熄灭。可被摧毁。' },
+  // ============ 批2: 霜脊王国 ============
+  { id: 'frostridge_kingdom', name: '霜脊王国', category: 'faction', desc: '固守型王国，居于大陆北部山脉。水晶是山的血脉，矿工凭掌心感应判断矿脉状态。水晶采集+25%，所有单位护甲+10%。' },
+  { id: 'unit_frost_guard', name: '霜脊守卫', category: 'unit', spriteKey: 'unit_frost_guard', desc: '不是一个人，是一堵会呼吸的墙。固守模式下护甲翻倍，头顶会积一层薄雪。重甲步兵，HP500/护甲30。' },
+  { id: 'unit_crystal_catapult', name: '水晶投石车', category: 'unit', spriteKey: 'unit_crystal_catapult', desc: '霜脊独有的水晶抛射攻城武器，水晶伤害对机械+25%、对护盾-50%。HP300/攻60/射程10。' },
+  { id: 'unit_deep_destroyer', name: '深矿破坏者', category: 'unit', spriteKey: 'unit_deep_destroyer', desc: '霜脊+虚空研究院组合专属。半自主的生物构造体，攻击附带水晶碎片溅射。"水晶有意识"的唯一可交互体现。' },
+  { id: 'bld_cc_frostridge', name: '霜脊指挥中心', category: 'building', spriteKey: 'bld_cc_frostridge', desc: '霜脊王国的主基地，半嵌入山体的石砌堡垒。训练工兵与英雄，提供起始补给。' },
+  { id: 'bld_deep_mine', name: '深矿竖井', category: 'building', spriteKey: 'bld_deep_mine', desc: '霜脊替代采矿场，产量+50%但建造时间+50%。凭矿工对山脉的感应开凿，从不对矿脉过度索取。' },
+  { id: 'hero_frost_a', name: '艾纳尔', category: 'hero', spriteKey: 'hero_frost_a', desc: '霜脊第十四世山王。山之王座：周围友方护甲+8。磐石壁垒：自身与周围友方护甲翻倍。' },
+  { id: 'hero_frost_b', name: '希尔德', category: 'hero', spriteKey: 'hero_frost_b', desc: '深矿井首席勘探师。矿脉感应：周围采集+30%。水晶裂隙：制造减速场并造成持续水晶伤害。' },
+  // ============ 批3: 翡翠邦联 ============
+  { id: 'jade_confederation', name: '翡翠邦联', category: 'faction', desc: '灵活型邦联，没有盟友只有本期合同未到期的服务提供商。居中从双方赚取服务费。研究+10%，贸易+15%，移速+10%。' },
+  { id: 'unit_jade_scout', name: '翡翠斥候', category: 'unit', spriteKey: 'unit_jade_scout', desc: '永久隐形的高移速侦察单位，可标记敌人30秒使其受额外伤害。HP90/速4.5/视野12。' },
+  { id: 'unit_mercenary_sword', name: '佣兵剑士', category: 'unit', spriteKey: 'unit_mercenary_sword', desc: '翡翠邦联雇佣的近战步兵，性价比高。研究佣兵契约后造价-20%。HP130/攻22。' },
+  { id: 'bld_cc_jade', name: '翡翠指挥中心', category: 'building', spriteKey: 'bld_cc_jade', desc: '翡翠邦联主基地，玉港风格的商贸堡垒。训练工兵与英雄，提供起始补给。' },
+  { id: 'bld_trade_post', name: '交易所', category: 'building', spriteKey: 'bld_trade_post', desc: '翡翠专属经济建筑，水晶与工业产值兑换。半露天市场结构，挂多国贸易旗。' },
+  { id: 'hero_jade_a', name: '卡林', category: 'hero', spriteKey: 'hero_jade_a', desc: '玉港独立信息商人。情报网：周围友方视野+3并显形隐形单位。市场操纵：标记敌方使其受伤+25%。' },
+  { id: 'hero_jade_b', name: '薇拉', category: 'hero', spriteKey: 'hero_jade_b', desc: '翡翠邦联佣兵团长。佣兵契约：周围步兵攻击+15%。雇佣空降：空投佣兵剑士支援战场。' },
 ];
 
 /** 按分类获取图鉴条目 */

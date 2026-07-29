@@ -6,6 +6,9 @@ dist/
 output/
 doubao-image-desktop/debug/
 doubao-image-desktop/output/
+# 临时调试/截图产物
+gui-test-screenshots/
+.agents/skills/doubao-image-desktop/debug/
 src/scenes/HUDScene_backup.ts
 src/scenes/nul
 nul

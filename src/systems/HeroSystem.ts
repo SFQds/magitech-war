@@ -14,6 +14,9 @@ import { Building } from '../entities/Building';
 import type { GameWorld } from '../core/GameWorld';
 import { HERO_DEFS } from '../config/heroData';
 import { EventBus } from '../utils/EventBus';
+import type { ResourceField } from '../entities/ResourceField';
+import { UnitSpecialSystem } from './UnitSpecialSystem';
+import { MAX_CRYSTAL } from '../config/balance';
 import { GameEvent } from '../types/events';
 
 /** 技能激活结果 */
@@ -34,10 +37,16 @@ export class HeroSystem {
     buildings: Building[],
     world: GameWorld,
     deltaSec: number,
+    fields?: ResourceField[],
   ): { spawnCommands: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] } {
     // 每帧重置所有建筑的临时生产加速 buff
     for (const b of buildings) {
       b.productionSpeedBonus = 0;
+    }
+    // 每帧重置所有单位的英雄光环属性加成（随后由各英雄光环累加）
+    for (const u of units) {
+      u.auraArmorBonus = 0;
+      u.auraAttackMult = 1.0;
     }
 
     // === 被动光环 ===
@@ -88,6 +97,50 @@ export class HeroSystem {
             b.productionSpeedBonus += 0.15;
           }
         }
+      }
+
+      // === 艾纳尔: 山之王座 — 周围10格友方护甲+8（通过 auraArmorBonus 叠加） ===
+      if (heroId === 'hero_frost_a') {
+        for (const u of units) {
+          if (!u.isAlive || u.owner !== hero.owner) continue;
+          const d = Math.abs(hero.tileX - u.tileX) + Math.abs(hero.tileY - u.tileY);
+          if (d <= hero.auraRadius) {
+            u.auraArmorBonus += 8;
+          }
+        }
+      }
+
+      // === 希尔德: 矿脉感应 — 采集+30% 由 ResourceSystem 接入（检测 hero_frost_b 9格内矿场） ===
+      // 视野+2 / 隐形显形 需运行时 sight 扩展机制，简化 TODO（无现成钩子）
+      if (heroId === 'hero_frost_b') {
+        // 采集加成在 ResourceSystem.updateGathering 中查询 hero_frost_b 实现，此处无单位属性改动
+      }
+
+      // === 卡林: 情报网 — 视野+3 / 隐形显形 需运行时机制，简化 TODO（无现成钩子） ===
+      if (heroId === 'hero_jade_a') {
+        // 标记机制由 slot0 主动技能施加，光环本身暂无单位属性改动
+      }
+
+      // === 薇拉: 佣兵契约 — 周围8格友方步兵攻击+15%（通过 auraAttackMult 叠加） ===
+      if (heroId === 'hero_jade_b') {
+        for (const u of units) {
+          if (!u.isAlive || u.owner !== hero.owner) continue;
+          if (u.category !== 'infantry') continue;
+          const d = Math.abs(hero.tileX - u.tileX) + Math.abs(hero.tileY - u.tileY);
+          if (d <= hero.auraRadius) {
+            u.auraAttackMult += 0.15; // 多薇拉叠加
+          }
+        }
+      }
+    }
+
+    // === 艾纳尔「磐石壁垒」持续护甲翻倍 buff：每帧递减 timer，timer>0 的单位额外获得 baseArmor 护甲 ===
+    for (const u of units) {
+      if (!u.isAlive) continue;
+      const t = (u as Unit & { _frostBastionTimer: number })._frostBastionTimer;
+      if (t > 0) {
+        u.auraArmorBonus += u.baseArmor;
+        (u as Unit & { _frostBastionTimer: number })._frostBastionTimer = Math.max(0, t - deltaSec);
       }
     }
 
@@ -140,6 +193,27 @@ export class HeroSystem {
       // === 艾琳：自动水晶共鸣爆破（敌人靠近水晶建筑时） ===
       if (heroId2 === 'hero_eileen') {
         HeroSystem._updateEileen(hero, units, buildings, world, hd);
+      }
+
+      // === 艾纳尔：自动磐石壁垒/山之怒/万山臣服 ===
+      if (heroId2 === 'hero_frost_a') {
+        HeroSystem._updateFrostA(hero, units, hd);
+      }
+
+      // === 希尔德：自动水晶裂隙/深矿涌动/山脉之心 ===
+      if (heroId2 === 'hero_frost_b') {
+        HeroSystem._updateFrostB(hero, units, world, fields, hd);
+      }
+
+      // === 卡林：自动市场操纵/情报泄露/玉港资本 ===
+      if (heroId2 === 'hero_jade_a') {
+        HeroSystem._updateJadeA(hero, units, buildings, world, hd);
+      }
+
+      // === 薇拉：自动雇佣空降/战场佣金/翡翠军团 ===
+      if (heroId2 === 'hero_jade_b') {
+        const result = HeroSystem._updateJadeB(hero, units, spawnCommands, hd);
+        if (result) spawnCommands.push(...result);
       }
     }
 
@@ -291,6 +365,8 @@ export class HeroSystem {
     hero: Hero,
     slotIndex: number,
     targets: { units: Unit[]; buildings: Building[] },
+    fields?: ResourceField[],
+    world?: GameWorld,
   ): SkillActivationResult {
     const heroId = hero.spriteKey;
     const hd = HERO_DEFS[heroId];
@@ -347,6 +423,40 @@ export class HeroSystem {
         this._execEileenShield(hero, targets.units);
       } else if (slotIndex === 2) {
         this._execEileenLeyline(hero, targets.units);
+      }
+    } else if (heroId === 'hero_frost_a') {
+      if (slotIndex === 0) {
+        this._execFrostABastion(hero, targets.units);
+      } else if (slotIndex === 1) {
+        this._execFrostAFury(hero, targets.units);
+      } else if (slotIndex === 2) {
+        this._execFrostASubmit(hero, targets.units);
+      }
+    } else if (heroId === 'hero_frost_b') {
+      if (slotIndex === 0) {
+        this._execFrostBRift(hero, targets.units);
+      } else if (slotIndex === 1) {
+        this._execFrostBSurge(hero, targets.units);
+      } else if (slotIndex === 2) {
+        this._execFrostBHeart(hero, targets.units, fields);
+      }
+    } else if (heroId === 'hero_jade_a') {
+      if (slotIndex === 0) {
+        this._execJadeAManipulate(hero, targets.units);
+      } else if (slotIndex === 1) {
+        this._execJadeALeak(hero, targets.buildings);
+      } else if (slotIndex === 2) {
+        if (world) this._execJadeACapital(hero, world);
+      }
+    } else if (heroId === 'hero_jade_b') {
+      if (slotIndex === 0) {
+        const cmds = this._execJadeBAirdrop(hero);
+        if (cmds.length > 0) spawnCommands.push(...cmds);
+      } else if (slotIndex === 1) {
+        this._execJadeBCommission(hero, targets.units);
+      } else if (slotIndex === 2) {
+        const cmds = this._execJadeBLegion(hero, targets.units);
+        if (cmds.length > 0) spawnCommands.push(...cmds);
       }
     }
 
@@ -683,6 +793,457 @@ export class HeroSystem {
       }
     }
   }
+  // ======== 希尔德 (hero_frost_b) ========
+
+  private static _updateFrostB(
+    hero: Hero,
+    units: Unit[],
+    world: GameWorld,
+    fields: ResourceField[] | undefined,
+    hd: HeroData | undefined,
+  ): void {
+    if (!hd) return;
+
+    // Slot 0: 水晶裂隙 — 周围8格(Lv2:10格)敌人>=2 时，水晶伤害+减速(attackTimer延迟)
+    if (hero.canUseSkillSlot(0)) {
+      const radius = hero.level >= 2 ? 10 : 8;
+      const dmg = hero.level >= 2 ? 80 : 60;
+      const nearbyEnemies = units.filter(u =>
+        u.owner !== hero.owner && u.isAlive &&
+        Math.abs(u.tileX - hero.tileX) <= radius && Math.abs(u.tileY - hero.tileY) <= radius,
+      );
+      if (nearbyEnemies.length >= 2) {
+        for (const enemy of nearbyEnemies) {
+          enemy.takeDamage(dmg, 'crystal');
+          enemy.attackTimer = Math.max(enemy.attackTimer, 2.0); // 简化减速
+        }
+        hero.skillCooldowns[0] = hero.level >= 2 ? 25 : 30;
+        EventBus.emit(GameEvent.ABILITY_USED, {
+          unitId: hero.id, abilityId: 'frost_b_rift', playerIndex: hero.owner,
+        });
+      }
+    }
+
+    // Slot 1: 深矿涌动 — 周围6格敌人>=3 时，水晶伤害（晶柱阻挡简化为伤害，完整阻挡实体 TODO）
+    if (hero.canUseSkillSlot(1)) {
+      const nearbyEnemies = units.filter(u =>
+        u.owner !== hero.owner && u.isAlive &&
+        Math.abs(u.tileX - hero.tileX) <= 6 && Math.abs(u.tileY - hero.tileY) <= 6,
+      );
+      if (nearbyEnemies.length >= 3) {
+        const dmg = hero.level >= 4 ? 150 : 100;
+        for (const enemy of nearbyEnemies) {
+          enemy.takeDamage(dmg, 'crystal');
+        }
+        hero.skillCooldowns[1] = hero.level >= 4 ? 35 : 45;
+        EventBus.emit(GameEvent.ABILITY_USED, {
+          unitId: hero.id, abilityId: 'frost_b_surge', playerIndex: hero.owner,
+        });
+      }
+    }
+
+    // Slot 2: 山脉之心 — HP<0.3 时，全图矿脉4格内敌方单位受巨额水晶伤害
+    if (hero.canUseSkillSlot(2) && hero.hpPercent < 0.3) {
+      const allFields = fields ?? [];
+      for (const enemy of units) {
+        if (!enemy.isAlive || enemy.owner === hero.owner) continue;
+        const nearField = allFields.some(f =>
+          f.isActive && Math.abs(f.tileX - enemy.tileX) + Math.abs(f.tileY - enemy.tileY) <= 4
+        );
+        if (nearField) {
+          enemy.takeDamage(200, 'crystal');
+        }
+      }
+      hero.skillCooldowns[2] = 150;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'frost_b_heart', playerIndex: hero.owner,
+      });
+    }
+  }
+
+  /** 希尔德 Slot 0: 水晶裂隙（手动激活） */
+  static _execFrostBRift(hero: Hero, units: Unit[]): void {
+    const radius = hero.level >= 2 ? 10 : 8;
+    const dmg = hero.level >= 2 ? 80 : 60;
+    const nearbyEnemies = units.filter(u =>
+      u.owner !== hero.owner && u.isAlive &&
+      Math.abs(u.tileX - hero.tileX) <= radius && Math.abs(u.tileY - hero.tileY) <= radius,
+    );
+    for (const enemy of nearbyEnemies) {
+      enemy.takeDamage(dmg, 'crystal');
+      enemy.attackTimer = Math.max(enemy.attackTimer, 2.0);
+    }
+  }
+
+  /** 希尔德 Slot 1: 深矿涌动（手动激活） */
+  static _execFrostBSurge(hero: Hero, units: Unit[]): void {
+    const dmg = hero.level >= 4 ? 150 : 100;
+    const nearbyEnemies = units.filter(u =>
+      u.owner !== hero.owner && u.isAlive &&
+      Math.abs(u.tileX - hero.tileX) <= 6 && Math.abs(u.tileY - hero.tileY) <= 6,
+    );
+    for (const enemy of nearbyEnemies) {
+      enemy.takeDamage(dmg, 'crystal');
+    }
+  }
+
+  /** 希尔德 Slot 2: 山脉之心（手动激活） */
+  static _execFrostBHeart(hero: Hero, units: Unit[], fields: ResourceField[] | undefined): void {
+    const allFields = fields ?? [];
+    for (const enemy of units) {
+      if (!enemy.isAlive || enemy.owner === hero.owner) continue;
+      const nearField = allFields.some(f =>
+        f.isActive && Math.abs(f.tileX - enemy.tileX) + Math.abs(f.tileY - enemy.tileY) <= 4
+      );
+      if (nearField) {
+        enemy.takeDamage(200, 'crystal');
+      }
+    }
+  }
+
+  // ======== 卡林 (hero_jade_a) ========
+
+  private static _updateJadeA(
+    hero: Hero,
+    units: Unit[],
+    buildings: Building[],
+    world: GameWorld,
+    hd: HeroData | undefined,
+  ): void {
+    if (!hd) return;
+
+    // Slot 0: 市场操纵 — 周围8格(Lv2:10格)敌人>=1 时，标记20秒（受伤+25%，复用 markTarget）
+    if (hero.canUseSkillSlot(0)) {
+      const radius = hero.level >= 2 ? 10 : 8;
+      const nearbyEnemies = units.filter(u =>
+        u.owner !== hero.owner && u.isAlive &&
+        Math.abs(u.tileX - hero.tileX) <= radius && Math.abs(u.tileY - hero.tileY) <= radius,
+      );
+      if (nearbyEnemies.length >= 1) {
+        for (const enemy of nearbyEnemies) {
+          UnitSpecialSystem.markTarget(enemy.id, 20); // 卡林标记20秒
+        }
+        hero.skillCooldowns[0] = hero.level >= 2 ? 25 : 30;
+        EventBus.emit(GameEvent.ABILITY_USED, {
+          unitId: hero.id, abilityId: 'jade_a_manipulate', playerIndex: hero.owner,
+        });
+      }
+    }
+
+    // Slot 1: 情报泄露 — 周围8格敌方建筑>=1 时，对建筑物理伤害（揭示+伤害简化，FogOfWar揭示 TODO）
+    if (hero.canUseSkillSlot(1)) {
+      const nearbyEnemyBld = buildings.filter(b =>
+        b.owner !== hero.owner && b.isAlive &&
+        Math.abs(b.tileX - hero.tileX) <= 8 && Math.abs(b.tileY - hero.tileY) <= 8,
+      );
+      if (nearbyEnemyBld.length >= 1) {
+        const dmg = hero.level >= 4 ? 120 : 80;
+        for (const b of nearbyEnemyBld) {
+          b.takeDamage(dmg, 'physical');
+        }
+        hero.skillCooldowns[1] = hero.level >= 4 ? 35 : 45;
+        EventBus.emit(GameEvent.ABILITY_USED, {
+          unitId: hero.id, abilityId: 'jade_a_leak', playerIndex: hero.owner,
+        });
+      }
+    }
+
+    // Slot 2: 玉港资本 — 瞬间+500水晶，下60秒采集-50%（player.gatherDebuffTimer）
+    if (hero.canUseSkillSlot(2)) {
+      const player = world.players[hero.owner];
+      if (player) {
+        player.resources.crystal = Math.min(MAX_CRYSTAL, player.resources.crystal + 500);
+        player.gatherDebuffTimer = 60;
+      }
+      hero.skillCooldowns[2] = 140;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'jade_a_capital', playerIndex: hero.owner,
+      });
+    }
+  }
+
+  /** 卡林 Slot 0: 市场操纵（手动激活） */
+  static _execJadeAManipulate(hero: Hero, units: Unit[]): void {
+    const radius = hero.level >= 2 ? 10 : 8;
+    const nearbyEnemies = units.filter(u =>
+      u.owner !== hero.owner && u.isAlive &&
+      Math.abs(u.tileX - hero.tileX) <= radius && Math.abs(u.tileY - hero.tileY) <= radius,
+    );
+    for (const enemy of nearbyEnemies) {
+      UnitSpecialSystem.markTarget(enemy.id, 20);
+    }
+  }
+
+  /** 卡林 Slot 1: 情报泄露（手动激活） */
+  static _execJadeALeak(hero: Hero, buildings: Building[]): void {
+    const dmg = hero.level >= 4 ? 120 : 80;
+    const nearbyEnemyBld = buildings.filter(b =>
+      b.owner !== hero.owner && b.isAlive &&
+      Math.abs(b.tileX - hero.tileX) <= 8 && Math.abs(b.tileY - hero.tileY) <= 8,
+    );
+    for (const b of nearbyEnemyBld) {
+      b.takeDamage(dmg, 'physical');
+    }
+  }
+
+  /** 卡林 Slot 2: 玉港资本（手动激活） */
+  static _execJadeACapital(hero: Hero, world: GameWorld): void {
+    const player = world.players[hero.owner];
+    if (player) {
+      player.resources.crystal = Math.min(MAX_CRYSTAL, player.resources.crystal + 500);
+      player.gatherDebuffTimer = 60;
+    }
+  }
+
+  // ======== 薇拉 (hero_jade_b) ========
+
+  private static _updateJadeB(
+    hero: Hero,
+    units: Unit[],
+    spawnCommands: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[],
+    hd: HeroData | undefined,
+  ): { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] | null {
+    if (!hd) return null;
+
+    // Slot 0: 雇佣空降 — 己方佣兵剑士<4 时，空投 Lv2:3/Lv1:2 个，Lv2 额外+1翡翠斥候
+    if (hero.canUseSkillSlot(0)) {
+      const mercCount = units.filter(
+        u => u.owner === hero.owner && u.isAlive && u.spriteKey === 'unit_mercenary_sword',
+      ).length;
+      if (mercCount < 4) {
+        const count = hero.level >= 2 ? 3 : 2;
+        spawnCommands.push({
+          unitDefId: 'unit_mercenary_sword',
+          count,
+          position: { x: hero.tileX + 1, y: hero.tileY + 1 },
+          playerIndex: hero.owner,
+        });
+        if (hero.level >= 2) {
+          spawnCommands.push({
+            unitDefId: 'unit_jade_scout',
+            count: 1,
+            position: { x: hero.tileX + 2, y: hero.tileY + 1 },
+            playerIndex: hero.owner,
+          });
+        }
+        hero.skillCooldowns[0] = hero.level >= 2 ? 28 : 35;
+        EventBus.emit(GameEvent.ABILITY_USED, {
+          unitId: hero.id, abilityId: 'jade_b_airdrop', playerIndex: hero.owner,
+        });
+        return null;
+      }
+    }
+
+    // Slot 1: 战场佣金 — 周围8格友方步兵>=3 时，给范围内友方步兵攻击+20%(Lv4:30%)
+    // （击杀返还造价监听简化为攻击 buff，完整返还机制 TODO）
+    if (hero.canUseSkillSlot(1)) {
+      const nearbyInfantry = units.filter(u =>
+        u.isAlive && u.owner === hero.owner && u.category === 'infantry' &&
+        Math.abs(u.tileX - hero.tileX) <= 8 && Math.abs(u.tileY - hero.tileY) <= 8,
+      );
+      if (nearbyInfantry.length >= 3) {
+        const atkBonus = hero.level >= 4 ? 0.30 : 0.20;
+        for (const u of nearbyInfantry) {
+          u.auraAttackMult += atkBonus;
+        }
+        hero.skillCooldowns[1] = hero.level >= 4 ? 32 : 40;
+        EventBus.emit(GameEvent.ABILITY_USED, {
+          unitId: hero.id, abilityId: 'jade_b_commission', playerIndex: hero.owner,
+        });
+      }
+    }
+
+    // Slot 2: 翡翠军团 — HP<0.4 时，召唤3佣兵剑士+1翡翠斥候，全军+50%攻速(一次性 attackTimer)
+    if (hero.canUseSkillSlot(2) && hero.hpPercent < 0.4) {
+      spawnCommands.push({
+        unitDefId: 'unit_mercenary_sword', count: 3,
+        position: { x: hero.tileX + 1, y: hero.tileY + 1 }, playerIndex: hero.owner,
+      });
+      spawnCommands.push({
+        unitDefId: 'unit_jade_scout', count: 1,
+        position: { x: hero.tileX + 2, y: hero.tileY + 1 }, playerIndex: hero.owner,
+      });
+      // 全军+50%攻速（抄艾琳 leyline 范式：一次性 attackTimer 减半）
+      for (const ally of units) {
+        if (!ally.isAlive || ally.owner !== hero.owner) continue;
+        ally.attackTimer = Math.max(0, ally.attackTimer - ally.attackCooldown * 0.5);
+      }
+      hero.skillCooldowns[2] = 160;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'jade_b_legion', playerIndex: hero.owner,
+      });
+    }
+
+    return null;
+  }
+
+  /** 薇拉 Slot 0: 雇佣空降（手动激活）— 返回 spawn 命令 */
+  static _execJadeBAirdrop(hero: Hero): { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] {
+    const cmds: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] = [];
+    cmds.push({
+      unitDefId: 'unit_mercenary_sword',
+      count: hero.level >= 2 ? 3 : 2,
+      position: { x: hero.tileX + 1, y: hero.tileY + 1 },
+      playerIndex: hero.owner,
+    });
+    if (hero.level >= 2) {
+      cmds.push({
+        unitDefId: 'unit_jade_scout', count: 1,
+        position: { x: hero.tileX + 2, y: hero.tileY + 1 },
+        playerIndex: hero.owner,
+      });
+    }
+    return cmds;
+  }
+
+  /** 薇拉 Slot 1: 战场佣金（手动激活） */
+  static _execJadeBCommission(hero: Hero, units: Unit[]): void {
+    const atkBonus = hero.level >= 4 ? 0.30 : 0.20;
+    const nearbyInfantry = units.filter(u =>
+      u.isAlive && u.owner === hero.owner && u.category === 'infantry' &&
+      Math.abs(u.tileX - hero.tileX) <= 8 && Math.abs(u.tileY - hero.tileY) <= 8,
+    );
+    for (const u of nearbyInfantry) {
+      u.auraAttackMult += atkBonus;
+    }
+  }
+
+  /** 薇拉 Slot 2: 翡翠军团（手动激活）— 返回 spawn 命令 + 全军攻速 */
+  static _execJadeBLegion(hero: Hero, units: Unit[]): { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] {
+    const cmds: { unitDefId: string; count: number; position: { x: number; y: number }; playerIndex: number }[] = [];
+    cmds.push({
+      unitDefId: 'unit_mercenary_sword', count: 3,
+      position: { x: hero.tileX + 1, y: hero.tileY + 1 }, playerIndex: hero.owner,
+    });
+    cmds.push({
+      unitDefId: 'unit_jade_scout', count: 1,
+      position: { x: hero.tileX + 2, y: hero.tileY + 1 }, playerIndex: hero.owner,
+    });
+    for (const ally of units) {
+      if (!ally.isAlive || ally.owner !== hero.owner) continue;
+      ally.attackTimer = Math.max(0, ally.attackTimer - ally.attackCooldown * 0.5);
+    }
+    return cmds;
+  }
+
+  // ======== 艾纳尔 (hero_frost_a) ========
+
+  private static _updateFrostA(hero: Hero, units: Unit[], hd: HeroData | undefined): void {
+    if (!hd) return;
+
+    // Slot 0: 磐石壁垒 — HP<0.6 时，自身+周围5格友方护甲翻倍 8s(Lv2:12s)
+    if (hero.canUseSkillSlot(0) && hero.hpPercent < 0.6) {
+      const duration = hero.level >= 2 ? 12 : 8;
+      HeroSystem._applyFrostBastion(hero, units, duration);
+      hero.skillCooldowns[0] = hero.level >= 2 ? 28 : 35;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'frost_a_bastion', playerIndex: hero.owner,
+      });
+    }
+
+    // Slot 1: 山之怒 — 周围6格敌人>=2 时，对每个敌人造成=自身护甲值的物理伤害
+    if (hero.canUseSkillSlot(1)) {
+      const nearbyEnemies = units.filter(u =>
+        u.owner !== hero.owner && u.isAlive &&
+        Math.abs(u.tileX - hero.tileX) <= 6 && Math.abs(u.tileY - hero.tileY) <= 6,
+      );
+      if (nearbyEnemies.length >= 2) {
+        const baseDmg = hero.armor + (hero.auraArmorBonus ?? 0);
+        const dmg = hero.level >= 4 ? baseDmg * 2 : baseDmg;
+        for (const enemy of nearbyEnemies) {
+          enemy.takeDamage(dmg, 'physical');
+          // Lv4: 眩晕2秒（大幅延长下次攻击）
+          if (hero.level >= 4) {
+            enemy.attackTimer = Math.max(enemy.attackTimer, 2.0);
+          }
+        }
+        hero.skillCooldowns[1] = hero.level >= 4 ? 40 : 50;
+        EventBus.emit(GameEvent.ABILITY_USED, {
+          unitId: hero.id, abilityId: 'frost_a_fury', playerIndex: hero.owner,
+        });
+      }
+    }
+
+    // Slot 2: 万山臣服 — HP<0.4 时，周围10格友方+护盾300，范围内敌方攻击延迟(简化嘲讽)
+    if (hero.canUseSkillSlot(2) && hero.hpPercent < 0.4) {
+      for (const ally of units) {
+        if (!ally.isAlive || ally.owner !== hero.owner) continue;
+        const d = Math.abs(hero.tileX - ally.tileX) + Math.abs(hero.tileY - ally.tileY);
+        if (d <= 10) {
+          ally.shieldHp = Math.max(ally.shieldHp, 300);
+          ally.maxShieldHp = Math.max(ally.maxShieldHp, 300);
+        }
+      }
+      // 简化嘲讽：范围内敌方攻击延迟2秒（不做 forcedTarget 强制锁定）
+      for (const enemy of units) {
+        if (!enemy.isAlive || enemy.owner === hero.owner) continue;
+        const d = Math.abs(hero.tileX - enemy.tileX) + Math.abs(hero.tileY - enemy.tileY);
+        if (d <= 10) {
+          enemy.attackTimer = Math.max(enemy.attackTimer, 2.0);
+        }
+      }
+      hero.skillCooldowns[2] = 160;
+      EventBus.emit(GameEvent.ABILITY_USED, {
+        unitId: hero.id, abilityId: 'frost_a_submit', playerIndex: hero.owner,
+      });
+    }
+  }
+
+  /** 艾纳尔 Slot 0: 磐石壁垒 — 自身+周围5格友方设护甲翻倍 buff timer */
+  private static _applyFrostBastion(hero: Hero, units: Unit[], duration: number): void {
+    // 自身
+    (hero as Hero & { _frostBastionTimer: number })._frostBastionTimer = duration;
+    // 周围5格友方
+    for (const u of units) {
+      if (!u.isAlive || u.owner !== hero.owner) continue;
+      const d = Math.abs(hero.tileX - u.tileX) + Math.abs(hero.tileY - u.tileY);
+      if (d <= 5) {
+        (u as Unit & { _frostBastionTimer: number })._frostBastionTimer = duration;
+      }
+    }
+  }
+
+  /** 艾纳尔 Slot 0: 磐石壁垒（手动激活） */
+  static _execFrostABastion(hero: Hero, units: Unit[]): void {
+    const duration = hero.level >= 2 ? 12 : 8;
+    HeroSystem._applyFrostBastion(hero, units, duration);
+  }
+
+  /** 艾纳尔 Slot 1: 山之怒（手动激活） */
+  static _execFrostAFury(hero: Hero, units: Unit[]): void {
+    const nearbyEnemies = units.filter(u =>
+      u.owner !== hero.owner && u.isAlive &&
+      Math.abs(u.tileX - hero.tileX) <= 6 && Math.abs(u.tileY - hero.tileY) <= 6,
+    );
+    const baseDmg = hero.armor + (hero.auraArmorBonus ?? 0);
+    const dmg = hero.level >= 4 ? baseDmg * 2 : baseDmg;
+    for (const enemy of nearbyEnemies) {
+      enemy.takeDamage(dmg, 'physical');
+      if (hero.level >= 4) {
+        enemy.attackTimer = Math.max(enemy.attackTimer, 2.0);
+      }
+    }
+  }
+
+  /** 艾纳尔 Slot 2: 万山臣服（手动激活） */
+  static _execFrostASubmit(hero: Hero, units: Unit[]): void {
+    for (const ally of units) {
+      if (!ally.isAlive || ally.owner !== hero.owner) continue;
+      const d = Math.abs(hero.tileX - ally.tileX) + Math.abs(hero.tileY - ally.tileY);
+      if (d <= 10) {
+        ally.shieldHp = Math.max(ally.shieldHp, 300);
+        ally.maxShieldHp = Math.max(ally.maxShieldHp, 300);
+      }
+    }
+    for (const enemy of units) {
+      if (!enemy.isAlive || enemy.owner === hero.owner) continue;
+      const d = Math.abs(hero.tileX - enemy.tileX) + Math.abs(hero.tileY - enemy.tileY);
+      if (d <= 10) {
+        enemy.attackTimer = Math.max(enemy.attackTimer, 2.0);
+      }
+    }
+  }
+
   /** 训练英雄：从主基地生成 */
   static trainHero(
     heroId: string,

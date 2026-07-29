@@ -256,14 +256,14 @@ describe('CommandExecutor - stop / hold_position', () => {
 });
 
 describe('CommandExecutor - research / cancel_research', () => {
-  it('研究 advanced_mining：扣 200，state=researching', () => {
+  it('研究 advanced_mining：扣 150，state=researching', () => {
     const ccId = seedCC();
     const res = setup.commandExecutor.execute({
       type: 'research', playerIndex: 0, unitIds: [], frame: 0,
       buildingId: ccId, techDefId: 'tech:advanced_mining',
     } as AnyCommand);
     expect(res.ok).toBe(true);
-    expect(setup.world.players[0].resources.crystal).toBe(2000 - 200);
+    expect(setup.world.players[0].resources.crystal).toBe(2000 - 150);
     const cc = setup.entities.getBuilding(ccId)!;
     expect(cc.researchingTechId).toBe('tech:advanced_mining');
     expect(cc.state).toBe('researching');
@@ -278,7 +278,7 @@ describe('CommandExecutor - research / cancel_research', () => {
     expect(res.ok).toBe(false);
   });
 
-  it('取消研究：进度 0.5 退款 floor(200*0.5)=100', () => {
+  it('取消研究：进度 0.5 退款 floor(150*0.5)=75', () => {
     const ccId = seedCC();
     setup.commandExecutor.execute({
       type: 'research', playerIndex: 0, unitIds: [], frame: 0,
@@ -291,7 +291,7 @@ describe('CommandExecutor - research / cancel_research', () => {
       type: 'cancel_research', playerIndex: 0, unitIds: [], frame: 0,
       buildingId: ccId,
     } as AnyCommand);
-    expect(setup.world.players[0].resources.crystal).toBe(crystalBefore + 100);
+    expect(setup.world.players[0].resources.crystal).toBe(crystalBefore + 75);
     expect(cc.researchingTechId).toBeNull();
     expect(cc.state).toBe('idle');
   });
@@ -407,6 +407,64 @@ describe('CommandExecutor - 未知命令', () => {
     const res = setup.commandExecutor.execute({
       type: 'whatever', playerIndex: 0, unitIds: [], frame: 0,
     } as unknown as AnyCommand);
+    expect(res.ok).toBe(false);
+  });
+});
+
+
+// ============================================================
+// 批4: 第二期阵营门控测试
+// ============================================================
+describe('CommandExecutor - 批4 第二期阵营门控', () => {
+  it('霜脊守卫 unit_frost_guard 仅霜脊王国可训练（arcane_empire 玩家被拒）', () => {
+    const ccId = seedCC();
+    const barracks = new Building(0, 'arcane_empire', 6, 8, 800, 'structure', 'production', 'bld_barracks', 20, 0);
+    setup.entities.addBuilding(barracks);
+    const res = setup.commandExecutor.execute({
+      type: 'train', playerIndex: 0, unitIds: [], frame: 0,
+      buildingId: barracks.id, unitDefId: 'unit_frost_guard', count: 1,
+    } as AnyCommand);
+    expect(res.ok).toBe(false);
+  });
+
+  it('翡翠斥候 unit_jade_scout 仅翡翠邦联可训练（arcane_empire 玩家被拒）', () => {
+    const barracks = new Building(0, 'arcane_empire', 6, 8, 800, 'structure', 'production', 'bld_barracks', 20, 0);
+    setup.entities.addBuilding(barracks);
+    const res = setup.commandExecutor.execute({
+      type: 'train', playerIndex: 0, unitIds: [], frame: 0,
+      buildingId: barracks.id, unitDefId: 'unit_jade_scout', count: 1,
+    } as AnyCommand);
+    expect(res.ok).toBe(false);
+  });
+
+  it('深矿竖井 bld_deep_mine 仅霜脊王国可建造（arcane_empire 玩家被拒）', () => {
+    const ccId = seedCC();
+    const worker = makeUnit({ owner: 0, tileX: 7, tileY: 6, spriteKey: 'unit_worker' });
+    setup.entities.addUnit(worker);
+    const res = setup.commandExecutor.execute({
+      type: 'build', playerIndex: 0, unitIds: [worker.id], frame: 0,
+      buildingDefId: 'bld_deep_mine', position: { x: 8, y: 8 },
+    } as AnyCommand);
+    expect(res.ok).toBe(false);
+  });
+
+  it('交易所 bld_trade_post 仅翡翠邦联可建造（arcane_empire 玩家被拒）', () => {
+    const worker = makeUnit({ owner: 0, tileX: 7, tileY: 6, spriteKey: 'unit_worker' });
+    setup.entities.addUnit(worker);
+    const res = setup.commandExecutor.execute({
+      type: 'build', playerIndex: 0, unitIds: [worker.id], frame: 0,
+      buildingDefId: 'bld_trade_post', position: { x: 8, y: 8 },
+    } as AnyCommand);
+    expect(res.ok).toBe(false);
+  });
+
+  it('深矿破坏者 unit_deep_destroyer 需霜脊+虚空研究院（arcane_empire 无 void 被拒）', () => {
+    const factory = new Building(0, 'arcane_empire', 6, 8, 1000, 'structure', 'production', 'bld_factory', 20, 30);
+    setup.entities.addBuilding(factory);
+    const res = setup.commandExecutor.execute({
+      type: 'train', playerIndex: 0, unitIds: [], frame: 0,
+      buildingId: factory.id, unitDefId: 'unit_deep_destroyer', count: 1,
+    } as AnyCommand);
     expect(res.ok).toBe(false);
   });
 });

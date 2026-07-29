@@ -73,6 +73,9 @@ export abstract class Entity {
       const boost = voUnit.isVoidOptimized ? 0.35 : 0.50;
       effectiveArmor = Math.floor(effectiveArmor * (1 + boost));
     }
+    // 第二期英雄光环护甲加成（艾纳尔山之王座等，每帧由 HeroSystem 累加）
+    const auraArmor = (this as { auraArmorBonus?: number }).auraArmorBonus ?? 0;
+    if (auraArmor > 0) effectiveArmor += auraArmor;
     const final = Math.max(1, remaining - effectiveArmor);
     this.hp -= final;
     if (this.hp <= 0) {

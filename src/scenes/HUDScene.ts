@@ -25,6 +25,8 @@ import type { SelectionData } from '../types/events';
 import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getDisplayName, getBuildingCost } from '../config/unitData';
 import type { CommandResult } from '../controllers/CommandExecutor';
 import { HeroSystem } from '../systems/HeroSystem';
+import { serialize, save as saveGame, load as loadGame, loadLatest } from '../save/SaveLoadSystem';
+import type { SaveMeta } from '../save/SaveData';
 
 export class HUDScene extends Phaser.Scene {
   private resourceDisplay!: ResourceDisplay;
@@ -60,6 +62,8 @@ export class HUDScene extends Phaser.Scene {
       onResume: () => {},
       onRestart: () => { this.scene.stop('GameScene'); this.scene.start('GameScene', (this.scene.get('GameScene') as any)?.registry?.get('lastStartData') ?? {}); },
       onMainMenu: () => { this.scene.stop('GameScene'); this.scene.start('MenuScene'); },
+      onSave: () => this.doSave(),
+      onLoad: () => this.doLoad(),
     });
     // 审1: Tooltip 必须在 CommandCard 之前实例化(onHover 回调引用)
     this.tooltip = new Tooltip(this);
@@ -186,7 +190,7 @@ export class HUDScene extends Phaser.Scene {
                 HeroSystem.activateSkill(hero, slotIdx, {
                   units: gs.units ?? [],
                   buildings: gs.buildings ?? [],
-                });
+                }, gs.resourceFields, gs.world);
               }
             },
             disabled: !info.available,
@@ -516,5 +520,57 @@ export class HUDScene extends Phaser.Scene {
 
   updateResources(crystal: number, industry: number, supply: number, supplyCap: number): void {
     this.resourceDisplay.update(crystal, industry, supply, supplyCap);
+  }
+
+  // ========== 存档/读档 ==========
+
+  private doSave(): void {
+    const gs = this.scene.get('GameScene') as any;
+    if (!gs?.world) { this.showToast('存档失败：游戏未初始化'); return; }
+
+    try {
+      const meta: SaveMeta = {
+        mapId: gs._mapId ?? 'map_valley',
+        mapWidth: gs.world.map.config.width,
+        mapHeight: gs.world.map.config.height,
+        playerFaction: gs._playerFaction ?? 'arcane_empire',
+        aiFaction: gs.world.players[1]?.faction ?? 'hammer_federation',
+        aiDifficulty: gs._aiDifficulty ?? 'normal',
+        playerGuilds: [...(gs._playerGuilds ?? ['mages_guild', 'alchemists_society'])],
+        aiGuilds: [...(gs.world.players[1]?.guilds ?? [])],
+      };
+
+      const data = serialize({
+        world: gs.world,
+        entities: gs._entities ?? gs.entities,
+        gameTimer: gs.gameOverCtrl?.gameTimer ?? 0,
+        graceTimers: gs.gameOverCtrl?.graceTimers ?? [0, 0],
+        meta,
+      });
+
+      const name = `auto_${Date.now()}`;
+      const result = saveGame(name, data);
+      if (result.ok) {
+        this.showToast('✅ 游戏已保存');
+      } else {
+        this.showToast(`❌ 保存失败: ${result.reason}`);
+      }
+    } catch (e: any) {
+      this.showToast(`❌ 保存异常: ${e?.message ?? '未知错误'}`);
+    }
+  }
+
+  private doLoad(): void {
+    const latest = loadLatest();
+    if (!latest.ok) {
+      this.showToast(`❌ 读档失败: ${latest.reason}`);
+      return;
+    }
+
+    // 重启 GameScene 并传入存档数据
+    this.scene.stop('GameScene');
+    this.scene.start('GameScene', {
+      loadFromSave: latest.data,
+    });
   }
 }

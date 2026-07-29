@@ -122,6 +122,8 @@ export interface PlayerState {
   };
   /** 工业产值积累计时器（秒） */
   _industryTimer?: number;
+  /** 卡林「玉港资本」采集 debuff 剩余秒数；>0 时采集量×0.5，每帧由 ResourceSystem 递减 */
+  gatherDebuffTimer?: number;
   isAI: boolean;
   aiDifficulty?: 'easy' | 'normal' | 'hard';
 }

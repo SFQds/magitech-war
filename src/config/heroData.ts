@@ -3,6 +3,7 @@
  */
 
 import type { HeroData } from '../entities/Hero';
+import { FACTION_DEFS } from './unitData';
 
 export const HERO_DEFS: Record<string, HeroData> = {
   'hero_isabelle': {
@@ -120,22 +121,120 @@ export const HERO_DEFS: Record<string, HeroData> = {
     reviveCooldown: 160,
     cost: { crystal: 750, supply: 4, time: 35 },
   },
+  // 批2: 霜脊王国英雄 — 固守与山之意志主题
+  'hero_frost_a': {
+    displayName: '艾纳尔',
+    title: '霜脊第十四世山王',
+    faction: 'frostridge_kingdom',
+    stats: {
+      hp: 900, armor: 'heavy', speed: 1.6,
+      damage: 55, dmgType: 'physical', range: 2,
+      cooldown: 1.8, sight: 6,
+    },
+    armorValue: 28,
+    auraRadius: 10,
+    passive: '山之王座：周围10格友方护甲+8',
+    active: { name: '磐石壁垒', cooldown: 35, description: '自身+周围友方护甲翻倍，8秒' },
+    skillTree: [
+      // Lv1: 磐石壁垒
+      { name: '磐石壁垒', cooldown: 35, description: '自身+周围友方护甲翻倍，8秒' },
+      // Lv2: 壁垒+（持续时间12s 已实现；免疫击退 简化 TODO）
+      { name: '壁垒+', cooldown: 28, description: '持续时间延长至12秒，附加免疫击退' },
+      // Lv3: 山之怒
+      { name: '山之怒', cooldown: 50, description: '对周围敌人造成相当于自身护甲值的物理伤害' },
+      // Lv4: 怒+（伤害翻倍+眩晕2s 已实现）
+      { name: '怒+', cooldown: 40, description: '伤害翻倍并眩晕2秒' },
+      // Lv5: 万山臣服
+      { name: '万山臣服', cooldown: 160, description: '大范围友方获得护盾300并嘲讽敌方' },
+    ],
+    reviveCooldown: 180,
+    cost: { crystal: 800, supply: 5, time: 40 },
+  },
+  'hero_frost_b': {
+    displayName: '希尔德',
+    title: '深矿井首席勘探师',
+    faction: 'frostridge_kingdom',
+    stats: {
+      hp: 380, armor: 'light', speed: 2.4,
+      damage: 35, dmgType: 'crystal', range: 6,
+      cooldown: 1.4, sight: 9,
+    },
+    armorValue: 6,
+    auraRadius: 9,
+    passive: '矿脉感应：周围9格采集+30%，视野+2',
+    active: { name: '水晶裂隙', cooldown: 30, description: '在目标区域制造水晶裂隙，减速敌人并造成持续水晶伤害' },
+    skillTree: [
+      // Lv1: 水晶裂隙
+      { name: '水晶裂隙', cooldown: 30, description: '目标区域水晶裂隙，减速50%并造成持续水晶伤害6秒' },
+      // Lv2: 裂隙+（范围扩大+伤害提升 已实现；护甲-30% 简化 TODO）
+      { name: '裂隙+', cooldown: 25, description: '范围扩大，附加护甲-30%' },
+      // Lv3: 深矿涌动
+      { name: '深矿涌动', cooldown: 45, description: '召唤水晶晶柱阻挡通路并对靠近者造成伤害' },
+      // Lv4: 涌动+（伤害提升 已实现；击退 简化 TODO）
+      { name: '涌动+', cooldown: 35, description: '晶柱数量+2并附带击退' },
+      // Lv5: 山脉之心
+      { name: '山脉之心', cooldown: 150, description: '全图矿脉短暂喷发，对敌方单位造成巨额水晶伤害' },
+    ],
+    reviveCooldown: 160,
+    cost: { crystal: 750, supply: 4, time: 35 },
+  },
+  // 批3: 翡翠邦联英雄 — 灵活与贸易主题
+  'hero_jade_a': {
+    displayName: '卡林',
+    title: '玉港独立信息商人',
+    faction: 'jade_confederation',
+    stats: {
+      hp: 320, armor: 'light', speed: 2.8,
+      damage: 30, dmgType: 'physical', range: 5,
+      cooldown: 1.3, sight: 10,
+    },
+    armorValue: 5,
+    auraRadius: 9,
+    passive: '情报网：周围9格友方视野+3，隐形单位显形',
+    active: { name: '市场操纵', cooldown: 30, description: '标记敌方单位20秒，受标记单位受到的伤害+25%' },
+    skillTree: [
+      { name: '市场操纵', cooldown: 30, description: '标记敌方单位20秒，受标记单位受到的伤害+25%' },
+      { name: '操纵+', cooldown: 25, description: '标记范围扩大，附加移速-30%' },
+      { name: '情报泄露', cooldown: 45, description: '揭示敌方全部建筑位置10秒' },
+      { name: '泄露+', cooldown: 35, description: '揭示期间友方对敌方建筑伤害+30%' },
+      { name: '玉港资本', cooldown: 140, description: '瞬间获得500水晶，但下60秒采集-50%' },
+    ],
+    reviveCooldown: 150,
+    cost: { crystal: 700, supply: 4, time: 32 },
+  },
+  'hero_jade_b': {
+    displayName: '薇拉',
+    title: '翡翠邦联佣兵团长',
+    faction: 'jade_confederation',
+    stats: {
+      hp: 650, armor: 'heavy', speed: 2.0,
+      damage: 50, dmgType: 'physical', range: 2,
+      cooldown: 1.6, sight: 7,
+    },
+    armorValue: 15,
+    auraRadius: 8,
+    passive: '佣兵契约：周围8格友方步兵攻击+15%',
+    active: { name: '雇佣空降', cooldown: 35, description: '在目标位置空投2名佣兵剑士' },
+    skillTree: [
+      { name: '雇佣空降', cooldown: 35, description: '在目标位置空投2名佣兵剑士' },
+      { name: '空降+', cooldown: 28, description: '空投3名佣兵剑士+1翡翠斥候' },
+      { name: '战场佣金', cooldown: 40, description: '范围内友方击杀返还30%单位造价' },
+      { name: '佣金+', cooldown: 32, description: '返还50%并附加攻速+20%' },
+      { name: '翡翠军团', cooldown: 160, description: '召唤一支完整佣兵小队并全军+50%攻击10秒' },
+    ],
+    reviveCooldown: 170,
+    cost: { crystal: 750, supply: 4, time: 36 },
+  },
 };
 
 /** 获取阵营对应的英雄ID（默认返回第一个）。index=0 返回原英雄，index=1 返回新英雄。 */
 export function getFactionHero(faction: string, index = 0): string | undefined {
-  if (faction === 'arcane_empire') {
-    return index === 0 ? 'hero_isabelle' : 'hero_sebastian';
-  }
-  if (faction === 'hammer_federation') {
-    return index === 0 ? 'hero_marcus' : 'hero_eileen';
-  }
-  return undefined;
+  // 批1: 数据驱动——从 FACTION_DEFS 读取 heroIds，新增王国无需改此代码
+  return FACTION_DEFS[faction]?.heroIds?.[index];
 }
 
 /** 获取阵营的所有英雄ID列表 */
 export function getFactionHeroes(faction: string): string[] {
-  if (faction === 'arcane_empire') return ['hero_isabelle', 'hero_sebastian'];
-  if (faction === 'hammer_federation') return ['hero_marcus', 'hero_eileen'];
-  return [];
+  // 批1: 数据驱动——从 FACTION_DEFS 读取 heroIds
+  return FACTION_DEFS[faction]?.heroIds ?? [];
 }

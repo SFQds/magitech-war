@@ -71,11 +71,19 @@ describe('GameWorld addPlayer', () => {
 
   it('for an unknown faction falls back to crystal 2000, industry 50', () => {
     const w = makeWorld();
-    w.addPlayer('frostridge_kingdom' as never, []);
+    w.addPlayer('unknown_faction' as never, []);
     const p = w.getPlayer(0)!;
     expect(p.resources.crystal).toBe(2000);
     expect(p.resources.industry).toBe(50);
     expect(p.resources.industryCap).toBe(50);
+  });
+
+  it('batch2: frostridge start 2500 crystal / 40 industry', () => {
+    const w = makeWorld();
+    w.addPlayer('frostridge_kingdom' as never, []);
+    const p = w.getPlayer(0)!;
+    expect(p.resources.crystal).toBe(2500);
+    expect(p.resources.industry).toBe(40);
   });
 
   it('makeWorld(addPlayers=true) sets up 2 players: human arcane + AI federation', () => {

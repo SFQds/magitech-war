@@ -1336,6 +1336,7 @@ def image_region_is_ready(region: Any) -> bool:
 
 def open_image_preview(window: Any, center: tuple[int, int]) -> None:
     import pyautogui
+    pyautogui.FAILSAFE = False
 
     window.set_focus()
     time.sleep(0.2)
@@ -1465,6 +1466,7 @@ def find_sidebar_new_chat(window: Any) -> Any | None:
 
 def click_control_center(control: Any) -> None:
     import pyautogui
+    pyautogui.FAILSAFE = False
 
     rect = control.rectangle()
     pyautogui.click(rect.left + rect.width() // 2, rect.top + rect.height() // 2)
@@ -1543,6 +1545,7 @@ def press_enter_to_send(window: Any, edit: Any | None = None) -> None:
 
 def click_relative(window: Any, x_ratio: float, y_ratio: float) -> None:
     import pyautogui
+    pyautogui.FAILSAFE = False
 
     rect = window.rectangle()
     x = rect.left + int(rect.width() * x_ratio)

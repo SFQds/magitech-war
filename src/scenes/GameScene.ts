@@ -23,7 +23,8 @@ import { TechSystem } from '../systems/TechSystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
 import { GameOverController } from '../controllers/GameOverController';
 import { DeathCleanupSystem } from '../systems/DeathCleanupSystem';
-import { BUILDING_DEFS } from '../config/unitData';
+import { BUILDING_DEFS, FACTION_DEFS } from '../config/unitData';
+import type { FactionId } from '../types/data';
 import { Hero } from '../entities/Hero';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { FogRenderer } from '../rendering/FogRenderer';
@@ -43,6 +44,8 @@ import { GameEvent } from '../types/events';
 import { tileToWorld } from '../utils/MathUtils';
 import { registerSoundBindings } from '../rendering/SoundBindings';
 import { SpriteRenderer } from '../rendering/SpriteRenderer';
+import { deserialize } from '../save/SaveLoadSystem';
+import type { SaveData } from '../save/SaveData';
 
 export class GameScene extends Phaser.Scene {
   world!: GameWorld;
@@ -140,9 +143,12 @@ export class GameScene extends Phaser.Scene {
   private _aiDifficulty: string = 'normal';
   /** 玩家所选行会 */
   private _playerGuilds: string[] = ['mages_guild', 'alchemists_society'];
+  /** 存档数据（读档时由 init 注入） */
+  private _loadSave: SaveData | null = null;
 
-  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string; playerGuilds?: string[] }): void {
+  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string; playerGuilds?: string[]; loadFromSave?: SaveData }): void {
     // P2-7 修复：mapId 白名单校验，防止路径穿越
+    this._loadSave = data?.loadFromSave ?? null;
     const VALID_MAPS = ['map_valley', 'map_river', 'map_islands'];
     const rawMap = data?.map ?? 'map_valley';
     this._mapId = VALID_MAPS.includes(rawMap) ? rawMap : 'map_valley';
@@ -158,6 +164,13 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     const mapJson = this.cache.json.get('mapData') as any;
+
+    // 读档分支：从存档重建游戏状态
+    if (this._loadSave) {
+      this.createFromSave(this._loadSave);
+      return;
+    }
+
     const mapW = mapJson?.width ?? 64;
     const mapH = mapJson?.height ?? 64;
     const tileSize = 32;
@@ -193,10 +206,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 玩家选择的阵营 → AI 使用对立阵营
-    const playerFaction = this._playerFaction as 'arcane_empire' | 'hammer_federation';
-    const aiFaction = playerFaction === 'arcane_empire' ? 'hammer_federation' : 'arcane_empire';
-    const playerCC = playerFaction === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
-    const aiCC = aiFaction === 'arcane_empire' ? 'bld_cc_empire' : 'bld_cc_federation';
+    // 批1: 数据驱动——从 FACTION_DEFS 取合法 faction 列表，CC 从 factionDef.ccBuilding 读取
+    const playerFaction = this._playerFaction as string;
+    const allFactions = Object.keys(FACTION_DEFS);
+    const aiFaction = (allFactions.filter(f => f !== playerFaction)[Math.floor(Math.random()
+      * (allFactions.length - 1))]) ?? 'hammer_federation';
+    const playerCC = FACTION_DEFS[playerFaction]?.ccBuilding ?? 'bld_cc_empire';
+    const aiCC = FACTION_DEFS[aiFaction]?.ccBuilding ?? 'bld_cc_federation';
 
     // P1-AI4: AI guild choice varies so void_institute is reachable.
     const playerHasMages = this._playerGuilds.includes('mages_guild');
@@ -210,8 +226,8 @@ export class GameScene extends Phaser.Scene {
       aiGuilds = ['mages_guild', 'alchemists_society'];
     }
 
-    this.world.addPlayer(playerFaction, [...this._playerGuilds], false);
-    this.world.addPlayer(aiFaction, [...aiGuilds], true);
+    this.world.addPlayer(playerFaction as FactionId, [...this._playerGuilds], false);
+    this.world.addPlayer(aiFaction as FactionId, [...aiGuilds], true);
 
     // 初始化 per-player 科技效果缓存
     this.initTechEffects();
@@ -1108,7 +1124,7 @@ export class GameScene extends Phaser.Scene {
       this.world.techTrees,
       this.world.arcaneChargeTimers,
     );
-    const result = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds);
+    const result = HeroSystem.update(this.heroes, this.units, this.buildings, this.world, ds, this.resourceFields);
     // 公会专属建筑机制（维修站光环等）— 每帧推进
     BuildingSystem.update(this.units, this.buildings, ds, this.world);
     // L3 单位特殊机制（移动工坊光环/不稳定水晶倒计时）— 每帧推进
@@ -1342,6 +1358,162 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Phaser 场景关闭时清理 */
+  // ========== 读档分支 ==========
+
+  /** 从 SaveData 重建游戏状态（替代 create() 的新建流程） */
+  private createFromSave(data: SaveData): void {
+    const mapW = data.meta.mapWidth;
+    const mapH = data.meta.mapHeight;
+    const tileSize = 32;
+
+    // 读档元数据覆盖 init 值
+    this._mapId = data.meta.mapId;
+    this._playerFaction = data.meta.playerFaction;
+    this._aiDifficulty = data.meta.aiDifficulty;
+    this._playerGuilds = [...data.meta.playerGuilds];
+
+    // === 核心状态：从 SaveData 反序列化 ===
+    const restored = deserialize(data);
+    this.world = restored.world;
+    this.entities = restored.entities;
+
+    // === 子系统 ===
+    this.techSystem = new TechSystem(this.world);
+    this.techSystem.initAll(); // 重新计算科技效果缓存
+    this.researchSystem = new ResearchSystem(this.world, this.entities, this.techSystem);
+    this.gameOverCtrl = new GameOverController(this, this.world, this.entities);
+    this.gameOverCtrl.gameTimer = restored.gameTimer;
+    this.gameOverCtrl.graceTimers = restored.graceTimers;
+    this.deathCleanup = new DeathCleanupSystem(this.world, this.entities, {
+      removeUnitSprite: (id) => {
+        const sp = this.unitSprites.get(id); if (sp) { sp.destroy(); this.unitSprites.delete(id); }
+      },
+      removeBuildingSprite: (id) => {
+        const sp = this.buildingSprites.get(id); if (sp) { sp.destroy(); this.buildingSprites.delete(id); }
+      },
+      removeFieldSprite: (id) => {
+        const sp = this.resourceSprites.get(id); if (sp) { sp.destroy(); this.resourceSprites.delete(id); }
+      },
+      onUnitRemoved: (id) => this.removeUnit(id),
+      onBuildingRemoved: (id) => this.removeBuilding(id),
+      rewardBuildingXp: (destroyedOwner) => this.rewardHeroXpBuilding(destroyedOwner),
+      updateSelectionHighlight: () => this.updateSelectionHighlight(),
+      getSelection: () => this.inputCtrl.getSelection(),
+      setSelection: (ids) => this.inputCtrl.setSelection(ids),
+      clearSelection: () => this.inputCtrl.clearSelection(),
+      consumeIfSelectedBuilding: (id) => this._consumeIfSelectedBuilding(id),
+    });
+
+    // 地形：先加载地图 JSON 的基本地形（用于渲染 grass/water/mountain 纹理），
+    // 然后覆盖存档中记录的非默认地形
+    const mapJson = this.cache.json.get('mapData') as any;
+    if (mapJson?.tiles) {
+      this.world.map.loadFromData(mapJson);
+    }
+
+    // === 初始化 Phaser 层 ===
+    this.cameraCtrl = new CameraController(this.cameras.main, mapW, mapH, tileSize);
+    this.inputCtrl = new InputController(this, 0);
+    const aiFaction = data.meta.aiFaction;
+    this.aiController = new AIController(this.world, 1, this._aiDifficulty as 'easy' | 'normal' | 'hard');
+    this.projectileController = new ProjectileController(this);
+    this.buildController = new BuildController(this);
+    this.hpBarRenderer = new HpBarRenderer(this);
+    this.unitSpawner = new UnitSpawner(this.world.map,
+      (u) => { this.applyTechToUnit(u); this.addUnit(u); },
+      (b) => { this.applyTechToBuilding(b); this.addBuilding(b); },
+      (owner) => this.world.players[owner]?.faction ?? 'arcane_empire',
+    );
+    this.commandExecutor = new CommandExecutor(
+      this.world, this.entities, this.unitSpawner,
+      (b) => this.applyTechToBuilding(b),
+      (b) => this.addBuilding(b),
+    );
+    this.shiftKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT) ?? null;
+
+    // === 渲染 ===
+    this.renderTiles();
+    this.fogRenderer = new FogRenderer(this);
+    this.fogRenderer.init(mapW, mapH, tileSize);
+
+    // 为所有已恢复实体创建 sprite
+    for (const u of this.entities.units) this.addUnitSprite(u);
+    for (const b of this.entities.buildings) this.addBuildingSprite(b);
+    for (const f of this.entities.fields) this.addResourceFieldSprite(f);
+
+    this.spriteRenderer = new SpriteRenderer(
+      this.unitSprites, this.buildingSprites, this.flashTimers, this.hpBarRenderer,
+      this.world.fogOfWar, 0,
+    );
+
+    // === 迷雾 ===
+    this.initializeFogOfWar();
+
+    // === UI + 输入 ===
+    this.setupInputCallbacks();
+    this.setupKeyboard();
+
+    // 聚焦玩家 CC（或第一个建筑）位置
+    const playerCC = this.entities.buildings.find(b => b.owner === 0 && b.isAlive);
+    if (playerCC) {
+      this.cameraCtrl.centerOn(playerCC.tileX * tileSize + tileSize / 2, playerCC.tileY * tileSize + tileSize / 2);
+    }
+
+    const hudScene = this.scene.get('HUDScene') as any;
+    if (hudScene && hudScene.initMinimap) {
+      hudScene.initMinimap(this.world.map, this.world.fogOfWar, this.cameraCtrl);
+    }
+
+    ResourceSystem.updateResources(this.world.players, this.entities.units, this.entities.buildings, 0);
+
+    const p0 = this.world.players[0];
+    EventBus.emit(GameEvent.RESOURCE_CHANGED, {
+      playerIndex: 0,
+      resource: 'crystal',
+      newValue: p0.resources.crystal,
+      delta: p0.resources.crystal,
+    });
+
+    if (!this.scene.isActive('HUDScene')) {
+      this.scene.launch('HUDScene');
+    }
+
+    EventBus.emit(GameEvent.GAME_STARTED, {});
+    this.setupSoundListeners();
+
+    this._onUnitKilled = (d: any) => {
+      const victimUnit = this.entities.getUnit(d.unitId);
+      const victimBld = this.entities.getBuilding(d.unitId);
+      if (!victimBld && !(victimUnit instanceof Hero)) {
+        this.rewardHeroXp(d.killerId);
+      }
+      if (victimUnit instanceof Hero && !victimBld && d.killerId) {
+        const heroKiller = this.entities.getUnit(d.killerId);
+        if (heroKiller) {
+          const allyHeroes = this.heroes.filter(h => h.owner === heroKiller.owner && h.isAlive);
+          for (const hero of allyHeroes) {
+            const leveled = hero.gainXp(100);
+            if (leveled) {
+              EventBus.emit(GameEvent.HERO_LEVELED, {
+                unitId: hero.id, heroId: hero.spriteKey, newLevel: hero.level, playerIndex: hero.owner,
+              });
+            }
+          }
+        }
+      }
+      if (victimUnit instanceof Hero) {
+        EventBus.emit(GameEvent.HERO_DIED, {
+          unitId: d.unitId, heroId: victimUnit.spriteKey,
+          playerIndex: d.playerIndex ?? victimUnit.owner, killerId: d.killerId ?? '',
+        });
+      }
+    };
+    EventBus.on(GameEvent.UNIT_KILLED, this._onUnitKilled);
+    this.events.on('shutdown', this.shutdown, this);
+  }
+
+  // ========== 清理 ==========
+
   shutdown(): void {
     this._soundDispose?.();
     this.fogRenderer?.destroy();

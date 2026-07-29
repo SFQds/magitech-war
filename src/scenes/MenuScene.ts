@@ -9,6 +9,7 @@ import { FACTION_DEFS } from '../config/unitData';
 import { SoundManager } from '../utils/SoundManager';
 import { GUILD_NAMES, GUILD_DESC, GUILD_HOSTILITY, VALID_GUILD_PAIRS } from '../types/data';
 import type { GuildId } from '../types/data';
+import { hasSaves, loadLatest } from '../save/SaveLoadSystem';
 
 const MAPS = [
   { id: 'map_valley', name: '山谷', desc: '中央开阔地，两侧山脉' },
@@ -19,6 +20,8 @@ const MAPS = [
 const FACTIONS = [
   { id: 'arcane_empire', color: '#6a4fff', darkColor: '#2a1f5e' },
   { id: 'hammer_federation', color: '#ff6a2e', darkColor: '#5e2a1a' },
+  { id: 'frostridge_kingdom', color: '#5ec8ff', darkColor: '#1a3a5e' },
+  { id: 'jade_confederation', color: '#3cd08f', darkColor: '#1a4e3a' },
 ];
 
 const DIFFICULTIES = [
@@ -69,11 +72,14 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.factionCards = [];
+    // 批1: 4 王国卡片居中布局（间距 145，卡宽 140）
+    const factionSpacing = 145;
+    const factionCardW = 140;
     FACTIONS.forEach((fi, idx) => {
       const fd = FACTION_DEFS[fi.id];
-      const fx = cx - 100 + idx * 200;
+      const fx = cx - (FACTIONS.length - 1) * factionSpacing / 2 - factionCardW / 2 + idx * factionSpacing;
       const fy = 135;
-      const cardW = 170;
+      const cardW = factionCardW;
       const cardH = 120;
 
       const container = this.add.container(0, 0);
@@ -87,11 +93,11 @@ export class MenuScene extends Phaser.Scene {
       container.add(nameText);
 
       const econText = this.add.text(fx + 8, fy + 44, `经济: ${fd.econPassive}`, {
-        fontSize: '10px', color: '#a0a0c0', fontFamily: 'Arial, sans-serif', wordWrap: { width: 154 },
+        fontSize: '10px', color: '#a0a0c0', fontFamily: 'Arial, sans-serif', wordWrap: { width: cardW - 16 },
       });
       container.add(econText);
       const milText = this.add.text(fx + 8, fy + 64, `军事: ${fd.milPassive}`, {
-        fontSize: '10px', color: '#a0a0c0', fontFamily: 'Arial, sans-serif', wordWrap: { width: 154 },
+        fontSize: '10px', color: '#a0a0c0', fontFamily: 'Arial, sans-serif', wordWrap: { width: cardW - 16 },
       });
       container.add(milText);
 
@@ -222,7 +228,7 @@ export class MenuScene extends Phaser.Scene {
 
     // === 开始按钮 ===
     const startY = height - 70;
-    const startBtn = this.add.text(cx - 90, startY, '▶  开始游戏', {
+    const startBtn = this.add.text(cx - 130, startY, '▶  开始游戏', {
       fontSize: '22px', color: '#ffffff', backgroundColor: '#4a3060',
       padding: { x: 40, y: 12 }, fontFamily: 'Arial, sans-serif',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -241,8 +247,25 @@ export class MenuScene extends Phaser.Scene {
       });
     });
 
+    // === 继续游戏按钮（有存档时才显示） ===
+    if (hasSaves()) {
+      const continueBtn = this.add.text(cx + 10, startY, '📂  继续游戏', {
+        fontSize: '22px', color: '#ffd700', backgroundColor: '#2a4a30',
+        padding: { x: 32, y: 12 }, fontFamily: 'Arial, sans-serif',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      continueBtn.on('pointerover', () => continueBtn.setStyle({ backgroundColor: '#3a6a40' }));
+      continueBtn.on('pointerout', () => continueBtn.setStyle({ backgroundColor: '#2a4a30' }));
+      continueBtn.on('pointerdown', () => {
+        SoundManager.init();
+        const latest = loadLatest();
+        if (latest.ok) {
+          this.scene.start('GameScene', { loadFromSave: latest.data });
+        }
+      });
+    }
+
     // === 图鉴按钮 ===
-    const codexBtn = this.add.text(cx + 90, startY, '📖  图鉴', {
+    const codexBtn = this.add.text(cx + 140, startY, '📖  图鉴', {
       fontSize: '20px', color: '#c8a2c8', backgroundColor: '#2a1a3a',
       padding: { x: 28, y: 10 }, fontFamily: 'Arial, sans-serif',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
@@ -283,8 +306,12 @@ export class MenuScene extends Phaser.Scene {
       const fi = FACTIONS[i];
       const cardBg = container.getAt(0) as Phaser.GameObjects.Graphics;
       cardBg.clear();
-      const fx = i === 0 ? this.cameras.main.width / 2 - 100 : this.cameras.main.width / 2 + 100;
-      this.drawFactionCard(cardBg, fx, 135, 170, 120, fi, false);
+      // 批1: 与初始布局保持一致（间距 145，卡宽 140）
+      const cx = this.cameras.main.width / 2;
+      const factionSpacing = 145;
+      const factionCardW = 140;
+      const fx = cx - (FACTIONS.length - 1) * factionSpacing / 2 - factionCardW / 2 + i * factionSpacing;
+      this.drawFactionCard(cardBg, fx, 135, factionCardW, 120, fi, this.selectedFactionId === fi.id);
     });
   }
 

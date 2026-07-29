@@ -48,7 +48,8 @@ export class GameWorld {
         industry: fd?.startingIndustry ?? 50,
         supply: 0,
         // P2-质疑19: 从 CC 配置读取初始 supplyCap，不再硬编码 20
-        supplyCap: BUILDING_DEFS['bld_cc_empire']?.provides?.supply ?? 50,
+        // 批1: 数据驱动——按玩家 faction 的 ccBuilding 读取，新增王国无需改此代码
+        supplyCap: BUILDING_DEFS[fd?.ccBuilding ?? 'bld_cc_empire']?.provides?.supply ?? 50,
         industryCap: fd?.startingIndustry ?? 50,
       },
       isAI,

@@ -406,7 +406,7 @@ export class CommandExecutor {
     const result = HeroSystem.activateSkill(hero as any, slotIndex, {
       units: this.entities.aliveUnits,
       buildings: this.entities.aliveBuildings,
-    });
+    }, this.entities.fields, this.world);
     if (!result.success) return fail('技能不可用');
     // 处理技能产生的 spawn 命令
     if (result.spawnCommands) {

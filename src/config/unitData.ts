@@ -143,6 +143,54 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     attackEffect: 'proj_bullet',
     exclusiveTo: { faction: 'hammer_federation' },
   },
+  // 批2: 霜脊王国专属单位
+  unit_frost_guard: {
+    displayName: '霜脊守卫',
+    tier: 'L3',
+    cost: { crystal: 400, supply: 3, time: 28 },
+    stats: { hp: 500, armor: 'heavy', armorValue: 30, category: 'infantry', speed: 1.4, damage: 22, dmgType: 'physical', range: 1, cooldown: 1.4, sight: 5 },
+    attackEffect: 'melee',
+    exclusiveTo: { faction: 'frostridge_kingdom' },
+    // 特性"固守:护甲翻倍"由 UnitSpecialSystem 接驻守状态处理
+  },
+  unit_crystal_catapult: {
+    displayName: '水晶投石车',
+    tier: 'L3',
+    cost: { crystal: 500, supply: 3, time: 24 },
+    stats: { hp: 300, armor: 'mechanical', armorValue: 5, category: 'vehicle', speed: 1.6, damage: 60, dmgType: 'crystal', range: 10, cooldown: 2.5, sight: 8 },
+    attackEffect: 'proj_cannon',
+    favoredBy: ['frostridge_kingdom'],
+    exclusiveTo: { faction: 'frostridge_kingdom' },
+  },
+  // 批2: 深矿破坏者 — 霜脊+虚空研究院组合专属，首批 bio 护甲 + crystal 伤害单位
+  unit_deep_destroyer: {
+    displayName: '深矿破坏者',
+    tier: 'L3',
+    cost: { crystal: 600, supply: 4, time: 30 },
+    stats: { hp: 600, armor: 'bio', armorValue: 4, category: 'infantry', speed: 2.0, damage: 45, dmgType: 'crystal', range: 4, cooldown: 1.8, sight: 7 },
+    attackEffect: 'proj_magic_bolt',
+    exclusiveTo: { faction: 'frostridge_kingdom', guild: 'void_institute' },
+    // 特性"攻击附带水晶碎片溅射"由 UnitSpecialSystem + CombatSystem 处理
+  },
+  // 批3: 翡翠邦联专属单位
+  unit_jade_scout: {
+    displayName: '翡翠斥候',
+    tier: 'L3',
+    cost: { crystal: 250, supply: 2, time: 12 },
+    stats: { hp: 90, armor: 'light', armorValue: 0, category: 'infantry', speed: 4.5, damage: 0, dmgType: 'physical', range: 0, cooldown: 1.0, sight: 12 },
+    attackEffect: 'melee',
+    exclusiveTo: { faction: 'jade_confederation' },
+    // 特性"永久隐形+标记30秒"由 UnitSpecialSystem 处理
+  },
+  unit_mercenary_sword: {
+    displayName: '佣兵剑士',
+    tier: 'L2',
+    cost: { crystal: 200, supply: 2, time: 14 },
+    stats: { hp: 130, armor: 'light', armorValue: 1, category: 'infantry', speed: 2.2, damage: 22, dmgType: 'physical', range: 1, cooldown: 1.2, sight: 6 },
+    attackEffect: 'melee',
+    favoredBy: ['jade_confederation'],
+    exclusiveTo: { faction: 'jade_confederation' },
+  },
   unit_grenadier: {
     displayName: '掷弹兵',
     tier: 'L2',
@@ -203,6 +251,42 @@ export const UNIT_DEFS: Record<string, UnitDefData> = {
     techReq: ['tech:arcane_legacy', 'tech:mech_assembly'],
     exclusiveTo: { faction: 'arcane_empire', guild: 'mechanists_guild' },
   },
+  unit_arcane_bastion: {
+    displayName: '奥术壁垒',
+    tier: 'L3',
+    cost: { crystal: 650, supply: 4, time: 35 },
+    stats: { hp: 500, armor: 'heavy', armorValue: 6, category: 'infantry', speed: 1.0, damage: 45, dmgType: 'magic', range: 7, cooldown: 2.5, sight: 8 },
+    attackEffect: 'proj_magic_bolt',
+    techReq: ['tech:arcane_legacy'],
+    exclusiveTo: { faction: 'hammer_federation', guild: 'mages_guild' },
+  },
+  unit_corrosion_beast: {
+    displayName: '腐蚀巨兽',
+    tier: 'L3',
+    cost: { crystal: 550, supply: 4, time: 28 },
+    stats: { hp: 600, armor: 'bio', armorValue: 4, category: 'infantry', speed: 2.0, damage: 35, dmgType: 'alchemy', range: 3, cooldown: 1.5, sight: 6 },
+    attackEffect: 'melee',
+    techReq: ['tech:advanced_potions'],
+    exclusiveTo: { faction: 'hammer_federation', guild: 'alchemists_society' },
+  },
+  unit_void_walker: {
+    displayName: '虚空行者',
+    tier: 'L3',
+    cost: { crystal: 500, supply: 3, time: 25 },
+    stats: { hp: 350, armor: 'light', armorValue: 2, category: 'infantry', speed: 3.0, damage: 45, dmgType: 'void', range: 4, cooldown: 1.2, sight: 8 },
+    attackEffect: 'melee',
+    techReq: ['tech:void_amplify'],
+    exclusiveTo: { faction: 'arcane_empire', guild: 'void_institute' },
+  },
+  unit_siege_engine: {
+    displayName: '魔导攻城炮',
+    tier: 'L3',
+    cost: { crystal: 550, supply: 4, time: 30 },
+    stats: { hp: 450, armor: 'mechanical', armorValue: 7, category: 'vehicle', speed: 1.0, damage: 80, dmgType: 'physical', range: 8, cooldown: 3.0, sight: 7 },
+    attackEffect: 'proj_cannon',
+    techReq: ['tech:mech_assembly'],
+    exclusiveTo: { guild: 'mechanists_guild' },
+  },
 };
 
 // ============================================================
@@ -247,19 +331,43 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
       'tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce',
     ],
   },
+  // 批2: 霜脊王国指挥中心（数值与帝国/联邦 CC 对齐，保证起手经济公平）
+  bld_cc_frostridge: {
+    displayName: '霜脊指挥中心',
+    cost: { crystal: 0, industry: 0, time: 0 },
+    hp: 2000,
+    provides: { supply: 50, industry: 65 },
+    produces: ['unit_worker', 'hero_frost_a', 'hero_frost_b'],
+    researches: [
+      'tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce',
+      'tech:deep_mining', 'tech:frost_fortification',
+    ],
+  },
+  // 批3: 翡翠邦联指挥中心（数值对齐）
+  bld_cc_jade: {
+    displayName: '翡翠指挥中心',
+    cost: { crystal: 0, industry: 0, time: 0 },
+    hp: 2000,
+    provides: { supply: 50, industry: 65 },
+    produces: ['unit_worker', 'hero_jade_a', 'hero_jade_b'],
+    researches: [
+      'tech:advanced_mining', 'tech:crystal_smelting', 'tech:refining_tech', 'tech:infantry_armor', 'tech:structure_reinforce',
+      'tech:trade_network', 'tech:mercenary_contract',
+    ],
+  },
   bld_barracks: {
     displayName: '兵营',
     cost: { crystal: 300, industry: 20, time: 20 },
     hp: 800,
     provides: { supply: 20, industry: 0 },
-    produces: ['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier', 'unit_assault_worker', 'unit_alchemy_colossus'],
+    produces: ['unit_rifleman', 'unit_battle_mage', 'unit_arcane_heavy', 'unit_grenadier', 'unit_assault_worker', 'unit_alchemy_colossus', 'unit_corrosion_beast', 'unit_frost_guard', 'unit_mercenary_sword', 'unit_jade_scout'],
   },
   bld_factory: {
     displayName: '工厂',
     cost: { crystal: 500, industry: 40, time: 30 },
     hp: 1000,
     provides: { supply: 20, industry: 30 },
-    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport', 'unit_hammer_squad', 'unit_void_probe', 'unit_mobile_workshop', 'unit_unstable_crystal', 'unit_rune_titan'],
+    produces: ['unit_magitech_mech', 'unit_scout_bike', 'unit_transport', 'unit_hammer_squad', 'unit_void_probe', 'unit_mobile_workshop', 'unit_unstable_crystal', 'unit_rune_titan', 'unit_arcane_bastion', 'unit_siege_engine', 'unit_crystal_catapult', 'unit_deep_destroyer'],
   },
   bld_refinery: {
     displayName: '采矿场',
@@ -267,6 +375,24 @@ export const BUILDING_DEFS: Record<string, BuildingDefData> = {
     hp: 600,
     provides: { supply: 0, industry: 10 },
     produces: [],
+  },
+  // 批2: 霜脊深矿竖井 — 替代采矿场，产量+50%（ResourceSystem 把它当 refinery 识别并应用加成），建造+50%时间
+  bld_deep_mine: {
+    displayName: '深矿竖井',
+    cost: { crystal: 400, industry: 30, time: 38 },
+    hp: 600,
+    provides: { supply: 0, industry: 10 },
+    produces: [],
+    exclusiveTo: { faction: 'frostridge_kingdom' },
+  },
+  // 批3: 翡翠交易所 — 水晶与工业产值兑换建筑（专属经济建筑）
+  bld_trade_post: {
+    displayName: '交易所',
+    cost: { crystal: 350, industry: 20, time: 22 },
+    hp: 700,
+    provides: { supply: 0, industry: 15 },
+    produces: [],
+    exclusiveTo: { faction: 'jade_confederation' },
   },
   bld_power_plant: {
     displayName: '工业车间',
@@ -295,7 +421,7 @@ bld_ancient_archive: {
     cost: { crystal: 350, industry: 20, time: 25 },
     hp: 600,
     provides: { supply: 0, industry: 10 },
-    produces: ['unit_arcane_guard', 'unit_arcane_cannon'],
+    produces: ['unit_arcane_guard', 'unit_arcane_cannon', 'unit_void_walker'],
     // 批3: 追加法师公会科技线（teleport/charge/resonance/elemental_storm 超武解锁）
     researches: [
       'tech:arcane_legacy', 'tech:battle_mage_training', 'tech:mech_assembly', 'tech:production_line_optimized',
@@ -476,7 +602,24 @@ export interface FactionDefData {
     researchSpeedMult: number;
     /** 魔法伤害倍率 (帝国 1.1) */
     magicDmgMult: number;
+    /** 批2: 水晶采集倍率 (霜脊 1.25 = 采集+25%)；默认 1.0 */
+    crystalGatherMult?: number;
+    /** 批2: 护甲加成倍率 (霜脊 1.1 = 护甲+10%)；默认 1.0 */
+    armorBonusMult?: number;
+    /** 批3: 单位移速倍率 (翡翠 1.1 = 移速+10%)；默认 1.0 */
+    moveSpeedMult?: number;
   };
+  // ---- 批1: 数据驱动字段（消除 AI/GameScene 硬编码 faction 分支） ----
+  /** 科技/经济倾向建筑 id（替代 EconomyAI 的 faction?bld_a:bld_b 硬编码） */
+  techBuilding: string;
+  /** 该王国英雄 id 列表（替代 heroData.getFactionHero 硬编码） */
+  heroIds: string[];
+  /** 指挥中心建筑 id（替代 GameScene/GameWorld/EconomyAI 的 CC 映射硬编码） */
+  ccBuilding: string;
+  /** AI 偏好单位三元组（替代 StrategyManager.getFactionUnits 硬编码） */
+  preferredUnits: { rifleman: string; elite: string; tier2: string };
+  /** 反制单位（敌方重甲/轻甲多时追加训练；替代 EconomyAI:419/425 硬编码） */
+  counterUnits?: { vsHeavy?: string; vsLight?: string };
 }
 
 export const FACTION_DEFS: Record<string, FactionDefData> = {
@@ -495,6 +638,12 @@ export const FACTION_DEFS: Record<string, FactionDefData> = {
       researchSpeedMult: 0.85,
       magicDmgMult: 1.1,
     },
+    // 批1: 数据驱动字段（值取自原 EconomyAI/StrategyManager/GameScene 硬编码，行为不变）
+    techBuilding: 'bld_ancient_archive',
+    heroIds: ['hero_isabelle', 'hero_sebastian'],
+    ccBuilding: 'bld_cc_empire',
+    preferredUnits: { rifleman: 'unit_rifleman', elite: 'unit_arcane_guard', tier2: 'unit_magitech_mech' },
+    counterUnits: { vsHeavy: 'unit_arcane_heavy' },
   },
   hammer_federation: {
     name: '铁锤联邦',
@@ -509,6 +658,55 @@ export const FACTION_DEFS: Record<string, FactionDefData> = {
       researchSpeedMult: 1.0,
       magicDmgMult: 1.0,
     },
+    techBuilding: 'bld_assembly_workshop',
+    heroIds: ['hero_marcus', 'hero_eileen'],
+    ccBuilding: 'bld_cc_federation',
+    preferredUnits: { rifleman: 'unit_rifleman', elite: 'unit_hammer_squad', tier2: 'unit_magitech_mech' },
+    counterUnits: { vsLight: 'unit_assault_worker' },
+  },
+  // 批2: 霜脊王国 — 固守型，水晶采集+25%，护甲+10%
+  frostridge_kingdom: {
+    name: '霜脊王国',
+    econPassive: '水晶采集速度 +25%',
+    milPassive: '所有单位护甲 +10%',
+    startingCrystal: 2500,
+    startingIndustry: 40,
+    startingUnits: [['unit_worker', 3], ['unit_frost_guard', 1]],
+    bonuses: {
+      buildCostMult: 1.0,
+      productionSpeedMult: 1.0,
+      researchSpeedMult: 1.0,
+      magicDmgMult: 1.0,
+      crystalGatherMult: 1.25,
+      armorBonusMult: 1.1,
+    },
+    // 批2: 霜脊无独立科技建筑，复用古代典籍馆（与帝国共用）；CC 用霜脊专属
+    techBuilding: 'bld_ancient_archive',
+    heroIds: ['hero_frost_a', 'hero_frost_b'],
+    ccBuilding: 'bld_cc_frostridge',
+    preferredUnits: { rifleman: 'unit_rifleman', elite: 'unit_frost_guard', tier2: 'unit_crystal_catapult' },
+    counterUnits: { vsHeavy: 'unit_frost_guard' },
+  },
+  // 批3: 翡翠邦联 — 灵活型，研究+10%/贸易+15%，移速+10%
+  jade_confederation: {
+    name: '翡翠邦联',
+    econPassive: '研究速度 +10%, 贸易收入 +15%',
+    milPassive: '单位移速 +10%',
+    startingCrystal: 1800,
+    startingIndustry: 60,
+    startingUnits: [['unit_worker', 3], ['unit_jade_scout', 1]],
+    bonuses: {
+      buildCostMult: 1.0,
+      productionSpeedMult: 1.0,
+      researchSpeedMult: 0.9,
+      magicDmgMult: 1.0,
+      moveSpeedMult: 1.1,
+    },
+    techBuilding: 'bld_ancient_archive',
+    heroIds: ['hero_jade_a', 'hero_jade_b'],
+    ccBuilding: 'bld_cc_jade',
+    preferredUnits: { rifleman: 'unit_rifleman', elite: 'unit_mercenary_sword', tier2: 'unit_jade_scout' },
+    counterUnits: { vsHeavy: 'unit_mercenary_sword' },
   },
 };
 
@@ -530,58 +728,58 @@ export interface TechDefData {
 export const TECH_DEFS: Record<string, TechDefData> = {
   'tech:advanced_mining': {
     name: '高级采集 L1',
-    crystal: 200,
-    time: 30,
+    crystal: 150,
+    time: 25,
     desc: '工人采集 +20%',
   },
   'tech:infantry_armor': {
     name: '步兵护甲 L1',
-    crystal: 250,
-    time: 35,
+    crystal: 180,
+    time: 28,
     desc: '步兵 +5 护甲',
   },
   'tech:structure_reinforce': {
     name: '建筑加固 L1',
-    crystal: 300,
-    time: 40,
+    crystal: 220,
+    time: 32,
     desc: '建筑 HP +20%',
   },
   'tech:battle_mage_training': {
     name: '战斗法师训练',
-    crystal: 200,
-    time: 30,
+    crystal: 150,
+    time: 25,
     desc: '解锁战斗法师训练',
   },
   'tech:mech_assembly': {
     name: '机甲装配技术',
-    crystal: 350,
-    time: 35,
+    crystal: 250,
+    time: 30,
     desc: '解锁魔导机甲制造',
   },
   'tech:crystal_smelting': {
     name: '水晶冶炼 L1',
-    crystal: 300,
-    time: 40,
+    crystal: 220,
+    time: 30,
     desc: '水晶采集 +15%',
   },
   'tech:refining_tech': {
     name: '精炼技术 L2',
-    crystal: 500,
-    time: 60,
+    crystal: 350,
+    time: 45,
     desc: '水晶采集 +25%（与L1叠加）',
     prerequisites: ['tech:crystal_smelting'],
   },
   'tech:arcane_legacy': {
     name: '奥术遗产',
-    crystal: 400,
-    time: 50,
+    crystal: 300,
+    time: 40,
     desc: '解锁奥术守卫训练',
   },
   // P0-4 修复：添加虚空过载优化科技（此前缺失，导致优化档位无法解锁）
   'tech:production_line_optimized': {
     name: '量产线优化',
-    crystal: 300,
-    time: 35,
+    crystal: 220,
+    time: 30,
     desc: '机械行会并行训练惩罚-5%；虚空过载时长延长至45秒',
   },
 
@@ -698,5 +896,34 @@ export const TECH_DEFS: Record<string, TechDefData> = {
     time: 155,
     desc: '解锁虚空研究院超级武器：虚空裂隙（15s 持续伤害+随机传送）',
     exclusiveTo: { guild: 'void_institute' },
+  },
+  // 批2: 霜脊王国专属科技
+  'tech:deep_mining': {
+    name: '深矿开采',
+    crystal: 350,
+    time: 45,
+    desc: '解锁霜脊王国专属建筑：深矿竖井（替代采矿场，产量+50%）',
+    exclusiveTo: { faction: 'frostridge_kingdom' },
+  },
+  'tech:frost_fortification': {
+    name: '霜脊筑城术',
+    crystal: 400,
+    time: 50,
+    desc: '霜脊守卫固守时附加护盾100，建筑HP+15%',
+    exclusiveTo: { faction: 'frostridge_kingdom' },
+  },
+  'tech:trade_network': {
+    name: '贸易网络',
+    crystal: 300,
+    time: 40,
+    desc: '解锁翡翠邦联专属建筑：交易所（水晶与工业产值兑换）',
+    exclusiveTo: { faction: 'jade_confederation' },
+  },
+  'tech:mercenary_contract': {
+    name: '佣兵契约',
+    crystal: 350,
+    time: 45,
+    desc: '翡翠斥候标记目标受额外伤害，佣兵剑士造价-20%',
+    exclusiveTo: { faction: 'jade_confederation' },
   },
 };

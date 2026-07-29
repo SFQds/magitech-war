@@ -165,9 +165,12 @@ export class CombatSystem {
 
         // 冷却完毕 → 攻击（应用行会buff修正）
         if (unit.attackTimer <= 0) {
-          // 攻击力：炼金力量药剂 + 虚空过载 + L3 特殊（秘法炮台充能×3）
+          // 攻击力：炼金力量药剂 + 虚空过载 + L3 特殊（秘法炮台充能×3 / 攻城炮对建筑×1.5）
           let effectiveDmgMult = GuildSystem.getAlchemyDamageMult(unit) * GuildSystem.getVoidOverloadDamageMult(unit);
-          effectiveDmgMult *= UnitSpecialSystem.getAttackDamageMult(unit);
+          // 第二期英雄攻击光环（薇拉佣兵契约等，每帧由 HeroSystem 累加）
+          effectiveDmgMult *= unit.auraAttackMult;
+          const targetIsStructure = target.armorType === 'structure';
+          effectiveDmgMult *= UnitSpecialSystem.getAttackDamageMult(unit, targetIsStructure);
           let effectiveDmg = Math.round(unit.attackDamage * effectiveDmgMult); // P2: single round instead of triple
           // 目标护甲修正：炼金腐蚀弹（P1-E3 修复：读攻击者的 corrosion buff，而非 target）
           const corrosionPenalty = unit instanceof Unit
@@ -189,8 +192,15 @@ export class CombatSystem {
             if (corrosionPenalty > 0) {
               target.armor = Math.max(0, target.armor - corrosionPenalty);
             }
-            const died = target.takeDamage(damage, unit.attackType);
+            // 批3: 翡翠斥候标记加成 — 被标记目标受伤 +25%
+            const markBonus = UnitSpecialSystem.getMarkBonus(target.id);
+            const finalDamage = markBonus > 0 ? Math.round(damage * (1 + markBonus)) : damage;
+            const died = target.takeDamage(finalDamage, unit.attackType);
             target.armor = savedArmor; // 恢复（腐蚀效果应由全局buff管理）
+            // L3 腐蚀巨兽：攻击命中叠减护甲
+            if (unit.spriteKey === 'unit_corrosion_beast' && !died) {
+              UnitSpecialSystem.onCorrosionHit(target.id);
+            }
             events.push({
               attackerId: unit.id,
               targetId: target.id,
@@ -353,6 +363,8 @@ export class CombatSystem {
 
     for (const other of units) {
       if (other.owner === unit.owner || !other.isAlive) continue;
+      // 批3: 翡翠斥候永久隐形，无侦测能力的单位无法自动锁定
+      if (UnitSpecialSystem.isUnitStealth(other)) continue;
       // 迷雾过滤：仅玩家单位受限制，AI 单位全图可见
       if (fogOfWar && unit.owner === 0 && !fogOfWar.isVisible(Math.round(other.tileX), Math.round(other.tileY))) continue;
       const dist = distance(

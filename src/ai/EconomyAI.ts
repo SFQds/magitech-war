@@ -11,7 +11,7 @@ import type { Building } from '../entities/Building';
 import type { Unit } from '../entities/Unit';
 import type { ResourceField } from '../entities/ResourceField';
 import type { StrategyDirective } from './StrategyManager';
-import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getBuildingCost as getBuildingCostWithDiscount } from '../config/unitData';
+import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, FACTION_DEFS, getBuildingCost as getBuildingCostWithDiscount } from '../config/unitData';
 import type { BuildCommand, ResearchCommand, TrainCommand } from '../types/commands';
 import { MAX_CRYSTAL, AI_RESCUE_CRYSTAL_MIN } from '../config/balance';
 
@@ -71,12 +71,14 @@ export class EconomyAI {
     const player = this.world.getPlayer(this.playerIndex);
     if (!player) return commands;
 
-    const crystal = player.resources.crystal;
+    let crystal = player.resources.crystal;
     const { supply, supplyCap } = player.resources;
 
     const faction = player.faction;
-    const techBldId = faction === 'arcane_empire' ? 'bld_ancient_archive' : 'bld_assembly_workshop';
-    const heroId = faction === 'arcane_empire' ? 'hero_isabelle' : 'hero_marcus';
+    // 批1: 数据驱动——从 FACTION_DEFS 读取，新增王国无需改此代码
+    const factionDef = FACTION_DEFS[faction];
+    const techBldId = factionDef?.techBuilding ?? 'bld_assembly_workshop';
+    const heroId = factionDef?.heroIds?.[0] ?? 'hero_marcus';
 
     // 难度系数：Hard 更激进（更早建造），Easy 更保守（更晚建造）
     const aggressMultiplier = this.difficulty === 'hard' ? 0.7
@@ -180,9 +182,9 @@ export class EconomyAI {
       b => b.owner === this.playerIndex && b.isAlive && b.spriteKey === 'bld_teleport_gate'
     ).length;
 
-    const cc = ownProductions.find(b =>
-      b.spriteKey === 'bld_cc_empire' || b.spriteKey === 'bld_cc_federation'
-    ) ?? ownProductions[0];
+    // 批1: 数据驱动——按玩家 faction 的 ccBuilding 查找，新增王国无需改此代码
+    const ccSpriteKey = factionDef?.ccBuilding ?? 'bld_cc_federation';
+    const cc = ownProductions.find(b => b.spriteKey === ccSpriteKey) ?? ownProductions[0];
 
     // 1. 工人数量维护
     const targetWorkers = directive.expansion > 0.5 ? 8 : 5;
@@ -271,14 +273,13 @@ export class EconomyAI {
       }
     }
 
-    // 3. 科技研究：找任意空闲且有科技槽的建筑，选择一个未研究的科技
+    // 3. 科技研究: 建造完成后, 找空闲科技建筑研究（每2s tick只发一条research命令）
     const techBld = buildings.find(
       b => b.owner === this.playerIndex && b.isAlive && b.state === 'idle' &&
         !b.researchingTechId && BUILDING_DEFS[b.spriteKey]?.researches?.length
     );
-    if (techBld) {
+    if (techBld && crystal >= 150) {
       const tt = this.world.techTrees.get(this.playerIndex);
-      // 批3: 过滤掉公会/阵营不符的科技（exclusiveTo.guild/faction 门控）
       const aiGuilds = this.world.players[this.playerIndex]?.guilds ?? [];
       const aiFaction = this.world.players[this.playerIndex]?.faction;
       const availTechs = (BUILDING_DEFS[techBld.spriteKey]?.researches ?? []).filter(
@@ -287,14 +288,12 @@ export class EconomyAI {
           if (!td) return false;
           if (td.exclusiveTo?.guild && !aiGuilds.includes(td.exclusiveTo.guild)) return false;
           if (td.exclusiveTo?.faction && td.exclusiveTo.faction !== aiFaction) return false;
-          return !tt?.isResearched(tid) && this.getTechCost(tid) < crystal * resourceFactor;
+          return !tt?.isResearched(tid) && this.getTechCost(tid) <= crystal;
         }
       );
       if (availTechs.length > 0) {
-        // P2-AI2: sort by prerequisites count then crystal cost - prefer foundational/cheaper techs first.
         const sortedTechs = availTechs.slice().sort((a, b) => {
-          const ta = TECH_DEFS[a];
-          const tb = TECH_DEFS[b];
+          const ta = TECH_DEFS[a]; const tb = TECH_DEFS[b];
           const pa = (ta?.prerequisites?.length ?? 0);
           const pb = (tb?.prerequisites?.length ?? 0);
           if (pa !== pb) return pa - pb;
@@ -324,7 +323,7 @@ export class EconomyAI {
     const trainPriority = [...counterUnits, ...directive.preferredUnits.filter(id => !counterUnits.includes(id))];
     // L3 批次: late 阶段追加公会专属 L3 单位（科技已研究时）
     if (directive.phase === 'late') {
-      const l3Candidates = ['unit_rune_titan', 'unit_alchemy_colossus', 'unit_arcane_cannon', 'unit_mobile_workshop', 'unit_unstable_crystal'];
+      const l3Candidates = ['unit_rune_titan', 'unit_alchemy_colossus', 'unit_arcane_cannon', 'unit_mobile_workshop', 'unit_unstable_crystal', 'unit_arcane_bastion', 'unit_corrosion_beast', 'unit_void_walker', 'unit_siege_engine', 'unit_frost_guard', 'unit_crystal_catapult', 'unit_deep_destroyer', 'unit_jade_scout', 'unit_mercenary_sword'];
       for (const id of l3Candidates) {
         if (trainPriority.includes(id)) continue;
         const def = UNIT_DEFS[id];
@@ -363,7 +362,18 @@ if (unitDefId === 'unit_grenadier') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_alchemy_colossus') return b.spriteKey === 'bld_barracks';
         if (unitDefId === 'unit_unstable_crystal') return b.spriteKey === 'bld_factory';
         if (unitDefId === 'unit_rune_titan') return b.spriteKey === 'bld_factory';
-	        return false;
+        if (unitDefId === 'unit_arcane_bastion') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_corrosion_beast') return b.spriteKey === 'bld_barracks';
+        if (unitDefId === 'unit_void_walker') return b.spriteKey === 'bld_ancient_archive';
+        if (unitDefId === 'unit_siege_engine') return b.spriteKey === 'bld_factory';
+        // 批2: 霜脊王国单位生产者映射
+        if (unitDefId === 'unit_frost_guard') return b.spriteKey === 'bld_barracks';
+        if (unitDefId === 'unit_crystal_catapult') return b.spriteKey === 'bld_factory';
+        if (unitDefId === 'unit_deep_destroyer') return b.spriteKey === 'bld_factory';
+        // 批3: 翡翠邦联单位生产者映射
+        if (unitDefId === 'unit_jade_scout') return b.spriteKey === 'bld_barracks';
+        if (unitDefId === 'unit_mercenary_sword') return b.spriteKey === 'bld_barracks';
+		        return false;
       });
       if (!producer) continue;
 
@@ -397,6 +407,8 @@ if (unitDefId === 'unit_grenadier') return b.spriteKey === 'bld_barracks';
     const total = enemyUnits.length;
     const result: string[] = [];
     const faction = this.playerFaction;
+    // 批1: 数据驱动——读取本 faction 的反制单位配置
+    const factionDef = FACTION_DEFS[faction];
 
     // 机械占比 > 33% -> 炼金克制（grenadier）
     if ((counts['mechanical'] ?? 0) / total > 0.33) {
@@ -415,13 +427,17 @@ if (unitDefId === 'unit_grenadier') return b.spriteKey === 'bld_barracks';
     // 重甲占比 > 33% -> 魔法克制
     if ((counts['heavy'] ?? 0) / total > 0.33) {
       result.push('unit_battle_mage'); // magic +25% vs heavy
-      if (faction === 'arcane_empire') result.push('unit_arcane_heavy');
+      // 批1: 数据驱动——按 faction 的 counterUnits.vsHeavy 追加
+      const vsHeavy = factionDef?.counterUnits?.vsHeavy;
+      if (vsHeavy) result.push(vsHeavy);
     }
 
     // 轻甲多 -> 扫射单位（rifleman 便宜量大）
     if ((counts['light'] ?? 0) / total > 0.5) {
       result.push('unit_rifleman');
-      if (faction === 'hammer_federation') result.push('unit_assault_worker');
+      // 批1: 数据驱动——按 faction 的 counterUnits.vsLight 追加
+      const vsLight = factionDef?.counterUnits?.vsLight;
+      if (vsLight) result.push(vsLight);
     }
 
     // 建筑多 -> grenadier (alchemy +50% vs structure)

@@ -42,4 +42,14 @@ export class TechTreeSystem {
   getResearched(): string[] {
     return Array.from(this.researched);
   }
+
+  /** 用一组科技 ID 重建已研究集合（存档读档用） */
+  setResearched(techIds: Iterable<string>): void {
+    this.researched = new Set(techIds);
+  }
+
+  /** 清空已研究集合（重置用） */
+  clear(): void {
+    this.researched.clear();
+  }
 }

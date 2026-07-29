@@ -182,6 +182,26 @@ export class SuperWeaponSystem {
     return SuperWeaponSystem.states.get(playerIndex) ?? [];
   }
 
+  /** 获取所有玩家的超武状态快照（存档用：playerIndex → SuperWeaponState[]） */
+  static snapshotAll(): Record<number, SuperWeaponState[]> {
+    const out: Record<number, SuperWeaponState[]> = {};
+    for (const [pi, weapons] of SuperWeaponSystem.states) {
+      // 深拷贝避免外部修改污染 static Map
+      out[pi] = weapons.map(w => ({ ...w }));
+    }
+    return out;
+  }
+
+  /** 从存档恢复所有玩家的超武状态（读档用：清空再按快照写入） */
+  static restoreAll(snapshot: Record<number, SuperWeaponState[]>): void {
+    SuperWeaponSystem.states.clear();
+    for (const [piStr, weapons] of Object.entries(snapshot)) {
+      const pi = Number(piStr);
+      if (!Number.isFinite(pi)) continue;
+      SuperWeaponSystem.states.set(pi, (weapons ?? []).map(w => ({ ...w })));
+    }
+  }
+
   /** 获取指定超武的定义 */
   static getDef(weaponId: string): SuperWeaponDef | undefined {
     return SUPER_WEAPONS[weaponId];

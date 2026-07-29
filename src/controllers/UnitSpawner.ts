@@ -70,6 +70,12 @@ export class UnitSpawner {
     // 设置基础护甲值
     unit.armor = s.armorValue ?? 0;
     unit.baseArmor = s.armorValue ?? 0;
+    // 批2: 霜脊王国护甲被动 +10%
+    const armorMult = FACTION_DEFS[faction]?.bonuses?.armorBonusMult ?? 1.0;
+    if (armorMult !== 1.0) {
+      unit.armor = Math.round(unit.armor * armorMult);
+      unit.baseArmor = Math.round(unit.baseArmor * armorMult);
+    }
     // 设置补给消耗（免费召唤的单位不占用补给，死亡时不退还）
     unit.supplyCost = freeSpawn ? 0 : (def.cost.supply ?? 0);
 
@@ -116,6 +122,12 @@ const unit = new Unit(owner, factionId as any, ux, uy, s.hp, s.armor, s.category
               s.speed, s.damage, s.dmgType, s.range, s.cooldown, s.sight, unitDefId, def.abilities ?? []);
             unit.armor = s.armorValue ?? 0;
             unit.baseArmor = s.armorValue ?? 0;
+            // 批2: 霜脊王国护甲被动 +10%
+            const armorMult2 = FACTION_DEFS[factionId]?.bonuses?.armorBonusMult ?? 1.0;
+            if (armorMult2 !== 1.0) {
+              unit.armor = Math.round(unit.armor * armorMult2);
+              unit.baseArmor = Math.round(unit.baseArmor * armorMult2);
+            }
             // P0-A13 修复：起始单位不扣 supply（spawnFactionStartingUnits 无 world 引用无法 spend），
             // 设 supplyCost=0 与 freeSpawn 一致，死亡时不退款，避免"未支付却退款"导致 supply 被错扣。
             // 起始 CC provides 50 supply 足够覆盖开局单位，不需要起始单位占 supply。

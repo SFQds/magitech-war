@@ -37,6 +37,14 @@ export class GameOverController {
   /** 是否已结束 */
   get isOver(): boolean { return this._gameOver; }
 
+  /** 游戏计时器（秒，存档用） */
+  get gameTimer(): number { return this._gameTimer; }
+  set gameTimer(v: number) { this._gameTimer = v; }
+
+  /** 宽限期计时器（存档用） */
+  get graceTimers(): [number, number] { return this._graceTimers; }
+  set graceTimers(v: [number, number]) { this._graceTimers = v; }
+
   /** 建筑全失歼灭判定 + 30 分钟限时判定 */
   checkGameOver(): void {
     if (this._gameOver) return;

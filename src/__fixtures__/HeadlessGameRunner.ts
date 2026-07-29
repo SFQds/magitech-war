@@ -21,6 +21,8 @@
  */
 
 import { GameWorld } from '../core/GameWorld';
+import { FACTION_DEFS } from '../config/unitData';
+import type { FactionId } from '../types/data';
 import { EntityRegistry } from '../core/EntityRegistry';
 import { TechSystem } from '../systems/TechSystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
@@ -56,7 +58,11 @@ export interface HeadlessRunnerOptions {
   /** 是否放置起始单位（CC + workers + riflemen） */
   placeStartingUnits?: boolean;
   /** 玩家 0 阵营 */
-  playerFaction?: 'arcane_empire' | 'hammer_federation';
+  playerFaction?: FactionId;
+  /** 玩家 0 行会组合（默认法师+炼金） */
+  playerGuilds?: string[];
+  /** AI 行会组合（默认机械+炼金） */
+  aiGuilds?: string[];
 }
 
 export class HeadlessGameRunner {
@@ -74,7 +80,7 @@ export class HeadlessGameRunner {
 
   private readonly flashTimers = new Map<string, number>();
   private readonly aiDifficulty: 'easy' | 'normal' | 'hard';
-  private readonly playerFaction: 'arcane_empire' | 'hammer_federation';
+  private readonly playerFaction: FactionId;
   private readonly stubScene: any;
 
   constructor(opts: HeadlessRunnerOptions = {}) {
@@ -83,6 +89,8 @@ export class HeadlessGameRunner {
       difficulty = 'normal',
       placeStartingUnits = true,
       playerFaction = 'arcane_empire',
+      playerGuilds = ['mages_guild', 'alchemists_society'],
+      aiGuilds = ['mechanists_guild', 'alchemists_society'],
     } = opts;
 
     this.aiDifficulty = difficulty;
@@ -94,9 +102,11 @@ export class HeadlessGameRunner {
     this.entities = new EntityRegistry();
 
     // 玩家 0（人）+ 玩家 1（AI）
-    const aiFaction = playerFaction === 'arcane_empire' ? 'hammer_federation' : 'arcane_empire';
-    this.world.addPlayer(playerFaction, ['mages_guild', 'alchemists_society'], false);
-    this.world.addPlayer(aiFaction, ['mechanists_guild', 'alchemists_society'], true);
+    // 批4: 数据驱动——从 FACTION_DEFS 选对立阵营
+    const allFactions = Object.keys(FACTION_DEFS) as FactionId[];
+    const aiFaction = allFactions.filter(f => f !== playerFaction)[0] ?? 'hammer_federation';
+    this.world.addPlayer(playerFaction, [...playerGuilds], false);
+    this.world.addPlayer(aiFaction, [...aiGuilds], true);
 
     // 子系统
     this.techSystem = new TechSystem(this.world);
@@ -145,8 +155,11 @@ export class HeadlessGameRunner {
   private placeStartUnits(): void {
     const p0 = { x: 6, y: 6 };
     const p1 = { x: 56, y: 56 };
+    // 批4: 重新计算 aiFaction（构造函数的局部变量此处不可见）
+    const allFactions2 = Object.keys(FACTION_DEFS) as FactionId[];
+    const aiFaction2 = allFactions2.filter(f => f !== this.playerFaction)[0] ?? 'hammer_federation';
     this.spawner.placeStartingUnits(p0, p1, this.playerFaction,
-      this.playerFaction === 'arcane_empire' ? 'hammer_federation' : 'arcane_empire');
+      aiFaction2);
     // 初始资源点
     for (const pos of [{ x: 9, y: 6 }, { x: 6, y: 9 }, { x: 53, y: 56 }, { x: 56, y: 53 }, { x: 30, y: 30 }]) {
       this.entities.addField(new ResourceField(pos.x, pos.y, 'crystal', 5000, 3));
@@ -284,7 +297,7 @@ export class HeadlessGameRunner {
 
   private stepGuildAndHero(ds: number): void {
     GuildSystem.update(this.world.players, this.entities.units, this.entities.buildings, ds, this.world.techTrees, this.world.arcaneChargeTimers);
-    const result = HeroSystem.update(this.entities.heroes, this.entities.units, this.entities.buildings, this.world, ds);
+    const result = HeroSystem.update(this.entities.heroes, this.entities.units, this.entities.buildings, this.world, ds, this.entities.fields);
     // 公会专属建筑机制（维修站光环等）— 与 GameScene 同步
     BuildingSystem.update(this.entities.units, this.entities.buildings, ds, this.world);
     // L3 单位特殊机制 - 与 GameScene 同步

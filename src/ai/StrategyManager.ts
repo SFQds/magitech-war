@@ -9,6 +9,7 @@ import type { GameWorld } from '../core/GameWorld';
 import type { Unit } from '../entities/Unit';
 import type { Building } from '../entities/Building';
 import type { ResourceField } from '../entities/ResourceField';
+import { FACTION_DEFS } from '../config/unitData';
 
 export interface StrategyDirective {
   phase: 'early' | 'mid' | 'late';
@@ -28,10 +29,9 @@ export class StrategyManager {
   /** 按阵营返回偏好单位列表 */
   private getFactionUnits(): { rifleman: string; elite: string; tier2: string } {
     const faction = this.world.players[this.playerIndex]?.faction;
-    if (faction === 'hammer_federation') {
-      return { rifleman: 'unit_rifleman', elite: 'unit_hammer_squad', tier2: 'unit_magitech_mech' };
-    }
-    return { rifleman: 'unit_rifleman', elite: 'unit_arcane_guard', tier2: 'unit_magitech_mech' };
+    // 批1: 数据驱动——从 FACTION_DEFS 读取 preferredUnits，新增王国无需改此代码
+    return FACTION_DEFS[faction ?? '']?.preferredUnits
+      ?? { rifleman: 'unit_rifleman', elite: 'unit_arcane_guard', tier2: 'unit_magitech_mech' };
   }
 
   static readonly DEFAULT_DIRECTIVE: StrategyDirective = {

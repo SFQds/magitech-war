@@ -119,13 +119,13 @@ describe('DeathCleanupSystem — 建筑清理', () => {
   it('研究进度按剩余比例退款', () => {
     const b = makeBuilding({ owner: 0, tileX: 5, tileY: 5 });
     entities.addBuilding(b);
-    b.researchingTechId = 'tech:advanced_mining'; // cost 200
-    b.researchProgress = 0.5; // 剩余 50% → 退款 100
+    b.researchingTechId = 'tech:advanced_mining'; // cost 150
+    b.researchProgress = 0.5; // 剩余 50% → 退款 75
     world.players[0].resources.crystal = 1000;
     const before = world.players[0].resources.crystal;
     b.takeDamage(9999, 'physical');
     cleanup.cleanup();
-    expect(world.players[0].resources.crystal).toBe(before + 100);
+    expect(world.players[0].resources.crystal).toBe(before + 75);
   });
 
   it('建造中建筑摧毁释放工人', () => {
@@ -434,7 +434,7 @@ describe('DeathCleanupSystem — 退款边界', () => {
     const before = world.players[0].resources.crystal;
     b.takeDamage(99999, 'physical');
     cleanup.cleanup();
-    expect(world.players[0].resources.crystal).toBe(before + 200);
+    expect(world.players[0].resources.crystal).toBe(before + 150);
   });
 
   it('未知 researchingTechId 清除 id 不退款', () => {

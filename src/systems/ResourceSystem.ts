@@ -16,6 +16,7 @@ import {
   INDUSTRY_REGEN_BASE,
   INDUSTRY_REGEN_PER_OUTPUT,
 } from '../config/balance';
+import { FACTION_DEFS } from '../config/unitData';
 
 export interface GatherEvent {
   workerId: string;
@@ -50,6 +51,14 @@ export class ResourceSystem {
     // 缓存 fieldIndex 避免每工人 fields.find() O(F) 扫描
     const fieldMap = new Map<string, ResourceField>();
     for (const f of fields) fieldMap.set(f.id, f);
+    // 批3: 缓存希尔德英雄（hero_frost_b）位置，矿脉感应光环 9 格内采集+30%
+    const hildeHeroes = units.filter(u => u.isAlive && u.spriteKey === 'hero_frost_b');
+    // 批4: 递减卡林「玉港资本」采集 debuff 计时器
+    for (const player of players) {
+      if ((player.gatherDebuffTimer ?? 0) > 0) {
+        player.gatherDebuffTimer = Math.max(0, (player.gatherDebuffTimer ?? 0) - deltaSec);
+      }
+    }
 
     for (const unit of units) {
       if (!unit.isAlive || unit.state !== 'gathering') continue;
@@ -76,8 +85,9 @@ export class ResourceSystem {
 
         const amount = ResourceSystem.gather(unit, field);
         // P2-质疑6: 精炼厂按距离生效 — 矿点 15 格内有己方精炼厂才满速采集
+        // 批2: 霜脊深矿竖井 bld_deep_mine 同样提供满速采集（替代 refinery）
         const refineries = buildings?.filter(b =>
-          b.isAlive && b.spriteKey === 'bld_refinery' && b.owner === unit.owner
+          b.isAlive && (b.spriteKey === 'bld_refinery' || b.spriteKey === 'bld_deep_mine') && b.owner === unit.owner
         ) ?? [];
         const hasRefinery = refineries.some(r =>
           Math.abs(r.tileX - field.tileX) + Math.abs(r.tileY - field.tileY) <= 15
@@ -93,6 +103,21 @@ export class ResourceSystem {
         // 科技采集加成
         const mult = unit.owner === 0 ? (gMultP0 ?? 1.0) : (gMultP1 ?? 1.0);
         gathered = Math.round(gathered * mult);
+        // 批2: 阵营采集被动（霜脊水晶采集+25%）
+        const player = players[unit.owner];
+        const factionGatherMult = FACTION_DEFS[player?.faction ?? '']?.bonuses?.crystalGatherMult ?? 1.0;
+        gathered = Math.round(gathered * factionGatherMult);
+        // 批3: 希尔德「矿脉感应」光环 — 矿场9格内有己方希尔德英雄时采集+30%
+        const hasHildeNearby = hildeHeroes.some(h =>
+          h.owner === unit.owner &&
+          Math.abs(h.tileX - field.tileX) + Math.abs(h.tileY - field.tileY) <= 9
+        );
+        if (hasHildeNearby) gathered = Math.round(gathered * 1.3);
+        // 批4: 卡林「玉港资本」debuff — 采集-50%（60秒）
+        if ((player?.gatherDebuffTimer ?? 0) > 0) gathered = Math.round(gathered * 0.5);
+        // 批2: 深矿竖井产量+50%（霜脊专属矿场额外加成）
+        const hasDeepMine = refineries.some(r => r.spriteKey === 'bld_deep_mine');
+        if (hasDeepMine) gathered = Math.round(gathered * 1.5);
         // 批D: 虚空共鸣器 — 矿脉 15 格内有己方共鸣器时采集 ×1.5（额外抽取加速矿脉枯竭）
         const resonators = buildings?.filter(b =>
           b.isAlive && b.spriteKey === 'bld_void_resonator' && b.owner === unit.owner
@@ -112,7 +137,6 @@ export class ResourceSystem {
           }
         }
         if (gathered > 0) {
-          const player = players[unit.owner];
           if (player) {
             player.resources.crystal = Math.min(MAX_CRYSTAL, player.resources.crystal + gathered);
             events.push({
