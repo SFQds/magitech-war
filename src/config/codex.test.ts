@@ -26,7 +26,7 @@ describe('CODEX_ENTRIES - 数据完整性', () => {
   });
 
   it('category 值合法', () => {
-    const valid = new Set(['faction', 'unit', 'building', 'tech', 'hero', 'guild', 'superweapon', 'neutral_unit', 'neutral_building']);
+    const valid = new Set(['faction', 'unit', 'building', 'tech', 'hero', 'guild', 'superweapon', 'neutral_unit', 'neutral_building', 'lore', 'story']);
     for (const e of CODEX_ENTRIES) {
       expect(valid.has(e.category)).toBe(true);
     }
