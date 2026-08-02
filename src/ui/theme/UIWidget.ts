@@ -247,12 +247,6 @@ export function drawOuterGlow(g: Phaser.GameObjects.Graphics, x: number, y: numb
   }
 }
 
-/** 内阴影 (顶部暗边, 模拟凹陷) */
-export function drawInsetShadow(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, radius = 4): void {
-  g.fillStyle(0x000000, 0.3);
-  g.fillRoundedRect(x, y, w, 3, { tl: radius, tr: radius, bl: 0, br: 0 });
-}
-
 /** 为按钮绑定 hover/out 重绘回调（沿用现有组件的 graphics.clear+重绘 模式） */
 export function bindButtonHover(
   hitArea: Phaser.GameObjects.Rectangle,
@@ -308,7 +302,6 @@ export const UIWidget = {
   drawButtonSkin,
   setButtonSkinState,
   drawOuterGlow,
-  drawInsetShadow,
 };
 
 export type UIWidgetType = typeof UIWidget;

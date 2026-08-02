@@ -232,9 +232,3 @@ export function getFactionHero(faction: string, index = 0): string | undefined {
   // 批1: 数据驱动——从 FACTION_DEFS 读取 heroIds，新增王国无需改此代码
   return FACTION_DEFS[faction]?.heroIds?.[index];
 }
-
-/** 获取阵营的所有英雄ID列表 */
-export function getFactionHeroes(faction: string): string[] {
-  // 批1: 数据驱动——从 FACTION_DEFS 读取 heroIds
-  return FACTION_DEFS[faction]?.heroIds ?? [];
-}

@@ -102,7 +102,7 @@ src/
 - **皮肤路径**：调用 `drawPanelSkin(scene, {skinKey, ...})` / `drawButtonSkin(scene, {skinNormal, skinHover, skinActive, ...})`，当 `scene.textures.exists(skinKey)` 为真时，用 Phaser NineSlice 渲染豆包生成的皮肤纹理（暗紫魔导渐变 + 金描边，可九宫格拉伸）。
 - **回退路径**：纹理缺失时自动回退到 `drawPanel` / `drawButton` 的纯色 Graphics 绘制（原塑料感方案），保证测试 stub（`textures.exists: () => false`）和无资产环境仍可运行。
 - **状态切换**：`setButtonSkinState(ns, opts, state)` 通过 `ns.setTexture(key)` 切换 hover/active 态皮肤。
-- **光影辅助**：`drawOuterGlow` / `drawInsetShadow` 用多层 Graphics 模拟外发光与内阴影，补充纯贴图不够的光影。
+- **光影辅助**：`drawOuterGlow` 用多层 Graphics 模拟外发光，补充纯贴图不够的光影。
 
 ### 皮肤资产约定
 

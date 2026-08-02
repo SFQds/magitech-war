@@ -218,17 +218,15 @@ export class GuildSystem {
     }
     unit.attackDamage = Math.round(unit.baseAttackDamage * 1.5);
     // P0-7 修复：记录充能打击次数（攻击后由 CombatSystem 自动恢复）
-    ((unit as any)._chargeStrikeUses ?? 0);
-    (unit as any)._chargeStrikeUses = ((unit as any)._chargeStrikeUses ?? 0) + 1;
+    unit._chargeStrikeUses += 1;
     return true;
   }
 
   /** P0-7 修复：充能打击攻击后自动恢复（CombatSystem 每次攻击后调用） */
   static magesRestoreAfterAttack(unit: Unit): void {
-    const uses = (unit as any)._chargeStrikeUses ?? 0;
-    if (uses <= 0) return;
-    (unit as any)._chargeStrikeUses = uses - 1;
-    if ((unit as any)._chargeStrikeUses <= 0) {
+    if (unit._chargeStrikeUses <= 0) return;
+    unit._chargeStrikeUses -= 1;
+    if (unit._chargeStrikeUses <= 0) {
       unit.attackDamage = unit.baseAttackDamage || unit.attackDamage;
       unit.baseAttackDamage = 0;
     }
@@ -480,21 +478,21 @@ export class GuildSystem {
   /** 查询虚空过载的攻击加成（乘法因子）— P0-4 修复：从 unit 自身读取优化状态 */
   static getVoidOverloadDamageMult(unit: Unit, _hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    const boost = (unit as any).isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    const boost = unit.isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
     return 1.0 + boost;
   }
 
   /** 查询虚空过载的移速加成 */
   static getVoidOverloadSpeedMult(unit: Unit, _hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    const boost = (unit as any).isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    const boost = unit.isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
     return 1.0 + boost;
   }
 
   /** 查询虚空过载的护甲加成 */
   static getVoidOverloadArmorMult(unit: Unit, _hasOptimizedTech = false): number {
     if (!unit.isVoidOvercharged || unit.voidOverloadTimer <= 0) return 1.0;
-    const boost = (unit as any).isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
+    const boost = unit.isVoidOptimized ? TECH_OVERLOAD_BOOST_OPT : VOID_OVERLOAD_BOOST;
     return 1.0 + boost;
   }
 }

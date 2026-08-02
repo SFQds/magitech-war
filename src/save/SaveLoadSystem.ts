@@ -438,7 +438,7 @@ export function deserialize(data: SaveData): DeserializeResult {
     bld.builderId = sb.builderId;
     bld.sight = sb.sight;
     bld.productionSpeedBonus = sb.productionSpeedBonus;
-    (bld as any)._aiBuildTime = sb._aiBuildTime;
+    bld._aiBuildTime = sb._aiBuildTime;
     bld.attackDamage = sb.attackDamage;
     bld.attackRange = sb.attackRange;
     bld.attackCooldown = sb.attackCooldown;

@@ -72,8 +72,8 @@ export class Unit extends Entity {
   voidOverloadTimer: number = 0;
   /** P0-4 修复：是否使用了优化科技（影响增益倍率和持续时间） */
   isVoidOptimized: boolean = false;
-  /** 充能打击使用的次数（用于一攻后自动恢复原始攻击力） */
-  private _chargeStrikeUses: number = 0;
+  /** 充能打击使用的次数（用于一攻后自动恢复原始攻击力）— public 供 GuildSystem 读写 */
+  _chargeStrikeUses: number = 0;
 
   constructor(
     owner: number,

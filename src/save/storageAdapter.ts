@@ -52,12 +52,5 @@ export function setStorageBackend(b: StorageBackend | null): void {
   backend = b;
 }
 
-/** 获取内存后端用于测试（仅 MemoryStorage 实例支持 clear） */
-export function _resetMemoryStorageForTest(): void {
-  backend = null;
-  const b = getBackend();
-  if (b instanceof MemoryStorage) b.clear();
-}
-
 export { MemoryStorage };
 export { getBackend as _getBackend };
