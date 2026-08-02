@@ -78,12 +78,37 @@ src/
 │   ├── MilitaryAI.ts
 │   └── AIPlanner.ts
 └── ui/                    UI 组件
-    ├── Minimap.ts
-    ├── SelectionPanel.ts
-    ├── CommandCard.ts
-    ├── ResourceDisplay.ts
-    └── ProductionQueue.ts
+    ├── theme/                UI 主题与皮肤化基础设施
+    │   ├── UITheme.ts        色彩/字体/半径常量 (T.Color / T.ColorHex / T.Font)
+    │   ├── UIWidget.ts       面板/按钮绘制: Graphics 纯色 + NineSlice 皮肤双路径
+    │   ├── UITheme.test.ts
+    │   └── UIWidget.test.ts
+    ├── Minimap.ts            小地图 (雕花边框 ui_minimap_frame)
+    ├── SelectionPanel.ts     选中实体面板 (skin_panel_console)
+    ├── CommandCard.ts        命令卡片 (三态按钮 + skin_card 槽底)
+    ├── ResourceDisplay.ts    顶栏资源显示 (ui_icon_* 替换 emoji)
+    ├── ProductionQueue.ts    生产队列 (skin_panel_console 小卡)
+    ├── HeroPanel.ts          英雄面板 (头像金框 ui_frame_portrait)
+    ├── SuperWeaponBar.ts     超武栏 (三态按钮)
+    ├── Tooltip.ts            悬浮提示 (skin_panel_console)
+    ├── PauseMenu.ts          暂停菜单 (skin_panel_console)
+    └── FpsCounter.ts         帧率计数 (纯文字, 无需皮肤化)
 ```
+
+## UI 皮肤化模式（UIWidget 双路径）
+
+`src/ui/theme/UIWidget.ts` 提供面板/按钮的绘制辅助，遵循**双路径**模式以保证向后兼容：
+
+- **皮肤路径**：调用 `drawPanelSkin(scene, {skinKey, ...})` / `drawButtonSkin(scene, {skinNormal, skinHover, skinActive, ...})`，当 `scene.textures.exists(skinKey)` 为真时，用 Phaser NineSlice 渲染豆包生成的皮肤纹理（暗紫魔导渐变 + 金描边，可九宫格拉伸）。
+- **回退路径**：纹理缺失时自动回退到 `drawPanel` / `drawButton` 的纯色 Graphics 绘制（原塑料感方案），保证测试 stub（`textures.exists: () => false`）和无资产环境仍可运行。
+- **状态切换**：`setButtonSkinState(ns, opts, state)` 通过 `ns.setTexture(key)` 切换 hover/active 态皮肤。
+- **光影辅助**：`drawOuterGlow` / `drawInsetShadow` 用多层 Graphics 模拟外发光与内阴影，补充纯贴图不够的光影。
+
+### 皮肤资产约定
+
+- 皮肤纹理 key 集中定义在 `src/config/sprites.ts` 的 `UI_SKIN_KEYS`（15 个：`skin_panel_console/top`、`skin_btn_normal/hover/active`、`skin_card`、`ui_icon_crystal/industry/supply/timer`、`ui_deco_gear`、`ui_frame_portrait`、`ui_minimap_frame`、`ui_menu_bg`、`ui_logo`）。
+- `BootScene` 对 `UI_SKIN_KEYS` 调用 `setFilter(LINEAR)`，避免 `pixelArt: true` 的 nearest 采样让皮肤纹理模糊；单位/建筑精灵仍保持 nearest 像素风。
+- 资产生成流程见根目录 `AGENTS.md`。
 
 ## 测试约定
 
@@ -91,10 +116,10 @@ src/
 
 | 指标 | 数值 |
 |------|------|
-| 测试文件 | 45 |
-| 总用例 | 1166 |
+| 测试文件 | 62 |
+| 总用例 | 1519 |
 | tsc | 零错误 |
-| vitest | 1166 全部通过 |
+| vitest | 1519 全部通过 |
 
 ### 测试分层
 
