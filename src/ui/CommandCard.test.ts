@@ -13,13 +13,15 @@ import type { CommandButton } from './CommandCard';
 function makeScene() {
   const graphics = {
     clear: () => graphics, fillStyle: () => graphics, fillRoundedRect: () => graphics,
-    lineStyle: () => graphics, strokeRoundedRect: () => graphics, destroy: () => {},
+    lineStyle: () => graphics, strokeRoundedRect: () => graphics, fillRect: () => graphics,
+    beginPath: () => graphics, moveTo: () => graphics, lineTo: () => graphics, strokePath: () => graphics,
+    destroy: () => {},
   };
   const image = {
-    setDisplaySize: () => image, setAlpha: () => image, setTint: () => image, destroy: () => {},
+    setDisplaySize: () => image, setAlpha: () => image, setTint: () => image, setOrigin: () => image, destroy: () => {},
   };
   const text = {
-    setOrigin: () => text, setText: () => text, setStyle: () => text, destroy: () => {},
+    setOrigin: () => text, setText: () => text, setStyle: () => text, setColor: () => text, destroy: () => {},
   };
   const rect = {
     setOrigin: () => rect, setInteractive: () => rect, on: () => rect, destroy: () => {},

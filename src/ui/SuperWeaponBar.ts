@@ -1,15 +1,18 @@
 /**
- * 超级武器栏 — 屏幕右下角（小地图上方）4 个超武按钮
+ * 超级武器栏 — 小地图上方悬浮竖排 (4 槽超武按钮)
  *
  * 显示冷却进度条+水晶消耗，点击进入瞄准模式。
  * 瞄准模式下再次点击地图激活超武。
  * 快捷键 1/2/3/4 对应 4 个超武槽。
  */
 import Phaser from 'phaser';
+import { UITheme as T } from './theme/UITheme';
+import { drawButton, drawButtonSkin, setButtonSkinState } from './theme/UIWidget';
+import type { ButtonState, SkinButtonOptions } from './theme/UIWidget';
 import { SuperWeaponSystem, SUPER_WEAPONS, GUILD_SUPER_WEAPON } from '../systems/SuperWeaponSystem';
 import type { SuperWeaponState } from '../systems/SuperWeaponSystem';
 
-const BTN_SIZE = 56;
+const BTN_SIZE = 44;
 const BTN_GAP = 6;
 
 export interface SuperWeaponButton {
@@ -26,7 +29,7 @@ export class SuperWeaponBar {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
   private playerIndex: number;
-  private buttons: { bg: Phaser.GameObjects.Graphics; nameText: Phaser.GameObjects.Text; cdText: Phaser.GameObjects.Text; hitArea: Phaser.GameObjects.Rectangle; weaponId: string }[] = [];
+  private buttons: { bg: Phaser.GameObjects.Graphics | Phaser.GameObjects.NineSlice; skinOpts: SkinButtonOptions; nameText: Phaser.GameObjects.Text; cdText: Phaser.GameObjects.Text; hitArea: Phaser.GameObjects.Rectangle; weaponId: string }[] = [];
   private _onActivate: ((weaponId: string, tileX: number, tileY: number) => void) | null = null;
   /** 当前瞄准中的超武 ID（null=未瞄准） */
   private _aimingWeaponId: string | null = null;
@@ -41,8 +44,8 @@ export class SuperWeaponBar {
 
     // 瞄准提示文字（初始隐藏）
     this._aimHint = scene.add.text(0, -20, '', {
-      fontSize: '12px', color: '#ff6644', backgroundColor: '#1a1a2e',
-      padding: { x: 8, y: 4 }, fontFamily: 'Arial, sans-serif',
+      fontSize: '12px', color: T.ColorHex.WARN, backgroundColor: T.ColorHex.CARD_BG,
+      padding: { x: 8, y: 4 }, fontFamily: T.FontFamily.BODY,
     }).setOrigin(0.5).setAlpha(0);
     this.container.add(this._aimHint);
 
@@ -58,50 +61,58 @@ export class SuperWeaponBar {
     for (const state of states) {
       const def = SUPER_WEAPONS[state.weaponId];
       if (!def) continue;
-      const bx = i * (BTN_SIZE + BTN_GAP);
-      const by = 0;
+      const bx = 0;
+      const by = i * (BTN_SIZE + BTN_GAP); // 竖排
 
-      const bg = this.scene.add.graphics();
-      this._drawButton(bg, bx, by, false, false);
+      const skinOpts: SkinButtonOptions = {
+        x: bx, y: by, w: BTN_SIZE, h: BTN_SIZE,
+        skinNormal: 'skin_btn_normal', skinHover: 'skin_btn_hover',
+        skinActive: 'skin_btn_active', skinDisabled: 'skin_btn_normal', corner: 8,
+      };
+      let bg: Phaser.GameObjects.Graphics | Phaser.GameObjects.NineSlice;
+      if (this.scene.textures.exists('skin_btn_normal')) {
+        bg = drawButtonSkin(this.scene, skinOpts);
+      } else {
+        bg = this.scene.add.graphics();
+        this._drawButton(bg, skinOpts, false, false);
+      }
       this.container.add(bg);
 
       const nameText = this.scene.add.text(bx + BTN_SIZE / 2, by + 8, def.name.slice(0, 4), {
-        fontSize: '10px', color: '#c8a2c8', fontFamily: 'Arial, sans-serif',
+        fontSize: '10px', color: T.ColorHex.TEXT_MAIN, fontFamily: T.FontFamily.BODY,
       }).setOrigin(0.5);
       this.container.add(nameText);
 
       const cdText = this.scene.add.text(bx + BTN_SIZE / 2, by + BTN_SIZE / 2 + 6, '', {
-        fontSize: '11px', color: '#ffd700', fontFamily: 'Arial, sans-serif',
+        fontSize: '11px', color: T.ColorHex.TEXT_GOLD, fontFamily: T.FontFamily.BODY,
       }).setOrigin(0.5);
       this.container.add(cdText);
 
       // 热键数字标
       const hotkeyText = this.scene.add.text(bx + 4, by + 2, String(i + 1), {
-        fontSize: '9px', color: '#7f6a8e', fontFamily: 'Arial, sans-serif',
+        fontSize: '9px', color: T.ColorHex.TEXT_DIM, fontFamily: T.FontFamily.BODY,
       });
       this.container.add(hotkeyText);
 
       const hitArea = this.scene.add.rectangle(bx, by, BTN_SIZE, BTN_SIZE, 0xffffff, 0)
         .setOrigin(0).setInteractive({ useHandCursor: true });
       hitArea.on('pointerdown', () => this._onClick(state.weaponId));
-      hitArea.on('pointerover', () => this._drawButton(bg, bx, by, true, this._aimingWeaponId === state.weaponId));
-      hitArea.on('pointerout', () => this._drawButton(bg, bx, by, false, this._aimingWeaponId === state.weaponId));
+      hitArea.on('pointerover', () => this._drawButton(bg, skinOpts, true, this._aimingWeaponId === state.weaponId));
+      hitArea.on('pointerout', () => this._drawButton(bg, skinOpts, false, this._aimingWeaponId === state.weaponId));
       this.container.add(hitArea);
 
-      this.buttons.push({ bg, nameText, cdText, hitArea, weaponId: state.weaponId });
+      this.buttons.push({ bg, skinOpts, nameText, cdText, hitArea, weaponId: state.weaponId });
       i++;
     }
   }
 
-  private _drawButton(g: Phaser.GameObjects.Graphics, x: number, y: number, hover: boolean, aiming: boolean): void {
-    g.clear();
-    const fillColor = aiming ? 0x9b59b6 : hover ? 0x3a2a5a : 0x2a1a3a;
-    const alpha = aiming ? 0.95 : 0.9;
-    g.fillStyle(fillColor, alpha);
-    g.fillRoundedRect(x, y, BTN_SIZE, BTN_SIZE, 6);
-    const borderColor = aiming ? 0xffd700 : hover ? 0x9b59b6 : 0x5e3d78;
-    g.lineStyle(aiming ? 2 : 1, borderColor, 1);
-    g.strokeRoundedRect(x, y, BTN_SIZE, BTN_SIZE, 6);
+  private _drawButton(bg: Phaser.GameObjects.Graphics | Phaser.GameObjects.NineSlice, skinOpts: SkinButtonOptions, hover: boolean, aiming: boolean): void {
+    const state: ButtonState = aiming ? 'active' : hover ? 'hover' : 'normal';
+    if (typeof (bg as Phaser.GameObjects.NineSlice).setTexture === 'function') {
+      setButtonSkinState(bg as Phaser.GameObjects.NineSlice, skinOpts, state);
+    } else {
+      drawButton(this.scene, bg as Phaser.GameObjects.Graphics, { x: skinOpts.x, y: skinOpts.y, w: skinOpts.w, h: skinOpts.h, state });
+    }
   }
 
   private _onClick(weaponId: string): void {
@@ -148,8 +159,7 @@ export class SuperWeaponBar {
   private _redrawAll(): void {
     for (let i = 0; i < this.buttons.length; i++) {
       const b = this.buttons[i];
-      const bx = i * (BTN_SIZE + BTN_GAP);
-      this._drawButton(b.bg, bx, 0, false, this._aimingWeaponId === b.weaponId);
+      this._drawButton(b.bg, b.skinOpts, false, this._aimingWeaponId === b.weaponId);
     }
   }
 
@@ -162,13 +172,13 @@ export class SuperWeaponBar {
       const def = SUPER_WEAPONS[b.weaponId];
       if (state.active) {
         b.cdText.setText(`${Math.ceil(state.activeTimer)}s`);
-        b.cdText.setColor('#2ecc71');
+        b.cdText.setColor(T.ColorHex.HP_GREEN);
       } else if (state.cooldownTimer > 0) {
         b.cdText.setText(`${Math.ceil(state.cooldownTimer)}s`);
-        b.cdText.setColor('#ff6666');
+        b.cdText.setColor(T.ColorHex.WARN);
       } else {
         b.cdText.setText(`💎${def.crystalCost}`);
-        b.cdText.setColor('#ffd700');
+        b.cdText.setColor(T.ColorHex.TEXT_GOLD);
       }
     }
   }

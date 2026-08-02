@@ -69,4 +69,31 @@ export const PNG_SPRITE_KEYS = [
   'bld_trade_post',
   'hero_jade_a',
   'hero_jade_b',
+  // ===== UI 皮肤 (批1: 暗紫魔导+金描边) =====
+  'skin_panel_console',
+  'skin_panel_top',
+  'skin_btn_normal',
+  'skin_btn_hover',
+  'skin_btn_active',
+  'skin_card',
+  // UI 图标 (24x24)
+  'ui_icon_crystal',
+  'ui_icon_industry',
+  'ui_icon_supply',
+  'ui_icon_timer',
+  // UI 装饰
+  'ui_deco_gear',
+  'ui_frame_portrait',
+  'ui_minimap_frame',
+  // 主菜单
+  'ui_menu_bg',
+  'ui_logo',
+] as const;
+
+/** UI 皮肤/图标纹理 key (需线性采样, 不受 pixelArt nearest 影响) */
+export const UI_SKIN_KEYS = [
+  'skin_panel_console', 'skin_panel_top', 'skin_btn_normal', 'skin_btn_hover', 'skin_btn_active', 'skin_card',
+  'ui_icon_crystal', 'ui_icon_industry', 'ui_icon_supply', 'ui_icon_timer',
+  'ui_deco_gear', 'ui_frame_portrait', 'ui_minimap_frame',
+  'ui_menu_bg', 'ui_logo',
 ] as const;

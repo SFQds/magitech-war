@@ -32,6 +32,7 @@ function makeScene() {
   };
   const scene: any = {
     add: { graphics: () => graphics, text: () => ({ ...text }), rectangle: () => ({ ...rect }), container: () => ({ ...container }) },
+    textures: { exists: () => false },
   };
   return { scene };
 }

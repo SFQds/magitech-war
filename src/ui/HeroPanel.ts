@@ -1,17 +1,19 @@
 /**
- * 英雄详情面板 — 选中单个英雄时展开
+ * 英雄详情面板 — 选中英雄时覆盖于 SelectionPanel 上方 (中段区)
  *
- * 显示: 大头像 + 称号 + 等级 + XP 进度条 + 属性(攻/防/速/射程/视野) + 5 技能树列表
- * 已解锁技能高亮，未解锁灰显并标注所需等级
+ * 显示: 大头像 + 称号 + 等级星 + XP 发光条 + 属性 + 被动 + 5级技能树
+ * 取自 UITheme, 描边用紫色, 已解锁技能金色, 未解锁灰显。
  */
 import Phaser from 'phaser';
 import { Hero } from '../entities/Hero';
 import { HERO_DEFS } from '../config/heroData';
 import { getDisplayName } from '../config/unitData';
+import { UITheme as T } from './theme/UITheme';
+import { drawPanelSkin } from './theme/UIWidget';
 
-const PANEL_W = 220;
-const PANEL_H = 280;
-const XP_BAR_W = PANEL_W - 20;
+const PANEL_W = 505;
+const PANEL_H = 130;
+const XP_BAR_W = 140;
 
 export class HeroPanel {
   private scene: Phaser.Scene;
@@ -34,113 +36,114 @@ export class HeroPanel {
     const hd = HERO_DEFS[hero.spriteKey];
     if (!hd) return;
 
-    // 背景
-    const bg = this.scene.add.rectangle(0, 0, PANEL_W, PANEL_H, 0x1a1a2e, 0.95).setOrigin(0);
+    // 背景 (皮肤化: 有贴图用 NineSlice, 否则紫色描边面板)
+    const bg = drawPanelSkin(this.scene, { x: 0, y: 0, w: PANEL_W, h: PANEL_H, skinKey: 'skin_panel_console', corner: 14 });
     this.container.add(bg);
     this.elements.push(bg);
 
-    // 边框
-    const border = this.scene.add.graphics();
-    border.lineStyle(2, 0x9b59b6, 1);
-    border.strokeRoundedRect(0, 0, PANEL_W, PANEL_H, 8);
-    this.container.add(border);
-    this.elements.push(border);
+    // 头像 (左侧, 64x64)
+    if (this.scene.textures.exists(hero.spriteKey)) {
+      // 雕花相框底板 (中央紫色衬底, 置于头像之下)
+      if (this.scene.textures.exists('ui_frame_portrait')) {
+        const frame = this.scene.add.image(4, 4, 'ui_frame_portrait').setDisplaySize(72, 72).setOrigin(0);
+        this.container.add(frame);
+        this.elements.push(frame);
+      }
+      const portrait = this.scene.add.image(8, 8, hero.spriteKey).setDisplaySize(64, 64).setOrigin(0);
+      this.container.add(portrait);
+      this.elements.push(portrait);
+      // 无贴图时回退代码金边
+      if (!this.scene.textures.exists('ui_frame_portrait')) {
+        const pf = this.scene.add.graphics();
+        pf.lineStyle(1, T.Color.ACCENT_GOLD, 0.7);
+        pf.strokeRoundedRect(8, 8, 64, 64, 4);
+        this.container.add(pf);
+        this.elements.push(pf);
+      }
+    }
 
-    let y = 8;
-
-    // 英雄名 + 称号
-    const nameText = this.scene.add.text(10, y, `${getDisplayName(hero.spriteKey)}`, {
-      fontSize: '16px', color: '#c8a2c8', fontFamily: 'Arial, sans-serif', fontStyle: 'bold',
+    // 名称 + 称号 (头像右侧)
+    const nameText = this.scene.add.text(80, 4, getDisplayName(hero.spriteKey), {
+      fontSize: T.Font.H2, color: T.ColorHex.TEXT_MAIN, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
     });
     this.container.add(nameText);
     this.elements.push(nameText);
 
-    const titleText = this.scene.add.text(10, y + 20, hd.title, {
-      fontSize: '11px', color: '#7f6a8e', fontFamily: 'Arial, sans-serif',
+    const titleText = this.scene.add.text(80, 26, hd.title, {
+      fontSize: T.Font.SM, color: T.ColorHex.TEXT_DIM, fontFamily: T.FontFamily.BODY,
     });
     this.container.add(titleText);
     this.elements.push(titleText);
-    y += 40;
 
-    // 等级
-    const levelText = this.scene.add.text(10, y, `⭐ Lv ${hero.level}/${hero.maxLevel}`, {
-      fontSize: '14px', color: '#ffd700', fontFamily: 'Arial, sans-serif',
-    });
+    // 等级星 (右侧) + XP 条
+    const levelText = this.scene.add.text(PANEL_W - 8, 4, `★ Lv ${hero.level}/${hero.maxLevel}`, {
+      fontSize: T.Font.BASE, color: T.ColorHex.TEXT_GOLD, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
+    }).setOrigin(1, 0);
     this.container.add(levelText);
     this.elements.push(levelText);
-    y += 22;
-
-    // XP 进度条
-    const xpBg = this.scene.add.rectangle(10, y, XP_BAR_W, 8, 0x333333).setOrigin(0);
-    this.container.add(xpBg);
-    this.elements.push(xpBg);
 
     const xpPct = hero.level >= hero.maxLevel ? 1 : Math.max(0, Math.min(1, hero.xp / Math.max(1, hero.xpToNextLevel)));
-    const xpFill = this.scene.add.rectangle(10, y, XP_BAR_W * xpPct, 8, 0x2ecc71).setOrigin(0);
+    const xpBg = this.scene.add.rectangle(PANEL_W - 8 - XP_BAR_W, 28, XP_BAR_W, 6, 0x333333).setOrigin(0);
+    const xpFill = this.scene.add.rectangle(PANEL_W - 8 - XP_BAR_W, 28, XP_BAR_W * xpPct, 6, T.Color.ACCENT_GOLD).setOrigin(0);
+    this.container.add(xpBg);
     this.container.add(xpFill);
+    this.elements.push(xpBg);
     this.elements.push(xpFill);
 
-    const xpText = this.scene.add.text(10, y + 10,
+    const xpText = this.scene.add.text(PANEL_W - 8, 34,
       hero.level >= hero.maxLevel ? 'XP MAX' : `XP ${hero.xp}/${hero.xpToNextLevel}`,
-      { fontSize: '10px', color: '#7f6a8e', fontFamily: 'Arial, sans-serif' },
-    );
+      { fontSize: T.Font.TINY, color: T.ColorHex.TEXT_DIM, fontFamily: T.FontFamily.MONO },
+    ).setOrigin(1, 0);
     this.container.add(xpText);
     this.elements.push(xpText);
-    y += 30;
 
-    // 属性
+    // 属性 (头像下方, 两列)
     const s = hd.stats;
-    const props = [
-      `攻击: ${Math.round(hero.attackDamage)} (${s.dmgType})`,
-      `护甲: ${hero.armor} (${hero.armorType})`,
-      `移速: ${s.speed}  射程: ${s.range}`,
-      `视野: ${s.sight}  HP: ${Math.round(hero.hp)}/${hero.maxHp}`,
+    const propsLeft = [
+      `攻 ${Math.round(hero.attackDamage)} (${s.dmgType})`,
+      `护 ${hero.armor} (${hero.armorType})`,
     ];
-    for (const p of props) {
-      const t = this.scene.add.text(10, y, p, {
-        fontSize: '11px', color: '#a0a0c0', fontFamily: 'Arial, sans-serif',
+    const propsRight = [
+      `速 ${s.speed}  程 ${s.range}`,
+      `野 ${s.sight}  HP ${Math.round(hero.hp)}/${Math.round(hero.maxHp)}`,
+    ];
+    let py = 76;
+    for (let i = 0; i < propsLeft.length; i++) {
+      const tl = this.scene.add.text(80, py, propsLeft[i], {
+        fontSize: T.Font.SM, color: T.ColorHex.TEXT_BODY, fontFamily: T.FontFamily.BODY,
       });
-      this.container.add(t);
-      this.elements.push(t);
-      y += 16;
+      const tr = this.scene.add.text(280, py, propsRight[i], {
+        fontSize: T.Font.SM, color: T.ColorHex.TEXT_BODY, fontFamily: T.FontFamily.BODY,
+      });
+      this.container.add(tl);
+      this.container.add(tr);
+      this.elements.push(tl);
+      this.elements.push(tr);
+      py += 16;
     }
-    y += 4;
 
-    // 被动技能
-    const passiveText = this.scene.add.text(10, y, `【被动】${hd.passive}`, {
-      fontSize: '10px', color: '#9b59b6', fontFamily: 'Arial, sans-serif', wordWrap: { width: PANEL_W - 20 },
+    // 被动技能 (底部一行, 紫色)
+    const passiveText = this.scene.add.text(8, PANEL_H - 18, `【被动】${hd.passive}`, {
+      fontSize: T.Font.TINY, color: T.ColorHex.ACCENT_PURPLE, fontFamily: T.FontFamily.BODY,
+      wordWrap: { width: PANEL_W - 16 },
     });
     this.container.add(passiveText);
     this.elements.push(passiveText);
-    y += 30;
 
-    // 技能树 (5 级)
+    // 技能树标记 (底部右侧, 5 个 ◆/◇, 表示解锁状态; 详细技能在命令卡区显示)
     const slotLevels = [1, 2, 3, 4, 5];
+    let sx = PANEL_W - 8 - 5 * 14;
     for (let i = 0; i < hd.skillTree.length; i++) {
-      const skill = hd.skillTree[i];
-      const requiredLv = slotLevels[i];
-      const unlocked = hero.level >= requiredLv;
-      const color = unlocked ? '#c8a2c8' : '#555555';
-
-      const skillText = this.scene.add.text(10, y,
-        `${unlocked ? '◆' : '◇'} Lv${requiredLv} ${skill.name}`,
-        { fontSize: '10px', color, fontFamily: 'Arial, sans-serif' },
-      );
-      this.container.add(skillText);
-      this.elements.push(skillText);
-      y += 14;
-
-      const descText = this.scene.add.text(20, y, skill.description, {
-        fontSize: '9px', color: unlocked ? '#7f6a8e' : '#444444',
-        fontFamily: 'Arial, sans-serif', wordWrap: { width: PANEL_W - 30 },
+      const unlocked = hero.level >= slotLevels[i];
+      const mark = this.scene.add.text(sx, PANEL_H - 18, unlocked ? '◆' : '◇', {
+        fontSize: T.Font.SM, color: unlocked ? T.ColorHex.ACCENT_GOLD : T.ColorHex.DISABLED, fontFamily: T.FontFamily.BODY,
       });
-      this.container.add(descText);
-      this.elements.push(descText);
-      y += 14;
+      this.container.add(mark);
+      this.elements.push(mark);
+      sx += 14;
     }
   }
 
-  /** 隐藏面板 */
   hide(): void {
     this._clear();
     this.container.setVisible(false);

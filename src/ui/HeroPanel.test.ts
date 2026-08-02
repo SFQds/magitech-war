@@ -13,21 +13,25 @@ import { makeHero } from '../__fixtures__/factories';
 function makeScene() {
   const makeRect = () => {
     const r: any = {
+      width: 0, fillColor: 0,
       setOrigin: () => r, setDepth: () => r, setScrollFactor: () => r,
-      setVisible: () => r, destroy: () => {},
+      setVisible: () => r, setSize: () => r, destroy: () => {},
     };
     return r;
   };
   const makeText = () => {
     const t: any = {
       setOrigin: () => t, setDepth: () => t, setScrollFactor: () => t,
-      setText: () => t, setStyle: () => t, destroy: () => {},
+      setText: () => t, setStyle: () => t, setColor: () => t, destroy: () => {},
     };
     return t;
   };
   const graphics = {
-    lineStyle: () => graphics, strokeRoundedRect: () => graphics,
-    clear: () => graphics, destroy: () => {},
+    clear: () => graphics, fillStyle: () => graphics, fillRoundedRect: () => graphics,
+    lineStyle: () => graphics, strokeRoundedRect: () => graphics, fillRect: () => graphics,
+    beginPath: () => graphics, moveTo: () => graphics, lineTo: () => graphics, strokePath: () => graphics,
+    setAlpha: () => graphics,
+    destroy: () => {},
   };
   const container: any = {
     setDepth: () => container, setScrollFactor: () => container,
@@ -39,6 +43,7 @@ function makeScene() {
       text: () => makeText(),
       graphics: () => ({ ...graphics }),
       container: () => ({ ...container }),
+      image: () => ({ setDisplaySize: function () { return this; }, setOrigin: function () { return this; }, destroy: () => {} }),
     },
     textures: { exists: () => false },
   };

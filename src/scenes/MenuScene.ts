@@ -10,6 +10,9 @@ import { SoundManager } from '../utils/SoundManager';
 import { GUILD_NAMES, GUILD_DESC, GUILD_HOSTILITY, VALID_GUILD_PAIRS } from '../types/data';
 import type { GuildId } from '../types/data';
 import { hasSaves, loadLatest } from '../save/SaveLoadSystem';
+import { UITheme as T } from '../ui/theme/UITheme';
+import { drawButtonSkin, setButtonSkinState } from '../ui/theme/UIWidget';
+import type { SkinButtonOptions } from '../ui/theme/UIWidget';
 
 const MAPS = [
   { id: 'map_valley', name: '山谷', desc: '中央开阔地，两侧山脉' },
@@ -52,26 +55,35 @@ export class MenuScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const cx = width / 2;
 
-    // === 背景 ===
-    const bg = this.add.graphics();
-    bg.fillStyle(0x0d0a1a, 1);
-    bg.fillRect(0, 0, width, height);
-    bg.setDepth(-1);
+    // === 背景: 有贴图用魔导全景, 否则纯色 ===
+    if (this.textures.exists('ui_menu_bg')) {
+      this.add.image(cx, height / 2, 'ui_menu_bg').setDisplaySize(width, height).setDepth(-1);
+    } else {
+      const bg = this.add.graphics();
+      bg.fillStyle(0x0d0a1a, 1);
+      bg.fillRect(0, 0, width, height);
+      bg.setDepth(-1);
+    }
 
-    // === 标题 ===
-    this.add.text(cx, 40, '魔导工业革命', {
-      fontSize: '34px', color: '#c8a2c8', fontFamily: 'Arial, sans-serif',
-    }).setOrigin(0.5);
-    this.add.text(cx, 72, 'Magitech Industrial Revolution', {
-      fontSize: '12px', color: '#7f6a8e', fontFamily: 'Arial, sans-serif',
+    // === 标题: 有 Logo 贴图用水晶立体字, 否则文字标题 ===
+    if (this.textures.exists('ui_logo')) {
+      this.add.image(cx, 46, 'ui_logo').setDisplaySize(340, 78);
+    } else {
+      this.add.text(cx, 38, '魔导工业革命', {
+        fontSize: T.Font.TITLE, color: T.ColorHex.TEXT_MAIN, fontFamily: T.FontFamily.DISPLAY, fontStyle: 'bold',
+      }).setOrigin(0.5);
+    }
+    this.add.text(cx, 88, 'Magitech Industrial Revolution · 纪元 1342', {
+      fontSize: T.Font.SM, color: T.ColorHex.TEXT_DIM, fontFamily: T.FontFamily.BODY,
     }).setOrigin(0.5);
 
     // === 阵营选择 ===
-    this.add.text(cx, 105, '— 选择阵营 —', {
-      fontSize: '14px', color: '#9b7db8', fontFamily: 'Arial, sans-serif',
+    this.add.text(cx, 105, '◆ 选择阵营 ◆', {
+      fontSize: T.Font.BASE, color: T.ColorHex.ACCENT_GOLD, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
     }).setOrigin(0.5);
 
     this.factionCards = [];
+    const hasCardSkin = this.textures.exists('skin_card');
     // 批1: 4 王国卡片居中布局（间距 145，卡宽 140）
     const factionSpacing = 145;
     const factionCardW = 140;
@@ -83,6 +95,11 @@ export class MenuScene extends Phaser.Scene {
       const cardH = 120;
 
       const container = this.add.container(0, 0);
+      // 卡槽底纹 (有贴图时), 置于描边层之下
+      if (hasCardSkin) {
+        const slot = this.add.nineslice(fx, fy, 'skin_card', undefined, cardW, cardH, 12, 12, 12, 12).setOrigin(0);
+        container.add(slot);
+      }
       const cardBg = this.add.graphics();
       this.drawFactionCard(cardBg, fx, fy, cardW, cardH, fi, false);
       container.add(cardBg);
@@ -125,8 +142,8 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // === 行会选择（双选） ===
-    this.add.text(cx, 280, '— 选择行会组合 —', {
-      fontSize: '14px', color: '#9b7db8', fontFamily: 'Arial, sans-serif',
+    this.add.text(cx, 280, '◆ 选择行会组合 ◆', {
+      fontSize: T.Font.BASE, color: T.ColorHex.ACCENT_GOLD, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
     }).setOrigin(0.5);
 
     const GUILD_IDS: GuildId[] = ['mages_guild', 'mechanists_guild', 'alchemists_society', 'void_institute'];
@@ -175,8 +192,8 @@ export class MenuScene extends Phaser.Scene {
 
     // === 地图选择 ===
     const mapY = 390;
-    this.add.text(cx, mapY, '— 选择地图 —', {
-      fontSize: '14px', color: '#9b7db8', fontFamily: 'Arial, sans-serif',
+    this.add.text(cx, mapY, '◆ 选择地图 ◆', {
+      fontSize: T.Font.BASE, color: T.ColorHex.ACCENT_GOLD, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
     }).setOrigin(0.5);
 
     const leftArrow = this.add.text(cx - 140, mapY + 28, '◀', {
@@ -203,8 +220,8 @@ export class MenuScene extends Phaser.Scene {
 
     // === 难度选择 ===
     const diffY = mapY + 80;
-    this.add.text(cx, diffY, '— AI 难度 —', {
-      fontSize: '14px', color: '#9b7db8', fontFamily: 'Arial, sans-serif',
+    this.add.text(cx, diffY, '◆ AI 难度 ◆', {
+      fontSize: T.Font.BASE, color: T.ColorHex.ACCENT_GOLD, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
     }).setOrigin(0.5);
     this.diffText = this.add.text(cx, diffY + 28, '', {
       fontSize: '18px', color: '#ffffff', fontFamily: 'Arial, sans-serif',
@@ -228,14 +245,9 @@ export class MenuScene extends Phaser.Scene {
 
     // === 开始按钮 ===
     const startY = height - 70;
-    const startBtn = this.add.text(cx - 130, startY, '▶  开始游戏', {
-      fontSize: '22px', color: '#ffffff', backgroundColor: '#4a3060',
-      padding: { x: 40, y: 12 }, fontFamily: 'Arial, sans-serif',
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-    startBtn.on('pointerover', () => startBtn.setStyle({ backgroundColor: '#5e3d78' }));
-    startBtn.on('pointerout', () => startBtn.setStyle({ backgroundColor: '#4a3060' }));
-    startBtn.on('pointerdown', () => {
+    this.makeMenuButton(cx - 130, startY, 190, 48, '▶  开始游戏', {
+      fontSize: '22px', color: '#ffffff', bg: '#4a3060', hoverBg: '#5e3d78',
+    }, () => {
       SoundManager.init();
       const mapId = MAPS[this.currentMapIdx].id;
       const diff = DIFFICULTIES[this.difficultyIdx].id;
@@ -249,13 +261,9 @@ export class MenuScene extends Phaser.Scene {
 
     // === 继续游戏按钮（有存档时才显示） ===
     if (hasSaves()) {
-      const continueBtn = this.add.text(cx + 10, startY, '📂  继续游戏', {
-        fontSize: '22px', color: '#ffd700', backgroundColor: '#2a4a30',
-        padding: { x: 32, y: 12 }, fontFamily: 'Arial, sans-serif',
-      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-      continueBtn.on('pointerover', () => continueBtn.setStyle({ backgroundColor: '#3a6a40' }));
-      continueBtn.on('pointerout', () => continueBtn.setStyle({ backgroundColor: '#2a4a30' }));
-      continueBtn.on('pointerdown', () => {
+      this.makeMenuButton(cx + 10, startY, 170, 48, '📂  继续游戏', {
+        fontSize: T.Font.H2, color: T.ColorHex.TEXT_GOLD, bg: '#1a4e3a', hoverBg: '#2a6a4a', bold: true,
+      }, () => {
         SoundManager.init();
         const latest = loadLatest();
         if (latest.ok) {
@@ -265,13 +273,9 @@ export class MenuScene extends Phaser.Scene {
     }
 
     // === 图鉴按钮 ===
-    const codexBtn = this.add.text(cx + 140, startY, '📖  图鉴', {
-      fontSize: '20px', color: '#c8a2c8', backgroundColor: '#2a1a3a',
-      padding: { x: 28, y: 10 }, fontFamily: 'Arial, sans-serif',
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    codexBtn.on('pointerover', () => codexBtn.setStyle({ backgroundColor: '#3a2a5a' }));
-    codexBtn.on('pointerout', () => codexBtn.setStyle({ backgroundColor: '#2a1a3a' }));
-    codexBtn.on('pointerdown', () => {
+    this.makeMenuButton(cx + 140, startY, 130, 44, '📖  图鉴', {
+      fontSize: '20px', color: '#c8a2c8', bg: '#2a1a3a', hoverBg: '#3a2a5a',
+    }, () => {
       this.scene.start('CodexScene');
     });
 
@@ -286,26 +290,65 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(1, 1);
   }
 
+  /** 菜单按钮: 有皮肤用 NineSlice 三态, 否则文字底色按钮 */
+  private makeMenuButton(
+    cx: number, cy: number, w: number, h: number, label: string,
+    opts: { fontSize: string; color: string; bg: string; hoverBg: string; bold?: boolean },
+    onClick: () => void,
+  ): void {
+    if (this.textures.exists('skin_btn_normal')) {
+      const skinOpts: SkinButtonOptions = {
+        x: cx - w / 2, y: cy - h / 2, w, h,
+        skinNormal: 'skin_btn_normal', skinHover: 'skin_btn_hover',
+        skinActive: 'skin_btn_active', skinDisabled: 'skin_btn_normal', corner: 10,
+      };
+      const ns = drawButtonSkin(this, skinOpts) as Phaser.GameObjects.NineSlice;
+      this.add.text(cx, cy, label, {
+        fontSize: opts.fontSize, color: opts.color, fontFamily: 'Arial, sans-serif',
+        fontStyle: opts.bold ? 'bold' : 'normal',
+      }).setOrigin(0.5);
+      const hit = this.add.rectangle(cx - w / 2, cy - h / 2, w, h, 0xffffff, 0)
+        .setOrigin(0).setInteractive({ useHandCursor: true });
+      hit.on('pointerover', () => setButtonSkinState(ns, skinOpts, 'hover'));
+      hit.on('pointerout', () => setButtonSkinState(ns, skinOpts, 'normal'));
+      hit.on('pointerdown', onClick);
+    } else {
+      const btn = this.add.text(cx, cy, label, {
+        fontSize: opts.fontSize, color: opts.color, backgroundColor: opts.bg,
+        padding: { x: Math.max(20, (w - label.length * 14) / 2), y: Math.max(8, (h - 24) / 2) },
+        fontFamily: 'Arial, sans-serif', fontStyle: opts.bold ? 'bold' : 'normal',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setStyle({ backgroundColor: opts.hoverBg }));
+      btn.on('pointerout', () => btn.setStyle({ backgroundColor: opts.bg }));
+      btn.on('pointerdown', onClick);
+    }
+  }
+
   private drawFactionCard(
     g: Phaser.GameObjects.Graphics,
     x: number, y: number, w: number, h: number,
     fi: { id: string; color: string; darkColor: string },
     hover: boolean,
   ): void {
-    const alpha = hover ? 0.45 : 0.3;
-    g.fillStyle(Phaser.Display.Color.HexStringToColor(fi.darkColor).color, alpha);
-    g.fillRoundedRect(x, y, w, h, 8);
-    const borderColor = this.selectedFactionId === fi.id ? Phaser.Display.Color.HexStringToColor(fi.color).color : 0x3a2a5a;
-    const borderAlpha = this.selectedFactionId === fi.id ? 1 : 0.6;
-    g.lineStyle(this.selectedFactionId === fi.id ? 2 : 1, borderColor, borderAlpha);
+    g.clear();
+    // 有卡槽贴图时 Graphics 只画描边, 否则纯色填充+描边
+    if (!this.textures.exists('skin_card')) {
+      const alpha = hover ? 0.45 : 0.3;
+      g.fillStyle(Phaser.Display.Color.HexStringToColor(fi.darkColor).color, alpha);
+      g.fillRoundedRect(x, y, w, h, 8);
+    }
+    const selected = this.selectedFactionId === fi.id;
+    const borderColor = selected ? Phaser.Display.Color.HexStringToColor(fi.color).color : (hover ? T.Color.ACCENT_GOLD : T.Color.BORDER_DIM);
+    const borderAlpha = selected ? 1 : hover ? 0.7 : 0.5;
+    g.lineStyle(selected ? 2 : 1, borderColor, borderAlpha);
     g.strokeRoundedRect(x, y, w, h, 8);
   }
 
   private updateFactionCards(): void {
     this.factionCards.forEach((container, i) => {
       const fi = FACTIONS[i];
-      const cardBg = container.getAt(0) as Phaser.GameObjects.Graphics;
-      cardBg.clear();
+      // 有卡槽贴图时 index0 是 NineSlice, 描边 Graphics 在 index1
+      const cardBg = container.getAt(this.textures.exists('skin_card') ? 1 : 0) as Phaser.GameObjects.Graphics;
       // 批1: 与初始布局保持一致（间距 145，卡宽 140）
       const cx = this.cameras.main.width / 2;
       const factionSpacing = 145;
@@ -369,7 +412,7 @@ export class MenuScene extends Phaser.Scene {
     };
     const selected = this.selectedGuildIds.includes(guildId);
     const alpha = selected ? 0.5 : hover ? 0.35 : 0.2;
-    const borderColor = selected ? colors[guildId] : 0x3a2a5a;
+    const borderColor = selected ? colors[guildId] : T.Color.BORDER_DIM;
     const borderAlpha = selected ? 1 : 0.5;
 
     g.fillStyle(colors[guildId], alpha);
