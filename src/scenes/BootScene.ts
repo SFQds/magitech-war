@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { AssetGenerator } from '../utils/AssetGenerator';
-import { PNG_SPRITE_KEYS } from '../config/sprites';
+import { PNG_SPRITE_KEYS, UI_SKIN_KEYS } from '../config/sprites';
 import { SoundManager } from '../utils/SoundManager';
+import { UITheme as T } from '../ui/theme/UITheme';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -12,13 +13,18 @@ export class BootScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const progressBar = this.add.graphics();
     const progressBox = this.add.graphics();
-    progressBox.fillStyle(0x222222, 0.8);
-    progressBox.fillRect(width / 2 - 160, height / 2 - 15, 320, 30);
+    progressBox.fillStyle(T.Color.CARD_BG, 0.9);
+    progressBox.fillRoundedRect(width / 2 - 160, height / 2 - 15, 320, 30, 4);
+    progressBox.lineStyle(1, T.Color.ACCENT_GOLD, 0.5);
+    progressBox.strokeRoundedRect(width / 2 - 160, height / 2 - 15, 320, 30, 4);
 
     this.load.on('progress', (value: number) => {
       progressBar.clear();
-      progressBar.fillStyle(0x9b59b6, 1);
-      progressBar.fillRect(width / 2 - 155, height / 2 - 10, 310 * value, 20);
+      progressBar.fillStyle(T.Color.ACCENT_GOLD, 0.9);
+      progressBar.fillRoundedRect(width / 2 - 155, height / 2 - 10, 310 * value, 20, 3);
+      // 顶部高光, 模拟能量灌注发光
+      progressBar.fillStyle(0xffe9a8, 0.45);
+      progressBar.fillRoundedRect(width / 2 - 155, height / 2 - 10, 310 * value, 6, 3);
     });
 
     this.load.on('complete', () => {
@@ -38,11 +44,14 @@ export class BootScene extends Phaser.Scene {
     }
 
     this.add.text(width / 2, height / 2 - 60, '魔导工业革命', {
-      fontSize: '28px', color: '#c8a2c8', fontFamily: 'Arial, sans-serif',
+      fontSize: T.Font.TITLE, color: T.ColorHex.TEXT_MAIN, fontFamily: T.FontFamily.DISPLAY, fontStyle: 'bold',
+    }).setOrigin(0.5);
+    this.add.text(width / 2, height / 2 - 30, 'Magitech Industrial Revolution', {
+      fontSize: T.Font.SM, color: T.ColorHex.TEXT_DIM, fontFamily: T.FontFamily.BODY,
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, height / 2 + 40, '正在加载精灵资源…', {
-      fontSize: '14px', color: '#7f6a8e', fontFamily: 'Arial, sans-serif',
+    this.add.text(width / 2, height / 2 + 40, '魔导引擎预热中… 正在加载精灵资源', {
+      fontSize: T.Font.BASE, color: T.ColorHex.TEXT_DIM, fontFamily: T.FontFamily.BODY,
     }).setOrigin(0.5);
   }
 
@@ -50,6 +59,13 @@ export class BootScene extends Phaser.Scene {
     // 为未加载的纹理生成占位图（地形、未实装的单位/建筑等）
     const gen = new AssetGenerator(this);
     gen.generateAll();
+
+    // UI 皮肤纹理是细腻图: 切到线性采样, 避免 pixelArt nearest 模糊
+    for (const key of UI_SKIN_KEYS) {
+      if (this.textures.exists(key)) {
+        this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+      }
+    }
 
     this.scene.start('MenuScene');
   }

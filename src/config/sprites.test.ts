@@ -24,9 +24,9 @@ describe('PNG_SPRITE_KEYS - 结构', () => {
     expect(new Set(PNG_SPRITE_KEYS).size).toBe(PNG_SPRITE_KEYS.length);
   });
 
-  it('所有 key 匹配命名规范 ^(unit_|bld_|hero_|proj_|ui_)[a-z_]+$', () => {
+  it('所有 key 匹配命名规范 ^(unit_|bld_|hero_|proj_|ui_|skin_)[a-z_]+$', () => {
     for (const key of PNG_SPRITE_KEYS) {
-      expect(key).toMatch(/^(unit_|bld_|hero_|proj_|ui_|neutral_)[a-z_]+$/);
+      expect(key).toMatch(/^(unit_|bld_|hero_|proj_|ui_|skin_|neutral_)[a-z_]+$/);
     }
   });
 });

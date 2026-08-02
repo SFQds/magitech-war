@@ -11,6 +11,8 @@ import type { GameWorld } from '../core/GameWorld';
 import type { EntityRegistry } from '../core/EntityRegistry';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
+import { UITheme as T } from '../ui/theme/UITheme';
+import { CODEX_ENTRIES } from '../config/codex';
 
 /** 建筑全失宽限期（秒）：超过后才判歼灭 */
 const GRACE_LIMIT = 60;
@@ -72,11 +74,12 @@ export class GameOverController {
       const winner = playerExpired && aiExpired ? -1 : aiExpired ? 0 : 1;
       EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'annihilated' });
       const text = winner === -1 ? '🤝 同归于尽！平局' : winner === 0 ? '🏆 胜利！敌方基地已被摧毁' : '💀 失败…我方基地已被摧毁';
-      const color = winner === -1 ? '#aaaaaa' : winner === 0 ? '#ffd700' : '#ff4444';
-      this.scene.add.text(1280 / 2, 720 / 2 - 20, text, {
-        fontSize: '32px', color, backgroundColor: '#1a1a2ecc',
-        padding: { x: 24, y: 12 },
+      const color = winner === -1 ? '#aaaaaa' : winner === 0 ? T.ColorHex.TEXT_GOLD : T.ColorHex.HP_RED;
+      this.scene.add.text(1280 / 2, 720 / 2 - 40, text, {
+        fontSize: '32px', color, backgroundColor: T.ColorHex.CARD_BG + 'cc',
+        padding: { x: 24, y: 12 }, fontFamily: T.FontFamily.DISPLAY, fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
+      this._addLoreQuote(winner);
       this.addRestartButton();
       return;
     }
@@ -90,11 +93,12 @@ export class GameOverController {
       EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'timeout' });
       const resultText = winner === 0 ? '🏆 时间到！你赢了！' : winner === 1 ? '💀 时间到…你输了' : '🤝 平局！';
       const scoreText = `\n你的分数: ${p0Score}  |  敌方分数: ${p1Score}`;
-      this.scene.add.text(1280 / 2, 720 / 2 - 20, resultText + scoreText, {
-        fontSize: '28px', color: winner === 0 ? '#ffd700' : '#ff6644',
-        backgroundColor: '#1a1a2ecc', padding: { x: 24, y: 12 },
-        align: 'center',
+      this.scene.add.text(1280 / 2, 720 / 2 - 40, resultText + scoreText, {
+        fontSize: '28px', color: winner === 0 ? T.ColorHex.TEXT_GOLD : T.ColorHex.WARN,
+        backgroundColor: T.ColorHex.CARD_BG + 'cc', padding: { x: 24, y: 12 },
+        align: 'center', fontFamily: T.FontFamily.DISPLAY, fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
+      this._addLoreQuote(winner);
       this.addRestartButton();
     }
   }
@@ -112,13 +116,30 @@ export class GameOverController {
 
   /** P1-C7: 游戏结束后显示重开按钮 */
   private addRestartButton(): void {
-    const btn = this.scene.add.text(1280 / 2, 720 / 2 + 60, '🔄 再来一局', {
-      fontSize: '24px', color: '#ffffff', backgroundColor: '#2a5a2acc',
-      padding: { x: 20, y: 10 },
+    const btn = this.scene.add.text(1280 / 2, 720 / 2 + 80, '🔄 再来一局', {
+      fontSize: '24px', color: '#ffffff', backgroundColor: '#1a4e3acc',
+      padding: { x: 20, y: 10 }, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(201).setScrollFactor(0).setInteractive({ useHandCursor: true });
     btn.on('pointerdown', () => { this.scene.scene.start('MenuScene'); });
-    btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#3a7a3acc' }));
-    btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#2a5a2acc' }));
+    btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#2a6a4acc' }));
+    btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#1a4e3acc' }));
+  }
+
+  /** 结算时显示一句对应 lore 引文 (代入感) */
+  private _addLoreQuote(winner: number): void {
+    const quotes: Record<number, { id: string; fallback: string }> = {
+      [-1]: { id: 'lore_chronicle_crystal_war', fallback: '帝国历史上第一次无法用军事手段解决一场政治分裂。' },
+      0: { id: 'lore_chronicle_first_engine', fallback: '从今天起，制造魔力不需要议会的许可了。' },
+      1: { id: 'lore_faction_empire', fallback: '所以是七年。倒计时已经开始。' },
+    };
+    const q = quotes[winner] ?? quotes[1];
+    const entry = CODEX_ENTRIES.find(e => e.id === q.id);
+    const quote = entry?.lore?.body?.[0] ?? q.fallback;
+    this.scene.add.text(1280 / 2, 720 / 2 + 30, `「${quote.slice(0, 50)}${quote.length > 50 ? '…' : ''}」`, {
+      fontSize: '14px', color: T.ColorHex.TEXT_DIM, backgroundColor: T.ColorHex.CARD_BG + 'aa',
+      padding: { x: 16, y: 6 }, fontFamily: T.FontFamily.BODY, fontStyle: 'italic',
+      align: 'center', wordWrap: { width: 600 },
+    }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
   }
 
   /** 计算玩家分数（用于限时判定） */
@@ -146,9 +167,9 @@ export class GameOverController {
     const timeStr = `⏱ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     if (!this._scoreTimerDisplay) {
       this._scoreTimerDisplay = this.scene.add.text(1280 / 2, 10, timeStr, {
-        fontSize: '16px', color: '#ffd700',
-        backgroundColor: '#1a1a2ecc', padding: { x: 12, y: 4 },
-        fontFamily: 'Arial, sans-serif',
+        fontSize: '16px', color: T.ColorHex.TEXT_GOLD,
+        backgroundColor: T.ColorHex.CARD_BG + 'cc', padding: { x: 12, y: 4 },
+        fontFamily: T.FontFamily.MONO, fontStyle: 'bold',
       }).setOrigin(0.5, 0).setDepth(250).setScrollFactor(0);
     } else {
       this._scoreTimerDisplay.setText(timeStr);

@@ -23,7 +23,12 @@ function makeScene() {
     };
     return t;
   };
-  const graphics = { lineStyle: () => graphics, strokeRoundedRect: () => graphics, destroy: () => {} };
+  const graphics = {
+    clear: () => graphics, fillStyle: () => graphics, fillRoundedRect: () => graphics,
+    lineStyle: () => graphics, strokeRoundedRect: () => graphics, fillRect: () => graphics,
+    beginPath: () => graphics, moveTo: () => graphics, lineTo: () => graphics, strokePath: () => graphics,
+    setAlpha: () => graphics, destroy: () => {},
+  };
   const container: any = {
     setDepth: () => container, setScrollFactor: () => container,
     setVisible: () => container, add: () => container, destroy: () => {},
@@ -34,6 +39,7 @@ function makeScene() {
       rectangle: () => makeRect(), text: () => makeText(),
       graphics: () => ({ ...graphics }), container: () => ({ ...container }),
     },
+    textures: { exists: () => false },
     time: { timeScale: 1 },
   };
   return { scene };

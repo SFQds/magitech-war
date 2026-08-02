@@ -5,12 +5,18 @@
  * 供 CodexScene 图鉴界面展示。与 config/ 下的数值定义互补。
  */
 
+import { ALL_LORE_ENTRIES } from './lore/index';
+
 export interface CodexEntry {
   id: string;
   name: string;
-  category: 'unit' | 'building' | 'tech' | 'hero' | 'guild' | 'superweapon' | 'neutral_unit' | 'neutral_building' | 'faction';
+  category: 'unit' | 'building' | 'tech' | 'hero' | 'guild' | 'superweapon' | 'neutral_unit' | 'neutral_building' | 'faction' | 'lore' | 'story';
   desc: string;
   spriteKey?: string;
+  /** 世界观条目: 章节内分段长文 (lore 类专用) */
+  lore?: { chapter: string; confidence?: string; body: string[] };
+  /** 故事条目: 纪元/人物 + 分段正文 (story 类专用) */
+  story?: { era?: string; character?: string; body: string[] };
 }
 
 export const CODEX_ENTRIES: CodexEntry[] = [
@@ -117,6 +123,9 @@ export const CODEX_ENTRIES: CodexEntry[] = [
   { id: 'bld_trade_post', name: '交易所', category: 'building', spriteKey: 'bld_trade_post', desc: '翡翠专属经济建筑，水晶与工业产值兑换。半露天市场结构，挂多国贸易旗。' },
   { id: 'hero_jade_a', name: '卡林', category: 'hero', spriteKey: 'hero_jade_a', desc: '玉港独立信息商人。情报网：周围友方视野+3并显形隐形单位。市场操纵：标记敌方使其受伤+25%。' },
   { id: 'hero_jade_b', name: '薇拉', category: 'hero', spriteKey: 'hero_jade_b', desc: '翡翠邦联佣兵团长。佣兵契约：周围步兵攻击+15%。雇佣空降：空投佣兵剑士支援战场。' },
+
+  // ===== 世界观 + 故事 (来自 lore/index, 自动生成) =====
+  ...ALL_LORE_ENTRIES,
 ];
 
 /** 按分类获取图鉴条目 */
@@ -136,6 +145,8 @@ export function getCodexCategories(): { category: CodexEntry['category']; count:
     superweapon: '超级武器',
     neutral_unit: '中立野怪',
     neutral_building: '中立建筑',
+    lore: '世界观',
+    story: '故事集',
   };
   const cats = Array.from(new Set(CODEX_ENTRIES.map(e => e.category)));
   return cats.map(c => ({

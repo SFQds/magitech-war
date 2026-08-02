@@ -12,9 +12,10 @@ function makeScene() {
     setOrigin: () => text, setDepth: () => text, setScrollFactor: () => text,
     setColor: () => text, destroy: () => {},
   };
-  const rect: any = {
-    setOrigin: () => rect, setDepth: () => rect, setScrollFactor: () => rect,
-    setSize: () => rect, destroy: () => {},
+  const graphics: any = {
+    clear: () => graphics, fillStyle: () => graphics, fillRoundedRect: () => graphics,
+    lineStyle: () => graphics, strokeRoundedRect: () => graphics,
+    setDepth: () => graphics, setScrollFactor: () => graphics, destroy: () => {},
   };
   const container: any = {
     setDepth: () => container, setScrollFactor: () => container,
@@ -22,7 +23,8 @@ function makeScene() {
   };
   const scene: any = {
     cameras: { main: { width: 1280, height: 720 } },
-    add: { text: () => ({ ...text }), rectangle: () => ({ ...rect }), container: () => ({ ...container }) },
+    add: { text: () => ({ ...text }), graphics: () => ({ ...graphics }), container: () => ({ ...container }) },
+    textures: { exists: () => false },
   };
   return { scene };
 }

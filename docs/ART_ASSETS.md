@@ -94,16 +94,53 @@
 
 ## 五、UI 素材
 
+> UI 皮肤化重构后，UI 元素分两类：**皮肤纹理**（NineSlice 九宫格拉伸，由 `UIWidget.drawPanelSkin/drawButtonSkin` 渲染）与**图标/装饰**（直接 `add.image`）。纹理缺失时自动回退纯色 Graphics。所有 key 注册在 `src/config/sprites.ts` 的 `UI_SKIN_KEYS`，`BootScene` 对其强制 `LINEAR` 采样。
+
+### 皮肤纹理（NineSlice，不需去背景）
+
 | 元素 | 文件名 | 尺寸 | 说明 |
 |------|------|:--:|------|
-| 水晶图标 | `ui_icon_crystal.png` | 24 | 💎 紫色水晶 |
-| 工业图标 | `ui_icon_industry.png` | 24 | ⚙ 齿轮 |
-| 人口图标 | `ui_icon_supply.png` | 24 | 👥 人形剪影 |
-| 按钮底板 | `ui_btn_bg.png` | 可拉伸 | 暗紫底+浅紫边框 9-slice |
-| 选中框 | `ui_selection_box.png` | — | 代码已用 Graphics 绘制，暂不需要 |
-| 小地图底板 | `ui_minimap_frame.png` | 156×156 | 暗色边框，半透明中心 |
-| 主菜单背景 | `ui_menu_bg.png` | 1280×720 | 暗紫渐变+齿轮纹理（可用代码绘制暂代） |
-| Logo | `ui_logo.png` | 400×200 | 游戏标题"魔导工业革命"，水晶紫配色 |
+| 控制台底纹 | `skin_panel_console.png` | 256×192 | 底栏/面板底，暗紫渐变+四角暗金雕花+中央微凹符文，四角 16px 切片 |
+| 顶栏底纹 | `skin_panel_top.png` | 256×48 | 顶栏专用（矮版） |
+| 按钮底-普通 | `skin_btn_normal.png` | 96×32 | 暗紫凸起+金描边+顶部暗金高光 |
+| 按钮底-hover | `skin_btn_hover.png` | 96×32 | 亮紫+金边 |
+| 按钮底-按下/选中 | `skin_btn_active.png` | 96×32 | 深紫+亮金边 |
+| 命令卡槽底 | `skin_card.png` | 96×96 | 暗紫底+符文蚀刻+金框，四角 8px 切片 |
+
+### 图标（24×24，需去背景）
+
+| 元素 | 文件名 | 尺寸 | 说明 |
+|------|------|:--:|------|
+| 水晶图标 | `ui_icon_crystal.png` | 24 | 顶栏资源显示，替换原 💎 emoji |
+| 工业图标 | `ui_icon_industry.png` | 24 | 顶栏资源显示，替换原 ⚙ emoji |
+| 人口图标 | `ui_icon_supply.png` | 24 | 顶栏资源显示，替换原 👥 emoji |
+| 计时图标 | `ui_icon_timer.png` | 24 | 比赛时间，替换原 ⏱ emoji |
+
+### 装饰与边框
+
+| 元素 | 文件名 | 尺寸 | 说明 |
+|------|------|:--:|------|
+| 魔导齿轮装饰 | `ui_deco_gear.png` | 96×96 | 控制台两侧半透明旋转齿轮（depth 98，不挡交互） |
+| 头像金框 | `ui_frame_portrait.png` | 144×144 | 英雄面板选中头像四角符文金框，渲染于头像下层 |
+| 小地图雕花边 | `ui_minimap_frame.png` | 280×280 | 小地图外框，渲染于地图绘制下层（backing plate） |
+
+### 主菜单
+
+| 元素 | 文件名 | 尺寸 | 说明 |
+|------|------|:--:|------|
+| 主菜单背景 | `ui_menu_bg.png` | 1280×720 | 暗紫渐变+远景齿轮+水晶脉晶发光（不去背景） |
+| Logo | `ui_logo.png` | 400×160 | "魔导工业革命"水晶紫立体字 |
+
+### 水晶矿视觉（独立资源，非皮肤化）
+
+| 元素 | 文件名 | 尺寸 | 说明 |
+|------|------|:--:|------|
+| 水晶矿 | `ui_crystal.png` | — | `GameScene` 用作地图水晶矿视觉（注意：与顶栏图标 `ui_icon_crystal` 是两套独立资产） |
+
+### 已弃用
+
+- `ui_btn_bg.png` — 已被 `skin_btn_normal/hover/active` 三态取代，不再使用。
+- `ui_selection_box.png` — 选中框仍由代码 Graphics 绘制，无需资产。
 
 ---
 
@@ -133,7 +170,7 @@
 
 ## 八、占位符方案
 
-在没有美术资源时，代码中已使用以下占位方案：
+在没有美术资源时，代码中使用以下占位方案（**UI 已完成皮肤化升级，不再用纯 Graphics 占位**）：
 
 | 对象 | 占位方式 | 代码位置 |
 |------|----------|----------|
@@ -142,6 +179,7 @@
 | 建筑 | Graphics.Rectangle 较大色块 | — |
 | 资源点 | 紫色半透明方块 | `GameScene.placeInitialResources()` |
 | 迷雾 | 黑色/半透明黑矩形覆盖 | `GameScene.renderFogOfWar()` |
-| UI | 系统字体 + Graphics 矩形 | HUDScene / UI组件 |
+| UI 面板/按钮 | `UIWidget.drawPanelSkin/drawButtonSkin` 双路径：皮肤纹理存在用 NineSlice，缺失回退纯色 Graphics | `src/ui/theme/UIWidget.ts` + 各 UI 组件 |
+| UI 图标 | `ui_icon_*.png` 精灵，缺失回退 emoji 文字 | `ResourceDisplay.ts` |
 
-> 占位方案可支撑开发和测试，美术资源可分批替换。
+> 单位/建筑/弹道资产已全部由豆包桌面端生成 PNG 替换（见根目录 `AGENTS.md` 资产生成规则）；UI 皮肤资产同流程生成。占位方案仅作为资产缺失时的回退保障。

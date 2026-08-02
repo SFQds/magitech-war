@@ -27,6 +27,31 @@ import type { CommandResult } from '../controllers/CommandExecutor';
 import { HeroSystem } from '../systems/HeroSystem';
 import { serialize, save as saveGame, load as loadGame, loadLatest } from '../save/SaveLoadSystem';
 import type { SaveMeta } from '../save/SaveData';
+import { UITheme as T } from '../ui/theme/UITheme';
+import { CODEX_ENTRIES } from '../config/codex';
+import { drawPanel, drawPanelSkin, textStyle } from '../ui/theme/UIWidget';
+
+// ===== SC2 三段式控制台布局常量 (1280x720) =====
+const VIEW_W = 1280;
+const VIEW_H = 720;
+const TOP_BAR_H = 40;
+const CONSOLE_Y = VIEW_H - 140;          // 底栏起点 y=580
+const CONSOLE_H = 140;
+// 左段：小地图区 (控制台高140, 内边距8 → 124 见方)
+const MM_SIZE = 124;
+const MM_X = 10;
+const MM_Y = CONSOLE_Y + 8;              // y=588, 底部 712 不越界
+// 超武栏：小地图左缘上方悬浮竖排 (不动控制台三段宽度)
+const SW_BAR_X = 12;
+const SW_BAR_Y = CONSOLE_Y - 8 - 4 * 50; // 底部对齐控制台, 向上排 4 槽
+// 中段：选择/英雄面板区
+const SEL_X = 180;
+const SEL_Y = CONSOLE_Y + 10;            // y=590
+const SEL_W = 505;
+// 右段：命令卡区
+const CMD_X = 695;
+// 阵营徽记位置（顶栏右侧）
+const EMBLEM_X = VIEW_W - 16;
 
 export class HUDScene extends Phaser.Scene {
   private resourceDisplay!: ResourceDisplay;
@@ -40,6 +65,8 @@ export class HUDScene extends Phaser.Scene {
   private fpsCounter!: FpsCounter;
   private tooltip!: Tooltip;
   private attackMoveText!: Phaser.GameObjects.Text;
+  /** 阵营徽记：顶栏右侧的阵营色点 + 名称（代入感） */
+  private _emblem!: Phaser.GameObjects.Container;
   /** P1-10 修复：保存所有 EventBus 监听器引用，shutdown 时逐个 off */
   private _eventHandlers: { event: string; handler: (data: unknown) => void }[] = [];
   /** P2-3：PATH_FAILED toast 节流 — 单位 id → 上次 toast 的时间戳(ms)，400ms 内去重 */
@@ -50,12 +77,44 @@ export class HUDScene extends Phaser.Scene {
   constructor() { super({ key: 'HUDScene' }); }
 
   create(): void {
-    this.add.rectangle(0, 0, 1280, 40, 0x1a1a2e, 0.85).setOrigin(0, 0).setDepth(99).setScrollFactor(0);
-    this.add.rectangle(0, 720 - 80, 1280, 80, 0x1a1a2e, 0.85).setOrigin(0, 0).setDepth(99).setScrollFactor(0);
+    // ===== 顶栏: NineSlice 皮肤 (皮肤缺失时回退纯色面板) =====
+    const topSkin = drawPanelSkin(this, { x: 0, y: 0, w: VIEW_W, h: TOP_BAR_H, skinKey: 'skin_panel_top', corner: 12 });
+    topSkin.setDepth(99).setScrollFactor(0);
+
+    // ===== 底栏控制台: NineSlice 皮肤 =====
+    const consoleSkin = drawPanelSkin(this, { x: 0, y: CONSOLE_Y, w: VIEW_W, h: CONSOLE_H, skinKey: 'skin_panel_console', corner: 20 });
+    consoleSkin.setDepth(99).setScrollFactor(0);
+
+    // 三段分隔线 (双线夹珠: 2px 金线 + 中央暗金圆点)
+    const sepG = this.add.graphics();
+    const drawSep = (sx: number) => {
+      sepG.lineStyle(1, T.Color.ACCENT_GOLD, 0.25);
+      sepG.beginPath();
+      sepG.moveTo(sx - 1, CONSOLE_Y + 8); sepG.lineTo(sx - 1, VIEW_H - 8);
+      sepG.moveTo(sx + 1, CONSOLE_Y + 8); sepG.lineTo(sx + 1, VIEW_H - 8);
+      sepG.strokePath();
+      sepG.fillStyle(T.Color.ACCENT_GOLD, 0.45);
+      sepG.fillCircle(sx, CONSOLE_Y + CONSOLE_H / 2, 3);
+    };
+    drawSep(MM_X + MM_SIZE + 6);
+    drawSep(SEL_X + SEL_W + 5);
+    sepG.setDepth(99).setScrollFactor(0);
+
+    // 顶栏右端魔导齿轮组装饰 (大小咬合, 反向缓转, 半透明不抢眼)
+    if (this.textures.exists('ui_deco_gear')) {
+      const gearL = this.add.image(VIEW_W - 46, 20, 'ui_deco_gear')
+        .setDisplaySize(30, 30).setAlpha(0.35).setDepth(98).setScrollFactor(0);
+      this.tweens.add({ targets: gearL, angle: 360, duration: 20000, repeat: -1 });
+      const gearR = this.add.image(VIEW_W - 22, 26, 'ui_deco_gear')
+        .setDisplaySize(18, 18).setAlpha(0.28).setDepth(98).setScrollFactor(0);
+      this.tweens.add({ targets: gearR, angle: -360, duration: 13000, repeat: -1 });
+    }
 
     this.resourceDisplay = new ResourceDisplay(this);
-    this.selectionPanel = new SelectionPanel(this, 10, 720 - 80 - 130);
-    this.heroPanel = new HeroPanel(this, 10, 720 - 80 - 130 - 290);
+    // 中段: 选择面板 + 英雄面板 (英雄选中时覆盖在选择面板上方)
+    this.selectionPanel = new SelectionPanel(this, SEL_X, SEL_Y);
+    // 英雄面板覆盖选择面板同位 (选中英雄时), 不再悬浮游戏视区中央
+    this.heroPanel = new HeroPanel(this, SEL_X, SEL_Y);
 
     // P1-UI 批6: 暂停菜单
     this.pauseMenu = new PauseMenu(this, {
@@ -74,9 +133,9 @@ export class HUDScene extends Phaser.Scene {
     });
     this.productionQueue = new ProductionQueueUI(this);
 
-    this.attackMoveText = this.add.text(1280 / 2, 720 - 90, '⚔ 攻击移动模式', {
-      fontSize: '16px', color: '#ff6644', backgroundColor: '#1a1a2e',
-      padding: { x: 12, y: 4 }, fontFamily: 'Arial, sans-serif',
+    this.attackMoveText = this.add.text(VIEW_W / 2, CONSOLE_Y - 14, '⚔ 攻击移动模式', {
+      fontSize: '14px', color: T.ColorHex.WARN, backgroundColor: T.ColorHex.CONSOLE_BG,
+      padding: { x: 12, y: 4 }, fontFamily: T.FontFamily.BODY,
     }).setOrigin(0.5).setDepth(250).setScrollFactor(0).setAlpha(0);
 
     this.setupEvents();
@@ -98,6 +157,11 @@ export class HUDScene extends Phaser.Scene {
 
     // P1-UI 批7: FPS 计数器 (Tooltip 已在前面实例化)
     this.fpsCounter = new FpsCounter(this);
+
+    // 阵营徽记: 顶栏右侧阵营色点+名称 (代入感, 延迟取 GameScene 阵营数据)
+    this._emblem = this.add.container(0, 0).setDepth(200).setScrollFactor(0);
+    this.time.delayedCall(300, () => this._updateEmblem());
+
     this.events.on('shutdown', () => {
       for (const { event, handler } of this._eventHandlers) {
         EventBus.off(event, handler);
@@ -133,7 +197,7 @@ export class HUDScene extends Phaser.Scene {
   }
 
   initMinimap(map: GameMap, fog: FogOfWar, cameraCtrl?: CameraController): void {
-    this.minimap = new Minimap(this, map, fog, 1280 - 160, 720 - 80 - 160, 150);
+    this.minimap = new Minimap(this, map, fog, MM_X, MM_Y, MM_SIZE);
     if (cameraCtrl) this.minimap.setCameraCtrl(cameraCtrl);
   }
 
@@ -211,7 +275,7 @@ export class HUDScene extends Phaser.Scene {
       }
 
       if (units.length === 1 && units[0].spriteKey === 'unit_worker') {
-        const btns: { label: string; cost: string; spriteKey?: string; callback: () => void; hotkey?: string }[] = [];
+        const btns: { label: string; cost: string; spriteKey?: string; callback: () => void; hotkey?: string; tooltipLines?: string[] }[] = [];
         const playerFaction = gs.world?.players?.[0]?.faction;
         const playerGuilds: string[] = gs.world?.players?.[0]?.guilds ?? [];
         for (const [bldId, def] of Object.entries(BUILDING_DEFS)) {
@@ -220,7 +284,7 @@ export class HUDScene extends Phaser.Scene {
             if (def.exclusiveTo?.faction && def.exclusiveTo.faction !== playerFaction) continue;
             if (def.exclusiveTo?.guild && !playerGuilds.includes(def.exclusiveTo.guild)) continue;
             const cost = getBuildingCost(bldId, playerFaction);
-            btns.push({ label: `建造${def.displayName}`, cost: cost ? `💎${cost.crystal}` : `💎?`, spriteKey: bldId, callback: () => this.enterBuildMode(units[0].id, bldId) });
+            btns.push({ label: `建造${def.displayName}`, cost: cost ? `💎${cost.crystal}` : `💎?`, spriteKey: bldId, callback: () => this.enterBuildMode(units[0].id, bldId), tooltipLines: this._flavor(bldId) });
           }
         }
         // P1-UI: 追加通用命令按钮
@@ -257,7 +321,7 @@ export class HUDScene extends Phaser.Scene {
           const techsMet = !ud?.techReq?.length || ud.techReq.every((tid: string) => gs2.getTechTree?.(0)?.isResearched(tid));
           const label = techsMet ? getDisplayName(uid) : `${getDisplayName(uid)} 🔒`;
           const callback = techsMet ? () => this.issueTrainCommand(bld.id, uid) : () => this.showToast('科技未解锁');
-          btns.push({ label, cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback, disabled: !techsMet });
+          btns.push({ label, cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback, disabled: !techsMet, tooltipLines: this._flavor(uid) });
         }
       }
       if (bld.state !== 'constructing' && def?.researches) {
@@ -385,7 +449,7 @@ export class HUDScene extends Phaser.Scene {
       this.scheduleMinimapUpdate();
       // P1-超武: 初始化超武栏（小地图上方）
       if (!this.superWeaponBar) {
-        this.superWeaponBar = new SuperWeaponBar(this, 0, 1280 - 160, 720 - 80 - 160 - 70);
+        this.superWeaponBar = new SuperWeaponBar(this, 0, SW_BAR_X, SW_BAR_Y);
         this.superWeaponBar.onActivate((weaponId: string, tileX: number, tileY: number) => {
           const gs = this.scene.get('GameScene') as any;
           const result = gs?.commandExecutor?.execute({
@@ -398,12 +462,40 @@ export class HUDScene extends Phaser.Scene {
     });
   }
 
+  /** 阵营徽记: 顶栏右侧阵营色点+名称 (代入感) */
+  private _updateEmblem(): void {
+    const gs = this.scene.get('GameScene') as any;
+    const factionId: string = gs?.world?.players?.[0]?.faction ?? 'arcane_empire';
+    const pal = T.getFactionPalette(factionId);
+    const factionName: Record<string, string> = {
+      arcane_empire: '奥术帝国', hammer_federation: '铁锤联邦',
+      frostridge_kingdom: '霜脊王国', jade_confederation: '翡翠邦联',
+    };
+    this._emblem.removeAll(true);
+    // 阵营徽记: 主色圆 + 双层发光 + 金描边
+    const dot = this.add.graphics();
+    dot.fillStyle(pal.primary, 0.15);
+    dot.fillCircle(EMBLEM_X - 70, 20, 11);
+    dot.fillStyle(pal.primary, 0.3);
+    dot.fillCircle(EMBLEM_X - 70, 20, 8);
+    dot.fillStyle(pal.primary, 1);
+    dot.fillCircle(EMBLEM_X - 70, 20, 6);
+    dot.lineStyle(1, T.Color.ACCENT_GOLD, 0.6);
+    dot.strokeCircle(EMBLEM_X - 70, 20, 6);
+    this._emblem.add(dot);
+    // 阵营名 (阵营主色)
+    const name = this.add.text(EMBLEM_X - 60, 20, factionName[factionId] ?? factionId, {
+      fontSize: T.Font.SM, color: pal.primaryHex, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
+    }).setOrigin(0, 0.5);
+    this._emblem.add(name);
+  }
+
   private showToast(msg: string): void {
     const { width, height } = this.cameras.main;
-    const text = this.add.text(width / 2, height / 2, msg, {
-      fontSize: '20px', color: '#ff6644', backgroundColor: '#1a1a2e',
-      padding: { x: 16, y: 8 }, fontFamily: 'Arial, sans-serif',
-    }).setOrigin(0.5).setDepth(300).setScrollFactor(0);
+    const text = this.add.text(width / 2, height / 2, msg, textStyle({
+      size: '18px', color: T.ColorHex.WARN, backgroundColor: T.ColorHex.CARD_BG,
+      padding: { x: 16, y: 8 }, family: T.FontFamily.BODY, align: 'center',
+    })).setOrigin(0.5).setDepth(300).setScrollFactor(0);
     this.tweens.add({
       targets: text, alpha: 0, y: text.y - 40, duration: 1200,
       onComplete: () => text.destroy(),
@@ -442,6 +534,14 @@ export class HUDScene extends Phaser.Scene {
     }) as CommandResult | undefined;
     if (result && !result.ok) this.showToast(result.reason);
     // 成功提示由 RESEARCH_CANCELED 监听器统一处理并刷新资源
+  }
+
+  /** 从图鉴取风味文字首句, 供命令按钮 tooltip 增加代入感 */
+  private _flavor(defId: string): string[] {
+    const entry = CODEX_ENTRIES.find(e => e.id === defId);
+    if (!entry) return [];
+    const first = entry.desc.split('。')[0];
+    return [entry.name, first + '。'];
   }
 
   /** P1-UI: 构建通用命令按钮（停止/坚守/攻击移动），标注热键 */
