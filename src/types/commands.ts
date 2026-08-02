@@ -92,7 +92,7 @@ export interface GatherCommand extends Command {
   resourceFieldId: string;
 }
 
-/** 部署命令（将建筑放置在地图上） */
+/** 部署命令（将建筑放置在地图上）— CommandExecutor 中作为 build 别名走 execBuild */
 export interface DeployCommand extends Command {
   type: 'deploy';
   buildingDefId: string;
@@ -148,21 +148,3 @@ export type AnyCommand =
   | HoldPositionCommand
   | SpawnCommand
   | SuperWeaponCommand;
-
-// ============ 命令队列 ============
-
-/** 命令队列接口 */
-export interface ICommandQueue {
-  /** 添加命令 */
-  push(command: AnyCommand): void;
-  /** 取出下一个命令 */
-  pop(): AnyCommand | null;
-  /** 查看但不取出 */
-  peek(): AnyCommand | null;
-  /** 清空队列 */
-  clear(): void;
-  /** 队列长度 */
-  readonly length: number;
-  /** 是否为空 */
-  readonly isEmpty: boolean;
-}
