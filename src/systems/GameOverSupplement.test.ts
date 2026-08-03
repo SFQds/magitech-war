@@ -2,6 +2,9 @@
  * 补漏测试 - GameOverController 缺失分支 + HeadlessGameRunner runUntil/faction 选项
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+// 皮肤化后 GameOverController 间接 import UIWidget → import Phaser；
+// node 测试环境无 window，需 mock phaser 避免模块加载期 ReferenceError。
+vi.mock('phaser', () => ({ default: class PhaserStub {} }));
 import { GameOverController } from '../controllers/GameOverController';
 import { makeStubScene } from '../__fixtures__/phaserStub';
 import { makeWorld, makeCommandCenter, makeUnit } from '../__fixtures__/factories';

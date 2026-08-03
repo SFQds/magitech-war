@@ -4,6 +4,11 @@
  * L2 集成：用 phaserStub 提供 scene，验证歼灭判定、宽限翻盘、限时分数计算。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// 皮肤化后 GameOverController 间接 import UIWidget → import Phaser；
+// node 测试环境无 window，需 mock phaser 避免模块加载期 ReferenceError。
+vi.mock('phaser', () => ({ default: class PhaserStub {} }));
+
 import { GameOverController } from './GameOverController';
 import { makeStubScene } from '../__fixtures__/phaserStub';
 import { makeWorld, makeCommandCenter, makeUnit } from '../__fixtures__/factories';

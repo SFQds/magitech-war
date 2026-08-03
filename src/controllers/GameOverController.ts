@@ -12,12 +12,16 @@ import type { EntityRegistry } from '../core/EntityRegistry';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import { UITheme as T } from '../ui/theme/UITheme';
+import { drawPanelSkin, drawButtonSkin, setButtonSkinState, makeHitArea } from '../ui/theme/UIWidget';
 import { CODEX_ENTRIES } from '../config/codex';
 
 /** 建筑全失宽限期（秒）：超过后才判歼灭 */
 const GRACE_LIMIT = 60;
 /** 30 分钟限时（秒） */
 const MAX_TIME = 30 * 60;
+/** 结算面板尺寸 (皮肤化: skin_panel_console 九宫格底) */
+const RESULT_PANEL_W = 520;
+const RESULT_PANEL_H = 220;
 
 export class GameOverController {
   private readonly scene: Phaser.Scene;
@@ -73,10 +77,11 @@ export class GameOverController {
       // P1-4 修复：双方同帧互毁 → 平局
       const winner = playerExpired && aiExpired ? -1 : aiExpired ? 0 : 1;
       EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'annihilated' });
+      this._drawResultOverlay();
       const text = winner === -1 ? '🤝 同归于尽！平局' : winner === 0 ? '🏆 胜利！敌方基地已被摧毁' : '💀 失败…我方基地已被摧毁';
       const color = winner === -1 ? '#aaaaaa' : winner === 0 ? T.ColorHex.TEXT_GOLD : T.ColorHex.HP_RED;
       this.scene.add.text(1280 / 2, 720 / 2 - 40, text, {
-        fontSize: '32px', color, backgroundColor: T.ColorHex.CARD_BG + 'cc',
+        fontSize: '32px', color,
         padding: { x: 24, y: 12 }, fontFamily: T.FontFamily.DISPLAY, fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
       this._addLoreQuote(winner);
@@ -91,11 +96,12 @@ export class GameOverController {
       const p1Score = this.calcScore(1);
       const winner = p0Score > p1Score ? 0 : p1Score > p0Score ? 1 : -1;
       EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'timeout' });
+      this._drawResultOverlay();
       const resultText = winner === 0 ? '🏆 时间到！你赢了！' : winner === 1 ? '💀 时间到…你输了' : '🤝 平局！';
       const scoreText = `\n你的分数: ${p0Score}  |  敌方分数: ${p1Score}`;
       this.scene.add.text(1280 / 2, 720 / 2 - 40, resultText + scoreText, {
         fontSize: '28px', color: winner === 0 ? T.ColorHex.TEXT_GOLD : T.ColorHex.WARN,
-        backgroundColor: T.ColorHex.CARD_BG + 'cc', padding: { x: 24, y: 12 },
+        padding: { x: 24, y: 12 },
         align: 'center', fontFamily: T.FontFamily.DISPLAY, fontStyle: 'bold',
       }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
       this._addLoreQuote(winner);
@@ -114,15 +120,50 @@ export class GameOverController {
     this.checkGameOver();
   }
 
-  /** P1-C7: 游戏结束后显示重开按钮 */
+  /** 结算弹窗底: 半透明遮罩 + skin_panel_console 面板 (皮肤化, 纹理缺失回退纯色) */
+  private _drawResultOverlay(): void {
+    const cx = 1280 / 2;
+    const cy = 720 / 2;
+    // 半透明遮罩 (让战场仍可见但聚焦结算面板)
+    this.scene.add.rectangle(0, 0, 1280, 720, T.Color.PANEL_BG, 0.6)
+      .setOrigin(0).setDepth(198).setScrollFactor(0);
+    // 面板底 (暗紫魔导渐变 + 金雕花四角; 纹理缺失回退纯色)
+    const panelBg = drawPanelSkin(this.scene, {
+      x: cx - RESULT_PANEL_W / 2, y: cy - RESULT_PANEL_H / 2,
+      w: RESULT_PANEL_W, h: RESULT_PANEL_H,
+      skinKey: 'skin_panel_console', corner: 14,
+    });
+    panelBg.setDepth(199).setScrollFactor(0);
+  }
+
+  /** P1-C7: 游戏结束后显示重开按钮 (皮肤化: skin_btn_* 三态) */
   private addRestartButton(): void {
-    const btn = this.scene.add.text(1280 / 2, 720 / 2 + 80, '🔄 再来一局', {
-      fontSize: '24px', color: '#ffffff', backgroundColor: '#1a4e3acc',
-      padding: { x: 20, y: 10 }, fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(201).setScrollFactor(0).setInteractive({ useHandCursor: true });
-    btn.on('pointerdown', () => { this.scene.scene.start('MenuScene'); });
-    btn.on('pointerover', () => btn.setStyle({ backgroundColor: '#2a6a4acc' }));
-    btn.on('pointerout', () => btn.setStyle({ backgroundColor: '#1a4e3acc' }));
+    const cx = 1280 / 2;
+    const cy = 720 / 2 + 80;
+    const w = 180, h = 44;
+    const skinOpts = {
+      x: cx - w / 2, y: cy - h / 2, w, h,
+      skinNormal: 'skin_btn_normal', skinHover: 'skin_btn_hover', skinActive: 'skin_btn_active',
+      skinDisabled: 'skin_btn_normal', corner: 10,
+    };
+    // 按钮底: 有皮肤用 NineSlice, 缺失回退 Graphics 纯色
+    const bg = drawButtonSkin(this.scene, { ...skinOpts, state: 'normal' });
+    bg.setDepth(201).setScrollFactor(0);
+    // 文字叠在按钮底上
+    this.scene.add.text(cx, cy, '🔄 再来一局', {
+      fontSize: '22px', color: '#ffffff', fontFamily: T.FontFamily.BODY, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(202).setScrollFactor(0);
+    // 热区 + 三态切换 (仅 NineSlice 路径需要 setButtonSkinState; Graphics 回退无纹理可切)
+    const hasSkin = this.scene.textures.exists('skin_btn_normal');
+    const hit = makeHitArea(this.scene, skinOpts.x, skinOpts.y, w, h);
+    hit.setDepth(203).setScrollFactor(0);
+    hit.on('pointerover', () => {
+      if (hasSkin) setButtonSkinState(bg as Phaser.GameObjects.NineSlice, skinOpts, 'hover');
+    });
+    hit.on('pointerout', () => {
+      if (hasSkin) setButtonSkinState(bg as Phaser.GameObjects.NineSlice, skinOpts, 'normal');
+    });
+    hit.on('pointerdown', () => { this.scene.scene.start('MenuScene'); });
   }
 
   /** 结算时显示一句对应 lore 引文 (代入感) */
@@ -136,7 +177,7 @@ export class GameOverController {
     const entry = CODEX_ENTRIES.find(e => e.id === q.id);
     const quote = entry?.lore?.body?.[0] ?? q.fallback;
     this.scene.add.text(1280 / 2, 720 / 2 + 30, `「${quote.slice(0, 50)}${quote.length > 50 ? '…' : ''}」`, {
-      fontSize: '14px', color: T.ColorHex.TEXT_DIM, backgroundColor: T.ColorHex.CARD_BG + 'aa',
+      fontSize: '14px', color: T.ColorHex.TEXT_DIM,
       padding: { x: 16, y: 6 }, fontFamily: T.FontFamily.BODY, fontStyle: 'italic',
       align: 'center', wordWrap: { width: 600 },
     }).setOrigin(0.5).setDepth(200).setScrollFactor(0);

@@ -3,7 +3,9 @@
  *
  * 设计：
  *  - 所有 add.text / add.image 返回链式假对象（方法空操作返回自身或 undefined）
- *  - textures.exists 返回 false（走 __DEFAULT 兜底）
+ *  - textures.exists 返回 false（走 __DEFAULT 兜底 / drawPanelSkin 回退纯色 Graphics）
+ *  - chainable() 含 Graphics 绘制方法 (clear/fillStyle/fillRoundedRect/...) 供 drawPanel 回退调用
+ *  - add.nineslice / add.container 返回 chainable()（皮肤组件回退/容器需要）
  *  - scene.scene.start 空操作
  *  - 不依赖 jsdom / 不引 Phaser 运行时 —— 纯假对象
  *
@@ -28,6 +30,7 @@ function chainable(): any {
     setActive() { return obj; },
     setScale() { return obj; },
     setDisplaySize() { return obj; },
+    setTexture() { return obj; },
     on() { return obj; },
     off() { return obj; },
     once() { return obj; },
@@ -35,6 +38,18 @@ function chainable(): any {
     get() { return obj; },
     getData() { return undefined; },
     setData() { return obj; },
+    // ===== Graphics 绘制方法 (drawPanel/drawButton 回退路径需要, 空操作链式返回) =====
+    clear() { return obj; },
+    fillStyle() { return obj; },
+    fillRect() { return obj; },
+    fillRoundedRect() { return obj; },
+    lineStyle() { return obj; },
+    strokeRect() { return obj; },
+    strokeRoundedRect() { return obj; },
+    beginPath() { return obj; },
+    moveTo() { return obj; },
+    lineTo() { return obj; },
+    strokePath() { return obj; },
   };
   return obj;
 }
@@ -49,6 +64,9 @@ export function makeStubScene(): any {
       graphics: () => chainable(),
       circle: () => chainable(),
       zone: () => chainable(),
+      // 皮肤化组件回退路径/容器需要 (空操作链式返回)
+      nineslice: () => chainable(),
+      container: () => chainable(),
     },
     textures: {
       exists: () => false,
