@@ -452,7 +452,7 @@ export class HUDScene extends Phaser.Scene {
         this.superWeaponBar = new SuperWeaponBar(this, 0, SW_BAR_X, SW_BAR_Y);
         this.superWeaponBar.onActivate((weaponId: string, tileX: number, tileY: number) => {
           const gs = this.scene.get('GameScene') as any;
-          const result = gs?.commandExecutor?.execute({
+          const result = gs?.execButtonCommand({
             type: 'superweapon', playerIndex: 0, unitIds: [], weaponId, target: { x: tileX, y: tileY }, frame: 0,
           });
           if (result && !result.ok) this.showToast(result.reason);
@@ -510,7 +510,7 @@ export class HUDScene extends Phaser.Scene {
 
   private issueTrainCommand(buildingId: string, unitDefId: string): void {
     const gs = this.scene.get('GameScene') as any;
-    const result = gs.commandExecutor?.execute({
+    const result = gs.execButtonCommand({
       type: 'train', playerIndex: 0, buildingId, unitDefId,
     }) as CommandResult | undefined;
     if (result && !result.ok) this.showToast(result.reason);
@@ -519,7 +519,7 @@ export class HUDScene extends Phaser.Scene {
 
   private issueResearchCommand(buildingId: string, techDefId: string): void {
     const gs = this.scene.get('GameScene') as any;
-    const result = gs.commandExecutor?.execute({
+    const result = gs.execButtonCommand({
       type: 'research', playerIndex: 0, buildingId, techDefId,
     }) as CommandResult | undefined;
     if (result && !result.ok) this.showToast(result.reason);
@@ -529,7 +529,7 @@ export class HUDScene extends Phaser.Scene {
   /** P1-14：取消研究中的科技，按剩余进度退款 */
   private issueCancelResearchCommand(buildingId: string): void {
     const gs = this.scene.get('GameScene') as any;
-    const result = gs.commandExecutor?.execute({
+    const result = gs.execButtonCommand({
       type: 'cancel_research', playerIndex: 0, buildingId,
     }) as CommandResult | undefined;
     if (result && !result.ok) this.showToast(result.reason);
@@ -553,7 +553,7 @@ export class HUDScene extends Phaser.Scene {
       tooltipLines: ['停止', '停止当前动作，取消移动/攻击/采集'],
       callback: () => {
         for (const id of ids) {
-          gs.commandExecutor?.execute({ type: 'stop', playerIndex: 0, unitIds: [id], frame: 0 });
+          gs.execButtonCommand({ type: 'stop', playerIndex: 0, unitIds: [id], frame: 0 });
         }
       },
     });
@@ -562,7 +562,7 @@ export class HUDScene extends Phaser.Scene {
       tooltipLines: ['坚守', '原地不动，不会自动追击敌人'],
       callback: () => {
         for (const id of ids) {
-          gs.commandExecutor?.execute({ type: 'hold_position', playerIndex: 0, unitIds: [id], frame: 0 });
+          gs.execButtonCommand({ type: 'hold_position', playerIndex: 0, unitIds: [id], frame: 0 });
         }
       },
     });

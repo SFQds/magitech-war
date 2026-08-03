@@ -4,6 +4,7 @@ import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { HUDScene } from './scenes/HUDScene';
 import { CodexScene } from './scenes/CodexScene';
+import { LobbyScene } from './scenes/LobbyScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -11,7 +12,7 @@ const config: Phaser.Types.Core.GameConfig = {
   height: 720,
   backgroundColor: '#1a1a2e',
   parent: document.body,
-  scene: [BootScene, MenuScene, GameScene, HUDScene, CodexScene],
+  scene: [BootScene, MenuScene, LobbyScene, GameScene, HUDScene, CodexScene],
   render: {
     pixelArt: true,
     roundPixels: true,

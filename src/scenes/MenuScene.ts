@@ -279,6 +279,13 @@ export class MenuScene extends Phaser.Scene {
       this.scene.start('CodexScene');
     });
 
+    // === 局域网联机按钮 ===
+    this.makeMenuButton(cx - 130, startY + 56, 190, 40, '🌐  局域网联机', {
+      fontSize: '18px', color: '#ffd700', bg: '#2a1a4a', hoverBg: '#3a2a6a',
+    }, () => {
+      this.scene.start('LobbyScene', { role: 'host' });
+    });
+
     // === 初始化显示 ===
     this.updateFactionCards();
     this.updateMapDisplay();

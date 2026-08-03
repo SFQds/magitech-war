@@ -44,8 +44,10 @@ import { GameEvent } from '../types/events';
 import { tileToWorld } from '../utils/MathUtils';
 import { registerSoundBindings } from '../rendering/SoundBindings';
 import { SpriteRenderer } from '../rendering/SpriteRenderer';
-import { deserialize } from '../save/SaveLoadSystem';
+import { serialize, deserialize } from '../save/SaveLoadSystem';
 import type { SaveData } from '../save/SaveData';
+import { NetHost } from '../net/NetServer';
+import { NetClient } from '../net/NetClient';
 
 export class GameScene extends Phaser.Scene {
   world!: GameWorld;
@@ -145,8 +147,24 @@ export class GameScene extends Phaser.Scene {
   private _playerGuilds: string[] = ['mages_guild', 'alchemists_society'];
   /** 存档数据（读档时由 init 注入） */
   private _loadSave: SaveData | null = null;
+  /** 联机模式: single(单机默认) / host(主机) / client(客户端) */
+  private _netMode: 'single' | 'host' | 'client' = 'single';
+  /** 联机对手阵营 (host/client 各自的对方) */
+  private _opponentFaction: string = 'hammer_federation';
+  /** 联机对手行会 */
+  private _opponentGuilds: string[] = ['mages_guild', 'alchemists_society'];
+  /** 主机端网络连接器 */
+  private _netHost: NetHost | null = null;
+  /** 客户端网络连接器 */
+  private _netClient: NetClient | null = null;
+  /** 快照广播计时器 (host 模式, 每 100ms 广播一次) */
+  private _snapshotTimer = 0;
+  /** 客户端最新收到的快照帧号 */
+  private _latestSnapshotFrame = 0;
+  /** 本地玩家索引: single/host=0, client=1 */
+  private _localPlayerIndex = 0;
 
-  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string; playerGuilds?: string[]; loadFromSave?: SaveData }): void {
+  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string; playerGuilds?: string[]; loadFromSave?: SaveData; netMode?: 'single' | 'host' | 'client'; opponentFaction?: string; opponentGuilds?: string[] }): void {
     // P2-7 修复：mapId 白名单校验，防止路径穿越
     this._loadSave = data?.loadFromSave ?? null;
     const VALID_MAPS = ['map_valley', 'map_river', 'map_islands'];
@@ -155,6 +173,11 @@ export class GameScene extends Phaser.Scene {
     this._playerFaction = data?.playerFaction ?? 'arcane_empire';
     this._aiDifficulty = data?.aiDifficulty ?? 'normal';
     this._playerGuilds = data?.playerGuilds ?? ['mages_guild', 'alchemists_society'];
+    this._netMode = data?.netMode ?? 'single';
+    this._opponentFaction = data?.opponentFaction ?? 'hammer_federation';
+    this._opponentGuilds = data?.opponentGuilds ?? ['mages_guild', 'alchemists_society'];
+    // 本地玩家索引: client 模式是 owner 1, 其他 owner 0
+    this._localPlayerIndex = this._netMode === 'client' ? 1 : 0;
   }
 
   preload(): void {
@@ -209,8 +232,11 @@ export class GameScene extends Phaser.Scene {
     // 批1: 数据驱动——从 FACTION_DEFS 取合法 faction 列表，CC 从 factionDef.ccBuilding 读取
     const playerFaction = this._playerFaction as string;
     const allFactions = Object.keys(FACTION_DEFS);
-    const aiFaction = (allFactions.filter(f => f !== playerFaction)[Math.floor(Math.random()
-      * (allFactions.length - 1))]) ?? 'hammer_federation';
+    // 联机模式: 对手阵营/行会由 LobbyScene 传入; 单机模式: 随机选对立阵营
+    const aiFaction = this._netMode !== 'single'
+      ? this._opponentFaction
+      : (allFactions.filter(f => f !== playerFaction)[Math.floor(Math.random()
+        * (allFactions.length - 1))]) ?? 'hammer_federation';
     const playerCC = FACTION_DEFS[playerFaction]?.ccBuilding ?? 'bld_cc_empire';
     const aiCC = FACTION_DEFS[aiFaction]?.ccBuilding ?? 'bld_cc_federation';
 
@@ -218,7 +244,10 @@ export class GameScene extends Phaser.Scene {
     const playerHasMages = this._playerGuilds.includes('mages_guild');
     const playerHasVoid = this._playerGuilds.includes('void_institute');
     let aiGuilds: string[];
-    if (this._aiDifficulty === 'hard' && !playerHasVoid) {
+    if (this._netMode !== 'single') {
+      // 联机: 对手行会由大厅传入
+      aiGuilds = [...this._opponentGuilds];
+    } else if (this._aiDifficulty === 'hard' && !playerHasVoid) {
       aiGuilds = ['void_institute', 'alchemists_society'];
     } else if (playerHasMages) {
       aiGuilds = ['mechanists_guild', 'alchemists_society'];
@@ -226,8 +255,9 @@ export class GameScene extends Phaser.Scene {
       aiGuilds = ['mages_guild', 'alchemists_society'];
     }
 
+    // 联机模式: owner 1 是真人对手 (isAI=false); 单机: AI (isAI=true)
     this.world.addPlayer(playerFaction as FactionId, [...this._playerGuilds], false);
-    this.world.addPlayer(aiFaction as FactionId, [...aiGuilds], true);
+    this.world.addPlayer(aiFaction as FactionId, [...aiGuilds], this._netMode === 'single');
 
     // 初始化 per-player 科技效果缓存
     this.initTechEffects();
@@ -238,7 +268,9 @@ export class GameScene extends Phaser.Scene {
 
     // 初始化子系统
     this.cameraCtrl = new CameraController(this.cameras.main, mapW, mapH, tileSize);
-    this.inputCtrl = new InputController(this, 0);
+    // 客户端模式: 本地玩家是 owner 1; host/single: owner 0
+    const localPlayerIndex = this._netMode === 'client' ? 1 : 0;
+    this.inputCtrl = new InputController(this, localPlayerIndex);
     this.aiController = new AIController(this.world, 1, this._aiDifficulty as 'easy' | 'normal' | 'hard');
     this.projectileController = new ProjectileController(this);
     this.buildController = new BuildController(this);
@@ -256,7 +288,7 @@ export class GameScene extends Phaser.Scene {
     this.shiftKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT) ?? null;
     this.spriteRenderer = new SpriteRenderer(
       this.unitSprites, this.buildingSprites, this.flashTimers, this.hpBarRenderer,
-      this.world.fogOfWar, 0,
+      this.world.fogOfWar, localPlayerIndex,
     );
     // 迷雾渲染器初始化
     this.fogRenderer = new FogRenderer(this);
@@ -289,8 +321,10 @@ export class GameScene extends Phaser.Scene {
     // 键盘快捷键
     this.setupKeyboard();
 
-    // 开局聚焦玩家实际出生点
-    this.cameraCtrl.centerOn(p0x * tileSize + tileSize/2, p0y * tileSize + tileSize/2);
+    // 开局聚焦玩家实际出生点 (client 聚焦 owner 1 出生点)
+    const camFocusX = this._netMode === 'client' ? p1x : p0x;
+    const camFocusY = this._netMode === 'client' ? p1y : p0y;
+    this.cameraCtrl.centerOn(camFocusX * tileSize + tileSize/2, camFocusY * tileSize + tileSize/2);
 
     // 通知 HUDScene 初始化小地图
     const hudScene = this.scene.get('HUDScene') as any;
@@ -356,6 +390,9 @@ export class GameScene extends Phaser.Scene {
       }
     };
     EventBus.on(GameEvent.UNIT_KILLED, this._onUnitKilled);
+
+    // 联机模式: 初始化网络连接 (host 收命令+广播快照, client 收快照+发命令)
+    this.setupNetworking();
 
     // 注册 Phaser 场景关闭/销毁时的清理
     this.events.on('shutdown', this.shutdown, this);
@@ -503,7 +540,7 @@ export class GameScene extends Phaser.Scene {
 
       // 先检查单位
       const clickedUnit = this.units.find(u =>
-        u.owner === 0 && u.isAlive &&
+        u.owner === this._localPlayerIndex && u.isAlive &&
         Math.round(u.tileX) === tile.x && Math.round(u.tileY) === tile.y
       );
       if (clickedUnit) {
@@ -523,7 +560,7 @@ export class GameScene extends Phaser.Scene {
 
       // 再检查建筑
       const clickedBuilding = this.buildings.find(b =>
-        b.owner === 0 && b.isAlive &&
+        b.owner === this._localPlayerIndex && b.isAlive &&
         b.tileX === tile.x && b.tileY === tile.y
       );
       if (clickedBuilding) {
@@ -557,7 +594,7 @@ export class GameScene extends Phaser.Scene {
         this.selectedBuildingId = null;
       }
       for (const unit of this.units) {
-        if (unit.owner !== 0 || !unit.isAlive) continue;
+        if (unit.owner !== this._localPlayerIndex || !unit.isAlive) continue;
         const w = tileToWorld(unit.tileX, unit.tileY);
         if (w.x >= box.x && w.x <= box.x + box.width &&
             w.y >= box.y && w.y <= box.y + box.height) {
@@ -580,10 +617,19 @@ export class GameScene extends Phaser.Scene {
       }
 
       const selection = this.inputCtrl.getSelection();
+
+      // === 客户端模式: 不本地执行, 构造命令发给主机 ===
+      if (this._netMode === 'client') {
+        if (selection.length === 0) return;
+        const cmd = this.buildClientCommand(selection, tile);
+        if (cmd) this.sendCommandToHost(cmd);
+        return;
+      }
+
       // P1-BUILD3: right-click with a building selected sets its rally point for produced units.
       if (selection.length === 0 && this.selectedBuildingId) {
         const bld = this.entities.getBuilding(this.selectedBuildingId);
-        if (bld && bld.owner === 0 && bld.isAlive) {
+        if (bld && bld.owner === this._localPlayerIndex && bld.isAlive) {
           bld.rallyPoint = { x: tile.x, y: tile.y };
         }
         return;
@@ -620,7 +666,7 @@ export class GameScene extends Phaser.Scene {
       // 检查点击位置是否有己方运输卡车（装载逻辑）
       const ownTransportAtTile = selection.length > 0
         ? this.units.find(u =>
-            u.owner === 0 && u.isAlive && u.spriteKey === 'unit_transport' &&
+            u.owner === this._localPlayerIndex && u.isAlive && u.spriteKey === 'unit_transport' &&
             Math.round(u.tileX) === tile.x && Math.round(u.tileY) === tile.y
           )
         : null;
@@ -771,7 +817,7 @@ export class GameScene extends Phaser.Scene {
     // F2: 全选作战单位
     this.input.keyboard!.on('keydown-F2', () => {
       const combatIds = this.units
-        .filter(u => u.owner === 0 && u.isAlive && u.spriteKey !== 'unit_worker')
+        .filter(u => u.owner === this._localPlayerIndex && u.isAlive && u.spriteKey !== 'unit_worker')
         .map(u => u.id);
       this.inputCtrl.setSelection(combatIds);
       this.selectedBuildingId = null;
@@ -862,13 +908,13 @@ export class GameScene extends Phaser.Scene {
   private findEnemyAtTile(tx: number, ty: number): Entity | null {
     // 敌方单位
     const unit = this.units.find(u =>
-      u.owner !== 0 && u.isAlive &&
+      u.owner !== this._localPlayerIndex && u.isAlive &&
       Math.round(u.tileX) === tx && Math.round(u.tileY) === ty
     );
     if (unit) return unit;
     // 敌方建筑
     const bld = this.buildings.find(b =>
-      b.owner !== 0 && b.isAlive &&
+      b.owner !== this._localPlayerIndex && b.isAlive &&
       b.tileX === tx && b.tileY === ty
     );
     return bld ?? null;
@@ -912,10 +958,21 @@ export class GameScene extends Phaser.Scene {
     // P0-1 修复：钳制 deltaSec，防止标签页回后台再切回时 delta 爆炸导致瞬移/一帧多结算
     const ds = Math.min(delta / 1000, 0.1); // 上限 100ms，超出视为卡顿/后台
 
+    // === 客户端模式: 不跑模拟, 只渲染+相机 ===
+    if (this._netMode === 'client') {
+      this.stepBuildPreview();
+      this.stepCamera();
+      this.stepRender(ds);
+      return;
+    }
+
     this.stepBuildPreview();
     this.stepCamera();
     this.stepMovement(ds);
-    this.stepAI(ds);
+    // 联机模式不跑 AI (owner 1 是真人对手); 单机才跑 AI
+    if (this._netMode === 'single') {
+      this.stepAI(ds);
+    }
     this.stepFogOfWar();
     this.stepCombat(ds);
     this.stepGuildAndHero(ds);
@@ -929,6 +986,158 @@ export class GameScene extends Phaser.Scene {
     this.stepTimer(ds);
     this.stepGameOver();
     this.stepRender(ds);
+
+    // === 主机模式: 每 100ms 广播快照给客户端 ===
+    if (this._netMode === 'host') {
+      this._snapshotTimer += delta;
+      if (this._snapshotTimer >= 100) {
+        this._snapshotTimer = 0;
+        this.broadcastSnapshot();
+      }
+    }
+  }
+
+  // ============ 联机 (状态同步: 主机权威) ============
+
+  /** 初始化网络连接: host 收命令+广播快照; client 收快照+发命令 */
+  private setupNetworking(): void {
+    if (this._netMode === 'single') return;
+
+    if (this._netMode === 'host') {
+      // 主机: 连本机中继, 收客户端命令
+      this._netHost = new NetHost('Host');
+      this._netHost.on({
+        onCommand: (playerIndex, frame, command) => {
+          // 客户端命令喂给 CommandExecutor (已有 playerIndex 校验)
+          this.commandExecutor.execute(command as AnyCommand);
+        },
+        onPeerDisconnect: () => {
+          // 客户端断开: 可选显示提示 (MVP 不处理重连)
+        },
+      });
+      this._netHost.connect();
+    } else if (this._netMode === 'client') {
+      // 客户端: 连主机中继, 收快照
+      this._netClient = new NetClient('localhost', 3000);
+      this._netClient.on({
+        onSnapshot: (frame, data) => {
+          if (frame > this._latestSnapshotFrame) {
+            this._latestSnapshotFrame = frame;
+            this.applySnapshot(data);
+          }
+        },
+        onGameOver: (winner) => {
+          // 客户端: 游戏结束, 返回主菜单 (MVP 简化处理)
+          this.cleanupNetwork();
+          this.scene.start('MenuScene');
+        },
+        onDisconnect: () => {
+          // 主机断开 (MVP 不处理)
+        },
+      });
+      this._netClient.connect('Client');
+    }
+  }
+
+  /** 主机: 序列化当前游戏状态, 广播给客户端 */
+  private broadcastSnapshot(): void {
+    if (!this._netHost) return;
+    const aiFaction = this.world.players[1]?.faction ?? 'hammer_federation';
+    const data = serialize({
+      world: this.world,
+      entities: this.entities,
+      gameTimer: this.gameOverCtrl.gameTimer,
+      graceTimers: this.gameOverCtrl.graceTimers,
+      meta: {
+        mapId: this._mapId,
+        mapWidth: this.world.map.config.width,
+        mapHeight: this.world.map.config.height,
+        playerFaction: this._playerFaction as unknown as import('../types/data').FactionId,
+        aiFaction: aiFaction as import('../types/data').FactionId,
+        aiDifficulty: this._aiDifficulty as 'easy' | 'normal' | 'hard',
+        playerGuilds: [...this._playerGuilds],
+        aiGuilds: this.world.players[1]?.guilds ?? [...this._opponentGuilds],
+      },
+    });
+    this._netHost.send({ t: 'snapshot', frame: this._latestSnapshotFrame++, data });
+  }
+
+  /** 客户端: 从主机快照重建游戏状态, 更新渲染 */
+  private applySnapshot(data: SaveData): void {
+    const result = deserialize(data);
+    // 替换本地世界+实体注册表 (units/buildings/resourceFields 是 getter, 自动跟随)
+    this.world = result.world;
+    this.entities = result.entities;
+    // 更新游戏计时器
+    this.gameOverCtrl.gameTimer = result.gameTimer;
+    this.gameOverCtrl.graceTimers = result.graceTimers;
+    // 同步渲染: 重建精灵映射 (旧精灵删除, 新实体添加)
+    this.syncSpritesFromState();
+  }
+
+  /** 客户端: 根据当前实体状态重建精灵 (快照应用后调用) */
+  private syncSpritesFromState(): void {
+    // 删除不再存在的精灵
+    const liveUnitIds = new Set(this.units.map(u => u.id));
+    const liveBldIds = new Set(this.buildings.map(b => b.id));
+    for (const [id, sp] of this.unitSprites) {
+      if (!liveUnitIds.has(id)) { sp.destroy(); this.unitSprites.delete(id); }
+    }
+    for (const [id, sp] of this.buildingSprites) {
+      if (!liveBldIds.has(id)) { sp.destroy(); this.buildingSprites.delete(id); }
+    }
+    // 添加新实体的精灵
+    for (const u of this.units) {
+      if (!this.unitSprites.has(u.id) && u.isAlive && !u.isCargo) {
+        this.addUnit(u);
+      }
+    }
+    for (const b of this.buildings) {
+      if (!this.buildingSprites.has(b.id) && b.isAlive) {
+        this.addBuilding(b);
+      }
+    }
+  }
+
+  /** 客户端模式: 构造命令发给主机 (不本地执行) */
+  private sendCommandToHost(cmd: AnyCommand): void {
+    if (!this._netClient) return;
+    // 客户端是 owner 1
+    cmd.playerIndex = 1;
+    cmd.frame = this._latestSnapshotFrame;
+    this._netClient.send({ t: 'cmd', playerIndex: 1, frame: cmd.frame, command: cmd });
+  }
+
+  /** 客户端模式: 根据右键目标点构造智能命令 (移动/攻击/采集) */
+  /** 客户端模式: 根据右键目标点构造智能命令 (移动/攻击/采集) */
+  private buildClientCommand(selection: string[], tile: { x: number; y: number }): AnyCommand | null {
+    const enemy = this.findEnemyAtTile(tile.x, tile.y);
+    if (enemy) {
+      return {
+        type: 'attack_target', playerIndex: 1, unitIds: [...selection], frame: 0,
+        targetEntityId: enemy.id,
+      };
+    }
+    const field = this.resourceFields.find(f =>
+      f.isActive && !f.isDepleted && f.tileX === tile.x && f.tileY === tile.y);
+    if (field) {
+      return {
+        type: 'gather', playerIndex: 1, unitIds: [...selection], frame: 0,
+        resourceFieldId: field.id,
+      };
+    }
+    return {
+      type: 'move', playerIndex: 1, unitIds: [...selection], frame: 0,
+      target: { x: tile.x, y: tile.y },
+    };
+  }
+
+  /** 清理网络连接 (游戏结束/场景切换时调用) */
+  private cleanupNetwork(): void {
+    this._netHost?.disconnect();
+    this._netHost = null;
+    this._netClient?.disconnect();
+    this._netClient = null;
   }
 
   // ---------- Step Methods ----------
@@ -1293,7 +1502,26 @@ export class GameScene extends Phaser.Scene {
   // ============ 命令执行 ============
 
   private executeCommand(cmd: AnyCommand): void {
+    // 客户端模式: 命令转发给主机执行 (本地不模拟); 
+    // 本地玩家是 owner 1, 把命令的 playerIndex 修正为本地玩家的 owner
+    if (this._netMode === 'client') {
+      // HUD 命令硬编码 playerIndex: 0, 客户端需修正为 1
+      if (cmd.playerIndex === 0) cmd.playerIndex = 1;
+      this.sendCommandToHost(cmd);
+      return;
+    }
     this.commandExecutor.execute(cmd);
+  }
+
+  /** HUD 回调查用: 统一命令入口 (客户端模式内部转发给主机) */
+  execButtonCommand(cmd: AnyCommand): import('../controllers/CommandExecutor').CommandResult | undefined {
+    if (this._netMode === 'client') {
+      // 客户端: 转发给主机, 本地无执行结果
+      if (cmd.playerIndex === 0) cmd.playerIndex = 1;
+      this.sendCommandToHost(cmd);
+      return undefined;
+    }
+    return this.commandExecutor.execute(cmd);
   }
 
   /** P1-UI: 切换攻击移动模式（供 HUDScene 命令按钮调用） */
@@ -1534,6 +1762,8 @@ export class GameScene extends Phaser.Scene {
     this.entities.clear();
     // 审4: 重置超武 static Map，防止跨会话状态泄漏
     SuperWeaponSystem.reset();
+    // 联机: 断开网络连接
+    this.cleanupNetwork();
   }
 
 }
