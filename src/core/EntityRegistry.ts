@@ -34,10 +34,76 @@ export class EntityRegistry {
   private _activeFieldsDirty = true;
   private _activeFieldsCache: ResourceField[] = [];
 
+  // ============ 战斗候选空间索引（性能：O(N²) → O(N + k)） ============
+  // 每个网格单元约 8×8 瓦片。仅在 updateCombat 帧首按需重建（脏标记），
+  // 用于把「最近敌人」扫描从全量数组收窄到小候选集。AABB 预筛是精确欧氏
+  // 距离的超集，绝不漏掉线性扫描能命中的候选，故行为不变。
+  private static readonly COMBAT_CELL = 8;
+  private _combatCellsUnits = new Map<number, Unit[]>();
+  private _combatCellsBuildings = new Map<number, Building[]>();
+  private _combatIndexDirty = true;
+
+  private static combatCellKey(cx: number, cy: number): number {
+    return cy * 100000 + cx;
+  }
+
+  /** 帧首重建空间索引（仅当有增删时）。由 CombatSystem.updateCombat 调用。 */
+  ensureCombatIndex(): void {
+    if (!this._combatIndexDirty) return;
+    this._combatCellsUnits.clear();
+    this._combatCellsBuildings.clear();
+    const cell = EntityRegistry.COMBAT_CELL;
+    for (const u of this.units) {
+      if (!u.isAlive) continue;
+      const key = EntityRegistry.combatCellKey(Math.floor(u.tileX / cell), Math.floor(u.tileY / cell));
+      let bucket = this._combatCellsUnits.get(key);
+      if (!bucket) { bucket = []; this._combatCellsUnits.set(key, bucket); }
+      bucket.push(u);
+    }
+    for (const b of this.buildings) {
+      if (!b.isAlive) continue;
+      const key = EntityRegistry.combatCellKey(Math.floor(b.tileX / cell), Math.floor(b.tileY / cell));
+      let bucket = this._combatCellsBuildings.get(key);
+      if (!bucket) { bucket = []; this._combatCellsBuildings.set(key, bucket); }
+      bucket.push(b);
+    }
+    this._combatIndexDirty = false;
+  }
+
+  /** 收集以 (tileX,tileY) 为中心、radius 方形范围内的活单位/建筑（含已方，精确过滤交给调用方）。
+   *  用 AABB(|dx|<=radius 且 |dy|<=radius) 预筛，是欧氏距离 radius 的超集。 */
+  queryCombatCandidates(tileX: number, tileY: number, radius: number): { units: Unit[]; buildings: Building[] } {
+    this.ensureCombatIndex();
+    const cell = EntityRegistry.COMBAT_CELL;
+    const cx = Math.floor(tileX / cell);
+    const cy = Math.floor(tileY / cell);
+    const spread = Math.ceil(radius / cell) + 1;
+    const units: Unit[] = [];
+    const buildings: Building[] = [];
+    for (let gx = cx - spread; gx <= cx + spread; gx++) {
+      for (let gy = cy - spread; gy <= cy + spread; gy++) {
+        const uk = this._combatCellsUnits.get(EntityRegistry.combatCellKey(gx, gy));
+        if (uk) {
+          for (const u of uk) {
+            if (Math.abs(u.tileX - tileX) <= radius && Math.abs(u.tileY - tileY) <= radius) units.push(u);
+          }
+        }
+        const bk = this._combatCellsBuildings.get(EntityRegistry.combatCellKey(gx, gy));
+        if (bk) {
+          for (const b of bk) {
+            if (Math.abs(b.tileX - tileX) <= radius && Math.abs(b.tileY - tileY) <= radius) buildings.push(b);
+          }
+        }
+      }
+    }
+    return { units, buildings };
+  }
+
   addUnit(unit: Unit): void {
     this.units.push(unit);
     this.unitMap.set(unit.id, unit);
     this._aliveUnitsDirty = true;
+    this._combatIndexDirty = true;
     // 英雄额外索引
     if (unit instanceof Hero && !this.heroes.includes(unit)) {
       this.heroes.push(unit);
@@ -50,6 +116,7 @@ export class EntityRegistry {
     if (u) {
       this.unitMap.delete(id);
       this._aliveUnitsDirty = true;
+      this._combatIndexDirty = true;
       // swap-with-last + pop (O(1) 替代 O(N) splice)
       const idx = this.units.indexOf(u);
       if (idx !== -1) {
@@ -107,6 +174,7 @@ export class EntityRegistry {
     this.buildings.push(bld);
     this.buildingMap.set(bld.id, bld);
     this._aliveBuildingsDirty = true;
+    this._combatIndexDirty = true;
   }
 
   removeBuilding(id: string): Building | undefined {
@@ -114,6 +182,7 @@ export class EntityRegistry {
     if (b) {
       this.buildingMap.delete(id);
       this._aliveBuildingsDirty = true;
+      this._combatIndexDirty = true;
       const idx = this.buildings.indexOf(b);
       if (idx !== -1) {
         this.buildings[idx] = this.buildings[this.buildings.length - 1];
@@ -205,5 +274,7 @@ export class EntityRegistry {
     // 清空缓存
     this._aliveUnitsCache = []; this._aliveBuildingsCache = []; this._activeFieldsCache = [];
     this._aliveUnitsDirty = true; this._aliveBuildingsDirty = true; this._activeFieldsDirty = true;
+    this._combatCellsUnits.clear(); this._combatCellsBuildings.clear();
+    this._combatIndexDirty = true;
   }
 }

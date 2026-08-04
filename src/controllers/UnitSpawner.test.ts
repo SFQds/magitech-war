@@ -97,6 +97,35 @@ describe('UnitSpawner.spawnUnit normal units', () => {
   });
 });
 
+describe('UnitSpawner.spawnUnit building (技能召唤建筑)', () => {
+  beforeEach(() => EventBus.clear());
+  afterEach(() => EventBus.clear());
+
+  it('spawns a completed combat building for bld_turret (塞巴斯蒂安炮台) instead of dropping it', () => {
+    const { spawner, addedBuildings } = setupSpawner();
+    spawner.spawnUnit('bld_turret', { x: 5, y: 5 }, 0, true);
+    expect(addedBuildings).toHaveLength(1);
+    const bld = addedBuildings[0];
+    expect(bld.spriteKey).toBe('bld_turret');
+    expect(bld.state).toBe('idle'); // 已完工才会被防御建筑攻击循环开火
+    expect(bld.attackDamage).toBeGreaterThan(0);
+    expect(bld.attackRange).toBeGreaterThan(0);
+  });
+
+  it('routes building spawn through onAddBuilding (not onAddUnit)', () => {
+    const { spawner, addedUnits, addedBuildings } = setupSpawner();
+    spawner.spawnUnit('bld_turret', { x: 5, y: 5 }, 1, true);
+    expect(addedBuildings).toHaveLength(1);
+    expect(addedUnits).toHaveLength(0);
+  });
+
+  it('marks the building tile occupied', () => {
+    const { spawner, map } = setupSpawner();
+    spawner.spawnUnit('bld_turret', { x: 6, y: 6 }, 0, true);
+    expect(map.isOccupied(6, 6)).toBe(true);
+  });
+});
+
 describe('UnitSpawner.spawnUnit heroes', () => {
   beforeEach(() => EventBus.clear());
   afterEach(() => EventBus.clear());

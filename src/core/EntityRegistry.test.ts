@@ -326,6 +326,37 @@ describe('EntityRegistry clear', () => {
   });
 });
 
+describe('EntityRegistry combat spatial index', () => {
+  let r: EntityRegistry;
+  beforeEach(() => { r = new EntityRegistry(); });
+
+  it('queryCombatCandidates returns units/buildings within AABB radius (superset of euclidean)', () => {
+    const near = makeUnit({ tileX: 12, tileY: 12 });
+    const far = makeUnit({ tileX: 60, tileY: 12 }); // 48 格外, 超出生点 sight
+    const enemyBld = makeBuilding({ tileX: 14, tileY: 14 });
+    const dead = makeUnit({ tileX: 13, tileY: 13 });
+    dead.hp = 0; // dead, 空间索引/候选查询应排除
+    r.addUnit(near); r.addUnit(far); r.addUnit(dead); r.addBuilding(enemyBld);
+
+    const { units, buildings } = r.queryCombatCandidates(12, 12, 10);
+    expect(units).toContain(near);
+    expect(units).not.toContain(far); // 48 格远超半径, 不应进入候选
+    expect(buildings).toContain(enemyBld);
+  });
+
+  it('marks index dirty on add/remove and rebuilds on next query', () => {
+    const a = makeUnit({ tileX: 5, tileY: 5 });
+    r.addUnit(a);
+    const { units: first } = r.queryCombatCandidates(5, 5, 10);
+    expect(first).toEqual([a]);
+
+    // 移除后重查, 不应包含已移除单位
+    r.removeUnit(a.id);
+    const { units: second } = r.queryCombatCandidates(5, 5, 10);
+    expect(second).toEqual([]);
+  });
+});
+
 describe('EntityRegistry index getters', () => {
   it('unitIndex/buildingIndex/fieldIndex return the live internal Maps', () => {
     const r = new EntityRegistry();

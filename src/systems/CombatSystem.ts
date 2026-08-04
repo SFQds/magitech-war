@@ -91,6 +91,8 @@ export class CombatSystem {
     // 使用 EntityRegistry 的 Map 索引（O(1) 查表替代 O(N) 遍历）
     const unitIdx = entities?.unitIndex;
     const bldIdx = entities?.buildingIndex;
+    // 建立战斗候选空间索引（O(N²)→O(N+k)）。帧内第一个单位触发的重建是一次性 O(N)。
+    entities?.ensureCombatIndex();
 
     for (const unit of units) {
       if (!unit.isAlive) continue;
@@ -247,7 +249,14 @@ export class CombatSystem {
       // 仅 retreat 阻止索敌；defend/recover 允许途中自卫
       if (unit.aiLockedAction === 'retreat') continue;
 
-      const enemy = CombatSystem.findNearestEnemy(unit, allUnits, allBuildings, fogOfWar);
+      // 最近敌人：用空间索引收窄候选（无 entities 时退化为全量线性扫描）
+      let cand: { units: Unit[]; buildings: Building[] };
+      if (entities) {
+        cand = entities.queryCombatCandidates(unit.tileX, unit.tileY, Math.max(unit.sight, unit.attackRange));
+      } else {
+        cand = { units: allUnits, buildings: allBuildings };
+      }
+      const enemy = CombatSystem.findNearestEnemyIn(unit, cand.units, cand.buildings, fogOfWar);
       if (!enemy) continue;
 
       const dist = distance(
@@ -316,14 +325,20 @@ export class CombatSystem {
       // 自动索敌：找射程内最近敌人（P1-G2 修复：同时搜索单位和建筑）
       let nearest: Entity | null = null;
       let nearestDist = bld.attackRange;
-      for (const enemy of allUnits) {
+      // 空间索引收窄候选（无 entities 时退化为全量）
+      let bUnits = allUnits, bBuildings = allBuildings;
+      if (entities) {
+        const q = entities.queryCombatCandidates(bld.tileX, bld.tileY, bld.attackRange);
+        bUnits = q.units; bBuildings = q.buildings;
+      }
+      for (const enemy of bUnits) {
         if (enemy.owner === bld.owner || !enemy.isAlive) continue;
         if (fogOfWar && bld.owner === 0 && !fogOfWar.isVisible(Math.round(enemy.tileX), Math.round(enemy.tileY))) continue;
         const d = distance({ x: bld.tileX, y: bld.tileY }, { x: enemy.tileX, y: enemy.tileY });
         if (d <= nearestDist) { nearestDist = d; nearest = enemy; }
       }
       // P1-G2: 也搜索敌方建筑
-      for (const enemyBld of allBuildings) {
+      for (const enemyBld of bBuildings) {
         if (enemyBld.owner === bld.owner || !enemyBld.isAlive) continue;
         if (fogOfWar && bld.owner === 0 && !fogOfWar.isVisible(enemyBld.tileX, enemyBld.tileY)) continue;
         const d = distance({ x: bld.tileX, y: bld.tileY }, { x: enemyBld.tileX, y: enemyBld.tileY });
@@ -351,8 +366,19 @@ export class CombatSystem {
     return events;
   }
 
-  /** 查找最近的非己方单位 */
+  /** 查找最近的非己方单位（全量线性扫描，供无 entities 的调用/测试） */
   static findNearestEnemy(
+    unit: Unit,
+    units: Unit[],
+    buildings: Building[],
+    fogOfWar?: FogOfWar,
+  ): Entity | null {
+    return CombatSystem.findNearestEnemyIn(unit, units, buildings, fogOfWar);
+  }
+
+  /** 在给定候选集中查找最近的非己方单位。候选集可先经空间索引收窄，
+   *  精确逻辑不变（隐形/迷雾/欧氏距离）。 */
+  static findNearestEnemyIn(
     unit: Unit,
     units: Unit[],
     buildings: Building[],

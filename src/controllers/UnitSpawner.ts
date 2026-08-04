@@ -8,7 +8,7 @@ import { Unit } from '../entities/Unit';
 import { Building } from '../entities/Building';
 import { Hero } from '../entities/Hero';
 import { HeroSystem } from '../systems/HeroSystem';
-import { UNIT_DEFS, FACTION_DEFS, createBuilding } from '../config/unitData';
+import { UNIT_DEFS, FACTION_DEFS, BUILDING_DEFS, createBuilding } from '../config/unitData';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 
@@ -50,6 +50,18 @@ export class UnitSpawner {
     }
 
     const faction = this.getFaction(owner);
+
+    // 技能召唤的防御建筑（如塞巴斯蒂安「部署炮台」bld_turret）：走建筑生成路径，
+    // 直接生成已完成(可开火)的战斗建筑，而非被 UNIT_DEFS 查找遗漏丢失。
+    // 修复根因：此前这些 spawn 命令被下方 UNIT_DEFS[def]->!def 提早 return 吞掉，从未生成实体。
+    if (BUILDING_DEFS[unitDefId]) {
+      const bld = createBuilding(owner, faction, unitDefId, sx, sy);
+      bld.complete(); // 立即完工 → state='idle'，防御建筑攻击循环才会开火
+      this.onAddBuilding(bld);
+      this.map.markOccupied(sx, sy);
+      EventBus.emit(GameEvent.UNIT_CREATED, { unitId: bld.id, playerIndex: owner, defId: unitDefId, position: { x: sx, y: sy } });
+      return { pos: { x: sx, y: sy } };
+    }
 
     // 英雄
     if (unitDefId.startsWith('hero_')) {
