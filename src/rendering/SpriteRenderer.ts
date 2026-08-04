@@ -28,6 +28,14 @@ export class SpriteRenderer {
   ) {}
 
   /**
+   * 联机(修复4): 客户端每次应用主机快照后世界被整体替换,
+   * 需更新本渲染器持有的迷雾引用, 防止仍引用旧 world 的 fog。
+   */
+  setFog(fog: FogOfWar | null): void {
+    this.fogOfWar = fog;
+  }
+
+  /**
    * 同步所有实体精灵
    * @param dt 帧间隔（秒）
    * @param units 所有单位

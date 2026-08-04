@@ -159,12 +159,18 @@ export class GameScene extends Phaser.Scene {
   private _netClient: NetClient | null = null;
   /** 快照广播计时器 (host 模式, 每 100ms 广播一次) */
   private _snapshotTimer = 0;
+  /** 主机是否已向客户端广播 gameover (防止重复发送) */
+  private _netGameOverSent = false;
+  /** 主机 gameover 广播回调 (在 shutdown 时移除) */
+  private _onGameOverBroadcast: ((data: any) => void) | null = null;
   /** 客户端最新收到的快照帧号 */
   private _latestSnapshotFrame = 0;
   /** 本地玩家索引: single/host=0, client=1 */
   private _localPlayerIndex = 0;
+  /** 客户端连接中继用的主机 IP (联机 client 模式, 由 LobbyScene 传入) */
+  private _netHostIP: string = 'localhost';
 
-  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string; playerGuilds?: string[]; loadFromSave?: SaveData; netMode?: 'single' | 'host' | 'client'; opponentFaction?: string; opponentGuilds?: string[] }): void {
+  init(data?: { map?: string; playerFaction?: string; aiDifficulty?: string; playerGuilds?: string[]; loadFromSave?: SaveData; netMode?: 'single' | 'host' | 'client'; opponentFaction?: string; opponentGuilds?: string[]; netHostIP?: string }): void {
     // P2-7 修复：mapId 白名单校验，防止路径穿越
     this._loadSave = data?.loadFromSave ?? null;
     const VALID_MAPS = ['map_valley', 'map_river', 'map_islands'];
@@ -178,6 +184,8 @@ export class GameScene extends Phaser.Scene {
     this._opponentGuilds = data?.opponentGuilds ?? ['mages_guild', 'alchemists_society'];
     // 本地玩家索引: client 模式是 owner 1, 其他 owner 0
     this._localPlayerIndex = this._netMode === 'client' ? 1 : 0;
+    // 客户端连接主机中继的 IP (由 LobbyScene 传入, 默认为 localhost)
+    this._netHostIP = this._netMode === 'client' ? (data?.netHostIP ?? 'localhost') : 'localhost';
   }
 
   preload(): void {
@@ -393,6 +401,14 @@ export class GameScene extends Phaser.Scene {
 
     // 联机模式: 初始化网络连接 (host 收命令+广播快照, client 收快照+发命令)
     this.setupNetworking();
+
+    // 修复3: 主机在 gameover 时向客户端广播结果 (仅 host 模式, 一次)
+    if (this._netMode === 'host') {
+      this._onGameOverBroadcast = (data: any) => {
+        this.broadcastGameOver(data?.winnerIndex);
+      };
+      EventBus.on(GameEvent.GAME_OVER, this._onGameOverBroadcast);
+    }
 
     // 注册 Phaser 场景关闭/销毁时的清理
     this.events.on('shutdown', this.shutdown, this);
@@ -962,6 +978,9 @@ export class GameScene extends Phaser.Scene {
     if (this._netMode === 'client') {
       this.stepBuildPreview();
       this.stepCamera();
+      // 修复4: 客户端本地重算迷雾 (用本地玩家的单位/建筑视野),
+      // 否则反序列化出的全新 fog 永远全黑。
+      this.stepFogOfWar();
       this.stepRender(ds);
       return;
     }
@@ -1008,17 +1027,25 @@ export class GameScene extends Phaser.Scene {
       this._netHost = new NetHost('Host');
       this._netHost.on({
         onCommand: (playerIndex, frame, command) => {
-          // 客户端命令喂给 CommandExecutor (已有 playerIndex 校验)
-          this.commandExecutor.execute(command as AnyCommand);
+          // 安全(修复2): 客户端恒为 owner 1, 强制命令归属人=1 并拒绝伪造的 owner 0,
+          // 防止恶意客户端操控主机单位/资源。校验失败直接丢弃。
+          if (playerIndex !== 1) return;
+          const cmd = command as AnyCommand;
+          if (!cmd || typeof cmd.type !== 'string' || !this._isClientSafeCommand(cmd.type)) return;
+          cmd.playerIndex = 1; // 强制 owner, 覆盖客户端自填
+          cmd.frame = frame;
+          this.commandExecutor.execute(cmd);
         },
         onPeerDisconnect: () => {
           // 客户端断开: 可选显示提示 (MVP 不处理重连)
         },
       });
+      // gameover 由 GameOverController 触发, 在 shutdown 前广播给客户端
+      this._netGameOverSent = false;
       this._netHost.connect();
     } else if (this._netMode === 'client') {
-      // 客户端: 连主机中继, 收快照
-      this._netClient = new NetClient('localhost', 3000);
+      // 客户端: 连主机中继 (用 LobbyScene 传入的真实主机 IP, 修复1), 收快照
+      this._netClient = new NetClient(this._netHostIP, 3000);
       this._netClient.on({
         onSnapshot: (frame, data) => {
           if (frame > this._latestSnapshotFrame) {
@@ -1027,12 +1054,17 @@ export class GameScene extends Phaser.Scene {
           }
         },
         onGameOver: (winner) => {
-          // 客户端: 游戏结束, 返回主菜单 (MVP 简化处理)
+          // 修复3: 主机广播 gameover 后, 客户端正常收场
           this.cleanupNetwork();
           this.scene.start('MenuScene');
+          EventBus.emit(GameEvent.GAME_OVER, { winnerIndex: winner, reason: 'net_gameover' });
         },
         onDisconnect: () => {
-          // 主机断开 (MVP 不处理)
+          // 主机断开 (MVP: 回到菜单, 避免卡在最后一帧)
+          if (this._netMode === 'client') {
+            this.cleanupNetwork();
+            this.scene.start('MenuScene');
+          }
         },
       });
       this._netClient.connect('Client');
@@ -1071,6 +1103,10 @@ export class GameScene extends Phaser.Scene {
     // 更新游戏计时器
     this.gameOverCtrl.gameTimer = result.gameTimer;
     this.gameOverCtrl.graceTimers = result.graceTimers;
+    // 修复4: 同步渲染器持有的迷雾引用 (防止仍指向旧 world 的 fog)
+    this.spriteRenderer?.setFog(this.world.fogOfWar);
+    const hudScene = this.scene.get('HUDScene') as any;
+    if (hudScene?.setMinimapFog) hudScene.setMinimapFog(this.world.fogOfWar);
     // 同步渲染: 重建精灵映射 (旧精灵删除, 新实体添加)
     this.syncSpritesFromState();
   }
@@ -1138,6 +1174,28 @@ export class GameScene extends Phaser.Scene {
     this._netHost = null;
     this._netClient?.disconnect();
     this._netClient = null;
+  }
+
+  /**
+   * 安全(修复2): 主机侧客户端命令白名单。
+   * 客户端(owner 1)只允许发出常规指令命令, 拒绝可能被滥用的命令
+   * (如 spawn/superweapon/身为主机操控等), 并防御畸形命令。
+   */
+  private _isClientSafeCommand(type: string): boolean {
+    const SAFE = new Set([
+      'move', 'attack_target', 'gather', 'stop', 'hold_position',
+      'attack_move', 'train', 'research', 'cancel_research', 'cancel_train',
+      'build', 'rally_point', 'deploy', 'ability', 'alchemy_potion',
+      'transport_load', 'transport_unload',
+    ]);
+    return SAFE.has(type);
+  }
+
+  /** 修复3: 主机在 gameover 时向客户端广播结果 (仅一次) */
+  private broadcastGameOver(winner: number): void {
+    if (this._netMode !== 'host' || this._netGameOverSent || !this._netHost) return;
+    this._netGameOverSent = true;
+    this._netHost.send({ t: 'gameover', winner });
   }
 
   // ---------- Step Methods ----------
@@ -1254,7 +1312,8 @@ export class GameScene extends Phaser.Scene {
     // P2-质疑11: 4帧->2帧节流，减少视野边缘闪烁
     if (this._fogTick % 2 !== 0) return;
     // 直接传 units 引用（避免每帧 units.map() 新数组分配）
-    this.world.fogOfWar.update(this.units, 0, this.buildings);
+    // 修复4: 联机 client 本地玩家是 owner 1, 用 _localPlayerIndex 而非硬编码 0
+    this.world.fogOfWar.update(this.units, this._localPlayerIndex, this.buildings);
   }
 
   private stepCombat(ds: number): void {
@@ -1764,6 +1823,11 @@ export class GameScene extends Phaser.Scene {
     SuperWeaponSystem.reset();
     // 联机: 断开网络连接
     this.cleanupNetwork();
+    // 修复3: 移除 gameover 广播监听
+    if (this._onGameOverBroadcast) {
+      EventBus.off(GameEvent.GAME_OVER, this._onGameOverBroadcast);
+      this._onGameOverBroadcast = null;
+    }
   }
 
 }

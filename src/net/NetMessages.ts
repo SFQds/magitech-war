@@ -26,6 +26,8 @@ export interface PlayerLobbyInfo {
 export interface GameInitData {
   /** 地图 id */
   map: string;
+  /** 主机局域网 IP (客户端据此连中继; 主机本地用 localhost) */
+  hostIP: string;
   /** 主机玩家(owner 0)阵营 */
   hostFaction: string;
   /** 主机玩家行会 */

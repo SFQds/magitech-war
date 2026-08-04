@@ -201,6 +201,11 @@ export class HUDScene extends Phaser.Scene {
     if (cameraCtrl) this.minimap.setCameraCtrl(cameraCtrl);
   }
 
+  /** 联机(修复4): 客户端应用主机快照后同步 minimap 的迷雾引用 */
+  setMinimapFog(fog: FogOfWar): void {
+    if (this.minimap) this.minimap.setFog(fog);
+  }
+
   private setupEvents(): void {
     // P1-10 修复：使用 _on 注册监听器，shutdown 时逐个 off
 

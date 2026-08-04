@@ -74,6 +74,13 @@ export class Minimap {
     });
   }
 
+  /**
+   * 联机(修复4): 客户端应用主机快照后 world 被替换, 更新本 minimap 持有的迷雾引用。
+   */
+  setFog(fog: FogOfWar): void {
+    this.fog = fog;
+  }
+
   /** 每帧调用 */
   update(units: Unit[], buildings: Building[], playerIndex: number): void {
     this.graphics.clear();

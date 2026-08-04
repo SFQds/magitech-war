@@ -12,3 +12,8 @@ gui-test-screenshots/
 src/scenes/HUDScene_backup.ts
 src/scenes/nul
 nul
+# vision-bridge 含 API Key，不入库
+vision-bridge/config.json
+.vision-bridge-tmp/
+# vision-bridge 压缩包内含 config.json (API Key)，不入库
+vision-bridge.zip

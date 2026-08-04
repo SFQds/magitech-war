@@ -168,13 +168,30 @@ export class LobbyScene extends Phaser.Scene {
     if (this.role === 'host') {
       this.net = new NetHost('Host');
       (this.net as NetHost).on({
-        onClientJoin: (name) => { this.peerConnected = true; this.updateStatus(); this.updatePeerInfo(); },
+        onClientJoin: (name) => {
+          this.peerConnected = true;
+          this.updateStatus(); this.updatePeerInfo();
+          // 联机同步: host 把自己的选择状态发给 client, 让 client 看到 host 的阵营/行会/准备
+          this.sendHostStateToClient();
+        },
         onPeerDisconnect: () => { this.peerConnected = false; this.peerReady = false; this.updateStatus(); this.updatePeerInfo(); },
         onLobbyUpdate: (info) => { this.peerFaction = info.faction; this.peerGuilds = info.guilds; this.peerReady = info.ready; this.updatePeerInfo(); this.updateStartBtn(); },
       });
       (this.net as NetHost).connect();
       this.updateStatus();
     }
+  }
+
+  /** 联机同步: host 把自己的选择状态(阵营/行会/准备)发给 client */
+  private sendHostStateToClient(): void {
+    if (this.role !== 'host' || !this.net) return;
+    const myInfo: PlayerLobbyInfo = {
+      name: 'Host',
+      faction: this.selectedFaction,
+      guilds: [...this.selectedGuilds],
+      ready: this.myReady,
+    };
+    this.net.send({ t: 'lobby_state', host: myInfo, client: null });
   }
 
   // === 交互处理 ===
@@ -224,6 +241,8 @@ export class LobbyScene extends Phaser.Scene {
       ready: this.myReady,
     };
     this.net.send({ t: 'lobby_update', sender: this.role, info });
+    // 联机同步: host 每次改选择也把最新状态推给 client (client 侧用 lobby_state 更新)
+    if (this.role === 'host') this.sendHostStateToClient();
   }
 
   // === 客户端连接 ===
@@ -269,6 +288,8 @@ export class LobbyScene extends Phaser.Scene {
     if (!this.myReady || !this.peerConnected || !this.peerReady) return;
     const init: GameInitData = {
       map: MAP_ID,
+      // 协议字段; 客户端实际用自己输入的 ipValue 连中继, 主机自身用 localhost
+      hostIP: 'localhost',
       hostFaction: this.selectedFaction,
       hostGuilds: [...this.selectedGuilds],
       clientFaction: this.peerFaction || 'hammer_federation',
@@ -280,9 +301,14 @@ export class LobbyScene extends Phaser.Scene {
 
   private launchGame(init: GameInitData, mode: 'host' | 'client'): void {
     this.cleanup();
+    // 客户端用自己实际连接主机的 IP 连中继 (主机自身用 localhost);
+    // 客户端已知道 ipValue, 比依赖 init.hostIP 更可靠。
+    const hostIP = mode === 'client' ? this.ipValue : 'localhost';
     this.scene.start('GameScene', {
       netMode: mode,
       map: init.map,
+      // 客户端据此建立到中继的连接 (修复: 不再硬编码 localhost)
+      netHostIP: hostIP,
       playerFaction: mode === 'host' ? init.hostFaction : init.clientFaction,
       playerGuilds: mode === 'host' ? init.hostGuilds : init.clientGuilds,
       // 联机不用 AI, 但 GameScene.init 期望 aiDifficulty; 给个默认值, host 模式下 AI 会被禁用

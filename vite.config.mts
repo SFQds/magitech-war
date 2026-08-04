@@ -14,7 +14,19 @@ function lanRelayPlugin(): Plugin {
         console.error('[LAN] httpServer 不可用, 无法挂载 WebSocket');
         return;
       }
-      const wss = new WebSocketServer({ server: httpServer, path: '/lan' });
+      // noServer 模式: 不通过 { server, path } 挂载, 避免 ws 库在 path 不匹配时
+      // abortHandshake(400) 误伤 Vite 自带的 HMR websocket (根路径 /?token=...),
+      // 否则会触发 "[vite] server connection lost" 无限重连循环导致整页卡死。
+      // 只在 upgrade 事件里精确匹配 /lan 才接管, 其余交给 Vite 自己的监听器。
+      const wss = new WebSocketServer({ noServer: true });
+      httpServer.on('upgrade', (req, socket, head) => {
+        const url = req.url || '/';
+        const pathname = url.split('?')[0];
+        if (pathname !== '/lan') return; // 非 /lan 放行给其它 upgrade 监听器(Vite HMR)
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          wss.emit('connection', ws, req);
+        });
+      });
       const slots: { host: any; client: any } = { host: null, client: null };
 
       wss.on('connection', (ws: any) => {
