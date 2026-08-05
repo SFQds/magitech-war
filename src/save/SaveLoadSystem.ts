@@ -61,6 +61,11 @@ export interface SerializeInput {
   gameTimer: number;
   graceTimers: [number, number];
   meta: SaveMeta;
+  /**
+   * SAVE-2: 是否序列化玩家0已探索迷雾掩膜。
+   * 仅单机磁盘存档传 true；联机快照保持 false（客户端每帧重算，避免泄漏主机探索/膨胀快照）。
+   */
+  includeFog?: boolean;
 }
 
 export function serialize(input: SerializeInput): SaveData {
@@ -136,7 +141,27 @@ export function serialize(input: SerializeInput): SaveData {
     superWeapons,
     arcaneChargeTimers,
     terrain: hasNonGrass ? (terrain as TerrainType[][]) : undefined,
+    fogExplored: input.includeFog ? serializeFog(world) : undefined,
   };
+}
+
+/**
+ * SAVE-2: 序列化玩家0视角的已探索迷雾掩膜（单机读档保留地图记忆）。
+ * 独立函数便于测试；联机快照走 broadcastSnapshot 时不会用到（客户端自行重算）。
+ */
+function serializeFog(world: GameWorld): boolean[][] {
+  const fog = world.fogOfWar;
+  const w = world.map.config.width;
+  const h = world.map.config.height;
+  const grid: boolean[][] = [];
+  for (let y = 0; y < h; y++) {
+    const row: boolean[] = [];
+    for (let x = 0; x < w; x++) {
+      row.push(fog.isExplored(x, y));
+    }
+    grid.push(row);
+  }
+  return grid;
 }
 
 // ---- 实体序列化 helpers ----
@@ -191,6 +216,8 @@ function serializeUnit(u: Unit): SerializedUnit {
     isVoidOvercharged: u.isVoidOvercharged,
     voidOverloadTimer: u.voidOverloadTimer,
     isVoidOptimized: u.isVoidOptimized,
+    frostBastionTimer: u._frostBastionTimer,
+    chargeStrikeUses: u._chargeStrikeUses,
   };
 }
 
@@ -244,6 +271,8 @@ function serializeHero(h: Hero): SerializedUnit {
     isVoidOvercharged: h.isVoidOvercharged,
     voidOverloadTimer: h.voidOverloadTimer,
     isVoidOptimized: h.isVoidOptimized,
+    frostBastionTimer: h._frostBastionTimer,
+    chargeStrikeUses: h._chargeStrikeUses,
     // 英雄专属
     heroName: h.heroName,
     title: h.title,
@@ -345,11 +374,24 @@ export interface DeserializeResult {
  *  - FogOfWar 初始化
  */
 export function deserialize(data: SaveData): DeserializeResult {
+  // SAVE-3: 先做结构校验，缺失关键数组抛出明确错误（而非后续 TypeError），由调用方 try/catch 兜底
+  if (!data || typeof data !== 'object') {
+    throw new Error('存档数据无效');
+  }
   if (data.version !== SAVE_VERSION) {
     throw new Error(`存档版本不兼容: 当前 ${SAVE_VERSION}, 存档 ${data.version}`);
   }
-
   const meta = data.meta;
+  if (!meta || !meta.mapWidth || !meta.mapHeight) {
+    throw new Error('存档元数据缺失（地图尺寸无效）');
+  }
+  const players: SerializedPlayer[] = Array.isArray(data.players) ? data.players : [];
+  const units: SerializedUnit[] = Array.isArray(data.units) ? data.units : [];
+  const buildings: SerializedBuilding[] = Array.isArray(data.buildings) ? data.buildings : [];
+  const fields: SerializedField[] = Array.isArray(data.fields) ? data.fields : [];
+  const techTrees: SerializedTechTree[] = Array.isArray(data.techTrees) ? data.techTrees : [];
+  const arcaneChargeTimers: SerializedArcaneCharge[] = Array.isArray(data.arcaneChargeTimers) ? data.arcaneChargeTimers : [];
+
   const world = new GameWorld(meta.mapWidth, meta.mapHeight);
 
   // 恢复地形
@@ -364,8 +406,18 @@ export function deserialize(data: SaveData): DeserializeResult {
     }
   }
 
+  // SAVE-2: 恢复玩家0已探索迷雾掩膜（单机读档保留地图记忆；读档时全图视为 hidden，直接标 explored）
+  if (data.fogExplored) {
+    const fog = world.fogOfWar;
+    for (let y = 0; y < Math.min(data.fogExplored.length, meta.mapHeight); y++) {
+      for (let x = 0; x < Math.min(data.fogExplored[y].length, meta.mapWidth); x++) {
+        if (data.fogExplored[y][x]) fog.revealArea(x, y, 1, 1);
+      }
+    }
+  }
+
   // 恢复玩家
-  for (const sp of data.players) {
+  for (const sp of players) {
     world.addPlayer(sp.faction, [...sp.guilds], sp.isAI);
     const p = world.getPlayer(sp.index);
     if (p) {
@@ -376,7 +428,7 @@ export function deserialize(data: SaveData): DeserializeResult {
   }
 
   // 恢复科技树
-  for (const tt of data.techTrees) {
+  for (const tt of techTrees) {
     const tree = world.techTrees.get(tt.playerIndex);
     if (tree) {
       tree.setResearched(tt.researched);
@@ -385,19 +437,20 @@ export function deserialize(data: SaveData): DeserializeResult {
 
   // 恢复法师公会充能计时器
   world.arcaneChargeTimers.clear();
-  for (const ac of data.arcaneChargeTimers) {
+  for (const ac of arcaneChargeTimers) {
     world.arcaneChargeTimers.set(ac.playerIndex, ac.timer);
   }
 
+  const __superWeapons = data.superWeapons && typeof data.superWeapons === 'object' ? data.superWeapons : {};
   // 恢复超武状态（副作用：覆盖全局 static Map）
-  SuperWeaponSystem.restoreAll(data.superWeapons);
+  SuperWeaponSystem.restoreAll(__superWeapons);
 
   // 构建 EntityRegistry
   const entities = new EntityRegistry();
 
   // 恢复资源点
   const fieldById = new Map<string, ResourceField>();
-  for (const sf of data.fields) {
+  for (const sf of fields) {
     const field = new ResourceField(sf.tileX, sf.tileY, sf.resourceType, sf.amount, sf.maxGatherers);
     // 覆盖自动生成的 ID
     (field as any).id = sf.id;
@@ -414,7 +467,7 @@ export function deserialize(data: SaveData): DeserializeResult {
   }
 
   // 恢复建筑
-  for (const sb of data.buildings) {
+  for (const sb of buildings) {
     const bld = new Building(
       sb.owner, sb.faction, sb.tileX, sb.tileY,
       sb.maxHp, sb.armorType, sb.buildingType, sb.spriteKey,
@@ -453,7 +506,7 @@ export function deserialize(data: SaveData): DeserializeResult {
   // 恢复单位（分两遍：第一遍创建所有单位并建 ID 索引，第二遍恢复 cargo 引用）
   const unitById = new Map<string, Unit>();
 
-  for (const su of data.units) {
+  for (const su of units) {
     let unit: Unit;
 
     if (su.subtype === 'hero') {
@@ -514,6 +567,9 @@ export function deserialize(data: SaveData): DeserializeResult {
     unit.isVoidOvercharged = su.isVoidOvercharged;
     unit.voidOverloadTimer = su.voidOverloadTimer;
     unit.isVoidOptimized = su.isVoidOptimized;
+    // SAVE-1/FAIR-3: 恢复 buff 计时器（此前漏掉导致读档/快照后护甲翻倍与充能打击状态丢失）
+    unit._frostBastionTimer = su.frostBastionTimer ?? 0;
+    unit._chargeStrikeUses = su.chargeStrikeUses ?? 0;
 
     entities.addUnit(unit);
     unitById.set(unit.id, unit);
@@ -522,7 +578,7 @@ export function deserialize(data: SaveData): DeserializeResult {
   }
 
   // 第二遍：恢复 cargo 引用
-  for (const su of data.units) {
+  for (const su of units) {
     if (!su.cargoIds || su.cargoIds.length === 0) continue;
     const carrier = unitById.get(su.id);
     if (!carrier) continue;
@@ -537,8 +593,8 @@ export function deserialize(data: SaveData): DeserializeResult {
   return {
     world,
     entities,
-    gameTimer: data.gameTimer,
-    graceTimers: data.graceTimers,
+    gameTimer: typeof data.gameTimer === 'number' ? data.gameTimer : 0,
+    graceTimers: Array.isArray(data.graceTimers) ? data.graceTimers as [number, number] : [0, 0],
   };
 }
 

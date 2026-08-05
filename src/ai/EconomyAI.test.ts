@@ -44,7 +44,7 @@ describe('EconomyAI gather assignment', () => {
 });
 
 describe('EconomyAI rescue net', () => {
-  it('bumps crystal to max(100, ceil(100*resourceMult)) when 0 workers and crystal<100', () => {
+  it('bumps crystal to the flat AI_RESCUE_CRYSTAL_MIN when 0 workers and crystal<100', () => {
     const { world, ai } = setupAI(1, 'normal', 1.0);
     world.getPlayer(1)!.resources.crystal = 30;
     const cc = makeCommandCenter(1, 10, 10);
@@ -52,12 +52,12 @@ describe('EconomyAI rescue net', () => {
     expect(world.getPlayer(1)!.resources.crystal).toBeGreaterThanOrEqual(100);
   });
 
-  it('rescue scales with resourceMult (hard=2.0 gives 200)', () => {
+  it('AI-2: rescue floor is difficulty-independent (hard gets the same 100, not 200)', () => {
     const { world, ai } = setupAI(1, 'hard', 2.0);
     world.getPlayer(1)!.resources.crystal = 30;
     const cc = makeCommandCenter(1, 10, 10);
     ai.evaluate([cc], [], [], EARLY);
-    expect(world.getPlayer(1)!.resources.crystal).toBe(200);
+    expect(world.getPlayer(1)!.resources.crystal).toBe(100);
   });
 
   it('does not trigger rescue when workerCount>0', () => {

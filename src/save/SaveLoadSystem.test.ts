@@ -161,6 +161,81 @@ describe('SaveLoadSystem - 序列化/反序列化', () => {
     expect(h.reviveTimer).toBe(15);
   });
 
+  it('SAVE-1/FAIR-3: 磐石壁垒计时器与充能打击次数往返一致', () => {
+    const world = makeWorldWithPlayers(16, 16);
+    const entities = new EntityRegistry();
+
+    const hero = new Hero(0, 'arcane_empire', 5, 5, HERO_DEFS['hero_isabelle'], 'hero_isabelle');
+    hero._frostBastionTimer = 12.5;   // 磐石壁垒护甲翻倍 buff
+    hero._chargeStrikeUses = 2;       // 充能打击使用次数
+    hero.baseAttackDamage = 40;
+    entities.addUnit(hero);
+
+    const unit = makeUnit({ owner: 1, tileX: 8, tileY: 8, spriteKey: 'unit_rifleman' });
+    unit._frostBastionTimer = 7;
+    entities.addUnit(unit);
+
+    const data = serialize({ world, entities, gameTimer: 0, graceTimers: [0, 0], meta: mockMeta() });
+    const result = deserialize(data);
+
+    const h = result.entities.getUnit(hero.id) as Hero;
+    expect(h._frostBastionTimer).toBe(12.5);
+    expect(h._chargeStrikeUses).toBe(2);
+
+    const u = result.entities.getUnit(unit.id)!;
+    expect(u._frostBastionTimer).toBe(7);
+  });
+
+  it('SAVE-2: 迷雾已探索掩膜随 includeFog 往返一致', () => {
+    const world = makeWorldWithPlayers(16, 16);
+    const entities = new EntityRegistry();
+    // 标记一块区域为已探索
+    world.fogOfWar.revealArea(2, 2, 3, 3);
+
+    const data = serialize({ world, entities, gameTimer: 0, graceTimers: [0, 0], meta: mockMeta(), includeFog: true });
+    expect(data.fogExplored).toBeDefined();
+    expect(data.fogExplored![2][2]).toBe(true);
+
+    const result = deserialize(data);
+    // 已探索区域读档后为 explored（非隐藏）
+    expect(result.world.fogOfWar.isExplored(2, 2)).toBe(true);
+    expect(result.world.fogOfWar.isExplored(4, 4)).toBe(true);
+    // 未探索区域保持 hidden
+    expect(result.world.fogOfWar.isExplored(9, 9)).toBe(false);
+  });
+
+  it('SAVE-2: 联机快照(includeFog=false)不携带迷雾，避免泄漏主机探索', () => {
+    const world = makeWorldWithPlayers(16, 16);
+    const entities = new EntityRegistry();
+    world.fogOfWar.revealArea(2, 2, 3, 3);
+    const data = serialize({ world, entities, gameTimer: 0, graceTimers: [0, 0], meta: mockMeta() });
+    expect(data.fogExplored).toBeUndefined();
+  });
+
+  it('SAVE-3: 缺失玩家数组的损坏存档仍可反序列化（不崩溃）', () => {
+    const world = makeWorldWithPlayers(16, 16);
+    const entities = new EntityRegistry();
+    const data = serialize({ world, entities, gameTimer: 0, graceTimers: [0, 0], meta: mockMeta() });
+    // 模拟损坏：清空/破坏关键数组
+    delete (data as any).players;
+    (data as any).units = null;
+    (data as any).buildings = undefined;
+
+    const result = deserialize(data as any);
+    expect(result.world).toBeDefined();
+    expect(result.entities).toBeDefined();
+    expect(result.entities.units).toHaveLength(0);
+    expect(result.entities.buildings).toHaveLength(0);
+  });
+
+  it('SAVE-3: 版本不符或元数据缺失时抛明确错误', () => {
+    const world = makeWorldWithPlayers(16, 16);
+    const entities = new EntityRegistry();
+    const data = serialize({ world, entities, gameTimer: 0, graceTimers: [0, 0], meta: mockMeta() });
+    expect(() => deserialize({ ...data, version: 999 } as any)).toThrow(/版本不兼容/);
+    expect(() => deserialize({ ...data, meta: undefined } as any)).toThrow(/元数据缺失/);
+  });
+
   it('序列化建筑往返一致', () => {
     const world = makeWorldWithPlayers(16, 16);
     const entities = new EntityRegistry();

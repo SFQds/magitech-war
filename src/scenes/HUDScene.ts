@@ -22,7 +22,7 @@ import { CameraController } from '../core/CameraController';
 import { EventBus } from '../utils/EventBus';
 import { GameEvent } from '../types/events';
 import type { SelectionData } from '../types/events';
-import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getDisplayName, getBuildingCost } from '../config/unitData';
+import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, getDisplayName, getBuildingCost, getUnitCostWithFaction } from '../config/unitData';
 import type { CommandResult } from '../controllers/CommandExecutor';
 import { HeroSystem } from '../systems/HeroSystem';
 import { serialize, save as saveGame, load as loadGame, loadLatest } from '../save/SaveLoadSystem';
@@ -326,7 +326,9 @@ export class HUDScene extends Phaser.Scene {
           const techsMet = !ud?.techReq?.length || ud.techReq.every((tid: string) => gs2.getTechTree?.(0)?.isResearched(tid));
           const label = techsMet ? getDisplayName(uid) : `${getDisplayName(uid)} 🔒`;
           const callback = techsMet ? () => this.issueTrainCommand(bld.id, uid) : () => this.showToast('科技未解锁');
-          btns.push({ label, cost: ud ? `💎${ud.cost.crystal} 👥${ud.cost.supply}` : '💎?', spriteKey: uid, callback, disabled: !techsMet, tooltipLines: this._flavor(uid) });
+          // FAIR-1: 显示价与实扣价一致 —— 训练走 CommandExecutor 的 getUnitCostWithFaction (-20% favoredBy 折扣)
+          const unitCost = getUnitCostWithFaction(uid, playerFaction, playerGuilds);
+          btns.push({ label, cost: unitCost ? `💎${unitCost.crystal} 👥${unitCost.supply}` : '💎?', spriteKey: uid, callback, disabled: !techsMet, tooltipLines: this._flavor(uid) });
         }
       }
       if (bld.state !== 'constructing' && def?.researches) {
@@ -470,7 +472,9 @@ export class HUDScene extends Phaser.Scene {
   /** 阵营徽记: 顶栏右侧阵营色点+名称 (代入感) */
   private _updateEmblem(): void {
     const gs = this.scene.get('GameScene') as any;
-    const factionId: string = gs?.world?.players?.[0]?.faction ?? 'arcane_empire';
+    // 本地玩家: 客户端联机时 owner 1, 否则 0。此前硬编码 players[0] 会显示对面阵营。
+    const pi = gs?.localPlayerIndex ?? 0;
+    const factionId: string = gs?.world?.players?.[pi]?.faction ?? 'arcane_empire';
     const pal = T.getFactionPalette(factionId);
     const factionName: Record<string, string> = {
       arcane_empire: '奥术帝国', hammer_federation: '铁锤联邦',
@@ -509,7 +513,9 @@ export class HUDScene extends Phaser.Scene {
 
   private refreshResourceDisplay(): void {
     const gs = this.scene.get('GameScene') as any;
-    const r = gs.world?.players?.[0]?.resources;
+    // 本地玩家: 客户端联机时 owner 1, 否则 0。此前硬编码 players[0] 会显示对面资源。
+    const pi = gs?.localPlayerIndex ?? 0;
+    const r = gs.world?.players?.[pi]?.resources;
     if (r) this.resourceDisplay.update(r.crystal, r.industry, r.supply, r.supplyCap);
   }
 
@@ -651,6 +657,7 @@ export class HUDScene extends Phaser.Scene {
         gameTimer: gs.gameOverCtrl?.gameTimer ?? 0,
         graceTimers: gs.gameOverCtrl?.graceTimers ?? [0, 0],
         meta,
+        includeFog: true, // SAVE-2: 磁盘存档保留玩家0已探索迷雾
       });
 
       const name = `auto_${Date.now()}`;

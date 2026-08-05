@@ -47,7 +47,14 @@ export class EntityRegistry {
     return cy * 100000 + cx;
   }
 
-  /** 帧首重建空间索引（仅当有增删时）。由 CombatSystem.updateCombat 调用。 */
+  /** 标记战斗空间索引失效。单位每帧移动（stepMovement 先于 stepCombat），
+   *  仅靠 add/remove 置脏会让桶持有过期坐标、漏掉走近射程的敌人。
+   *  由 GameScene.stepCombat 帧首调用，保证每帧重建一次（O(N)）。 */
+  markCombatIndexDirty(): void {
+    this._combatIndexDirty = true;
+  }
+
+  /** 帧首重建空间索引（仅当有增删或显式置脏时）。由 CombatSystem.updateCombat 调用。 */
   ensureCombatIndex(): void {
     if (!this._combatIndexDirty) return;
     this._combatCellsUnits.clear();

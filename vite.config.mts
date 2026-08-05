@@ -35,7 +35,13 @@ function lanRelayPlugin(): Plugin {
             const msg = JSON.parse(String(raw));
             // hello 消息: 按 role 分配槽位
             if (msg.t === 'hello') {
-              if (msg.role === 'host' && !slots.host) {
+              if (msg.role === 'host') {
+                // 槽位冲突时接管: Lobby→Game 切换会秒断旧连接再立刻重连,
+                // 关闭旧 socket 的 close 事件可能晚于新 hello 到达 (异步), 直接拒绝会把
+                // 无重连机制的主机 session 永久卡死。改为顶掉旧槽并采用新连接 (兼作重连)。
+                if (slots.host && slots.host !== ws && slots.host.readyState === 1) {
+                  slots.host.close(4001, 'replaced by new host connection');
+                }
                 slots.host = ws;
                 ws.__role = 'host';
                 console.log('[LAN] 主机已连入');

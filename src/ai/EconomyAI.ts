@@ -11,7 +11,7 @@ import type { Building } from '../entities/Building';
 import type { Unit } from '../entities/Unit';
 import type { ResourceField } from '../entities/ResourceField';
 import type { StrategyDirective } from './StrategyManager';
-import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, FACTION_DEFS, getBuildingCost as getBuildingCostWithDiscount } from '../config/unitData';
+import { UNIT_DEFS, BUILDING_DEFS, TECH_DEFS, FACTION_DEFS, getBuildingCost as getBuildingCostWithDiscount, getUnitCostWithFaction } from '../config/unitData';
 import type { BuildCommand, ResearchCommand, TrainCommand } from '../types/commands';
 import { MAX_CRYSTAL, AI_RESCUE_CRYSTAL_MIN } from '../config/balance';
 
@@ -44,9 +44,10 @@ export class EconomyAI {
     this.playerFaction = world.getPlayer(playerIndex)?.faction ?? 'hammer_federation';
   }
 
-  /** 从 UNIT_DEFS 动态读取水晶成本 */
+  /** 从 UNIT_DEFS 动态读取水晶成本（FAIR-1: 含阵营/行会 favoredBy 折扣，与 CommandExecutor 实扣一致） */
   private getUnitCost(unitDefId: string): number {
-    return UNIT_DEFS[unitDefId]?.cost?.crystal ?? 999;
+    const cost = getUnitCostWithFaction(unitDefId, this.playerFaction, this.world.getPlayer(this.playerIndex)?.guilds);
+    return cost?.crystal ?? UNIT_DEFS[unitDefId]?.cost?.crystal ?? 999;
   }
 
   /** 从 BUILDING_DEFS 动态读取建筑水晶成本（含阵营折扣） */
@@ -191,11 +192,10 @@ export class EconomyAI {
 
     // P0-2 修复：AI安全网 — 当0工人且水晶不足时，被动提供最低水晶收入以免永久死锁
     if (workerCount === 0 && crystal < 100) {
-      // P0-A4 修复：原 Math.ceil(100 / resourceMult) 方向反了（hard 给 50 卡死、easy 给 143 反而更多）
-      // 改为乘法 + 保底 100：hard 给 200、normal 给 100、easy 给 100（保底确保能造 1 工人）
-      const rescueCrystal = Math.max(AI_RESCUE_CRYSTAL_MIN, Math.ceil(AI_RESCUE_CRYSTAL_MIN * this.resourceMult));
-      // P4-A11: clamp to MAX_CRYSTAL to respect the global cap (avoid bypassing world.refund guard)
-      player.resources.crystal = Math.min(MAX_CRYSTAL, Math.max(player.resources.crystal, rescueCrystal));
+      // AI-2 修复：救援下限跨难度统一（此前 hard 得到 200、easy 100，等于难度越高白送越多，
+      //            且与「难度=资源倍率换更强经济」的正向设计相悖）。统一给 AI_RESCUE_CRYSTAL_MIN，
+      //            保证任意难度都能造出 1 个工人破局即可。
+      player.resources.crystal = Math.min(MAX_CRYSTAL, Math.max(player.resources.crystal, AI_RESCUE_CRYSTAL_MIN));
     }
 
     if (crystal >= 100 && supply < supplyCap && workerCount < targetWorkers) {

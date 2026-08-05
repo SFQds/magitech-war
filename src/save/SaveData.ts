@@ -98,6 +98,13 @@ export interface SerializedUnit extends SerializedEntity {
   isVoidOvercharged: boolean;
   voidOverloadTimer: number;
   isVoidOptimized: boolean;
+  /**
+   * 艾纳尔「磐石壁垒」剩余秒数（>0 时护甲翻倍）。
+   * SAVE-1 修复：此前未序列化，读档/联机快照后该 buff 丢失（实时 vs 读档不一致）。
+   */
+  frostBastionTimer: number;
+  /** 充能打击使用次数（法师公会；用于一攻后自动恢复原始攻击力） */
+  chargeStrikeUses: number;
   // 英雄专属（subtype='hero' 时才有意义）
   heroName?: string;
   title?: string;
@@ -204,4 +211,9 @@ export interface SaveData {
   arcaneChargeTimers: SerializedArcaneCharge[];
   /** 地形数据：每行一个 TerrainType 数组（仅保存非默认地形以减小体积；读档时默认全 grass，再覆盖） */
   terrain?: TerrainType[][];
+  /**
+   * 战争迷雾已探索掩膜（玩家0视角，row[y][x]=isExplored）。
+   * SAVE-2 修复：单机读档保留已探索地图记忆；联机快照不填充（客户端每帧重算）。
+   */
+  fogExplored?: boolean[][];
 }

@@ -167,6 +167,10 @@ export class GameScene extends Phaser.Scene {
   private _latestSnapshotFrame = 0;
   /** 本地玩家索引: single/host=0, client=1 */
   private _localPlayerIndex = 0;
+  /** HUD/选中层取得本地玩家索引 (客户端联机时为 1, 否则 0) */
+  get localPlayerIndex(): number {
+    return this._localPlayerIndex;
+  }
   /** 客户端连接中继用的主机 IP (联机 client 模式, 由 LobbyScene 传入) */
   private _netHostIP: string = 'localhost';
 
@@ -196,10 +200,19 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     const mapJson = this.cache.json.get('mapData') as any;
 
-    // 读档分支：从存档重建游戏状态
+    // 读档分支：从存档重建游戏状态（SAVE-3: 损坏/版本不符存档回退到新对局，不崩溃）
     if (this._loadSave) {
-      this.createFromSave(this._loadSave);
-      return;
+      try {
+        this.createFromSave(this._loadSave);
+        return;
+      } catch (e) {
+        const reason = (e as Error)?.message ?? '存档损坏';
+        // 回退：清空读档标记并走正常新局初始化
+        // （使用控制台日志，避免在此处依赖未初始化的 UI）
+        console.warn('[Save] 读档失败，回退新对局:', reason);
+        this._loadSave = null;
+        // 继续向下走新对局初始化
+      }
     }
 
     const mapW = mapJson?.width ?? 64;
@@ -1096,7 +1109,14 @@ export class GameScene extends Phaser.Scene {
 
   /** 客户端: 从主机快照重建游戏状态, 更新渲染 */
   private applySnapshot(data: SaveData): void {
-    const result = deserialize(data);
+    let result;
+    try {
+      result = deserialize(data);
+    } catch (e) {
+      // SAVE-3: 异常快照直接丢弃（保留上一帧状态），避免客户端整个循环崩溃
+      console.warn('[Net] 快照反序列化失败，丢弃该帧:', (e as Error)?.message);
+      return;
+    }
     // 替换本地世界+实体注册表 (units/buildings/resourceFields 是 getter, 自动跟随)
     this.world = result.world;
     this.entities = result.entities;
@@ -1317,6 +1337,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stepCombat(ds: number): void {
+    // 空间索引每帧失效重排：单位在 stepMovement 中已移动，桶须按当前位置重建，
+    // 否则 queryCombatCandidates 会漏掉走近射程的敌人（见 EntityRegistry.markCombatIndexDirty）。
+    this.entities.markCombatIndexDirty();
     const combatEvents = CombatSystem.updateCombat(
       this.units, this.buildings,
       this.units, this.buildings,
@@ -1454,7 +1477,11 @@ export class GameScene extends Phaser.Scene {
   private stepGathering(ds: number): void {
     const gMult0 = this.getTechEffects(0).gatherMult;
     // P1-AI6: AI 采集应用难度资源倍率（hard 2x, easy 0.7x）
-    const gMult1 = this.getTechEffects(1).gatherMult * this.aiController.resourceMult;
+    // FAIR-2: 仅在 owner 1 是 AI 时应用难度倍率 —— 联机 host 模式下 owner 1 是真人对手，
+    //          不应吃到主机的 AI 难度加成（否则人类对手被无端压制）。
+    const p1 = this.world.players[1];
+    const aiMult = p1?.isAI ? this.aiController.resourceMult : 1;
+    const gMult1 = this.getTechEffects(1).gatherMult * aiMult;
     const gatherEvents = ResourceSystem.updateGathering(
       this.units, this.resourceFields, this.world.players, ds, this.buildings, gMult0, gMult1,
     );
@@ -1546,14 +1573,17 @@ export class GameScene extends Phaser.Scene {
     this._lastHudTick += this.game.loop.delta / 1000;
     if (this._lastHudTick >= 0.5) {
       this._lastHudTick = 0;
-      const p0 = this.world.players[0];
+      // 本地玩家: 单机/主机 owner 0, 客户端 owner 1。此前硬编码 players[0],
+      // 客户端会读到对面(主机)阵营/资源, 现改用 _localPlayerIndex。
+      const p = this.world.players[this._localPlayerIndex];
+      if (!p) return;
       EventBus.emit(GameEvent.RESOURCE_CHANGED, {
-        playerIndex: 0, resource: 'crystal',
-        newValue: p0.resources.crystal, delta: 0,
+        playerIndex: this._localPlayerIndex, resource: 'crystal',
+        newValue: p.resources.crystal, delta: 0,
       });
       EventBus.emit(GameEvent.RESOURCE_CHANGED, {
-        playerIndex: 0, resource: 'supply',
-        newValue: p0.resources.supplyCap - p0.resources.supply, delta: 0,
+        playerIndex: this._localPlayerIndex, resource: 'supply',
+        newValue: p.resources.supplyCap - p.resources.supply, delta: 0,
       });
     }
   }

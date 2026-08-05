@@ -355,6 +355,19 @@ describe('EntityRegistry combat spatial index', () => {
     const { units: second } = r.queryCombatCandidates(5, 5, 10);
     expect(second).toEqual([]);
   });
+
+  it('rebuilds after markCombatIndexDirty, so a moved unit is found at its new position', () => {
+    const u = makeUnit({ tileX: 5, tileY: 5 });
+    r.addUnit(u);
+    // 首次查询建立桶（cell(0,0)）。随后单位移动但未增删 → 桶持有旧 cell 坐标
+    expect(r.queryCombatCandidates(5, 5, 10).units).toEqual([u]);
+    u.tileX = 90; u.tileY = 90; // 移到远处，旧桶仍在 cell(0,0)
+    // 未置脏重查：查询中心 cell(11,11) 的 spread 覆盖不到旧桶 cell(0,0)，
+    // 单位实际就在 (90,90) 却查询不到 → 即漏掉走近射程的敌人（bug 场景）
+    expect(r.queryCombatCandidates(90, 90, 10).units).toEqual([]);
+    r.markCombatIndexDirty(); // GameScene.stepCombat 帧首调用
+    expect(r.queryCombatCandidates(90, 90, 10).units).toEqual([u]); // 重建后命中新位置
+  });
 });
 
 describe('EntityRegistry index getters', () => {

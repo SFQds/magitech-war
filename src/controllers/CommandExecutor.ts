@@ -262,7 +262,8 @@ export class CommandExecutor {
   private execGather(cmd: GatherCommand): CommandResult {
     for (const id of cmd.unitIds) {
       const unit = this.entities.getUnit(id);
-      if (unit && unit.isAlive && cmd.resourceFieldId) {
+      // P1-D7: ownership check（与 execMove/execAttackTarget 对齐，LAN 下防跨玩家操控）
+      if (unit && unit.isAlive && unit.owner === cmd.playerIndex && cmd.resourceFieldId) {
         const field = this.entities.getField(cmd.resourceFieldId);
         if (field && field.isActive && !field.isDepleted) {
           // P0-A2 修复：换矿前先递减旧矿 currentGatherers，避免幽灵采集位膨胀
@@ -372,7 +373,8 @@ export class CommandExecutor {
   private execStop(cmd: StopCommand | HoldPositionCommand): CommandResult {
     for (const id of cmd.unitIds) {
       const unit = this.entities.getUnit(id);
-      if (!unit || !unit.isAlive) continue;
+      // P1-D7: ownership check（与 execMove/execAttackTarget 对齐，LAN 下防跨玩家操控）
+      if (!unit || !unit.isAlive || unit.owner !== cmd.playerIndex) continue;
       // P0-A2 修复：停止/坚守命令会离开采集，递减旧矿 currentGatherers
       if (unit.state === 'gathering' && unit.targetResourceId) {
         const oldField = this.entities.getField(unit.targetResourceId);
