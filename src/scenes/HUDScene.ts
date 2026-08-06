@@ -256,10 +256,15 @@ export class HUDScene extends Phaser.Scene {
             cost,
             callback: () => {
               if (info.available) {
-                HeroSystem.activateSkill(hero, slotIdx, {
-                  units: gs.units ?? [],
-                  buildings: gs.buildings ?? [],
-                }, gs.resourceFields, gs.world);
+                // NET-1 修复: 英雄技能统一走 execButtonCommand(use_ability) ——
+                // 单机走 CommandExecutor, 联机客户端转发给主机执行, 避免只改本地状态被快照回滚。
+                gs.execButtonCommand?.({
+                  type: 'use_ability',
+                  playerIndex: 0,
+                  unitIds: [hero.id],
+                  abilityId: `${hero.spriteKey}_slot${slotIdx}`,
+                  frame: 0,
+                } as any);
               }
             },
             disabled: !info.available,

@@ -165,6 +165,13 @@ export class GameScene extends Phaser.Scene {
   private _onGameOverBroadcast: ((data: any) => void) | null = null;
   /** 客户端最新收到的快照帧号 */
   private _latestSnapshotFrame = 0;
+  /** NET-8: 客户端命令令牌桶——上次填充时间与累积令牌，限制客户端命令洪泛 */
+  private _cmdRateTokens = 30;
+  private _cmdRateLast = performance.now();
+  /** NET-8: 客户端命令速率上限（令牌/秒） */
+  private static readonly CMD_RATE_MAX = 30;
+  /** NET-8: 客户端命令桶容量（瞬时突发上限） */
+  private static readonly CMD_RATE_CAP = 60;
   /** 本地玩家索引: single/host=0, client=1 */
   private _localPlayerIndex = 0;
   /** HUD/选中层取得本地玩家索引 (客户端联机时为 1, 否则 0) */
@@ -1045,6 +1052,8 @@ export class GameScene extends Phaser.Scene {
           if (playerIndex !== 1) return;
           const cmd = command as AnyCommand;
           if (!cmd || typeof cmd.type !== 'string' || !this._isClientSafeCommand(cmd.type)) return;
+          // NET-8: 主机对客户端命令令牌桶限速（默认 30 条/秒），防止恶意客户端刷屏打满主机 CPU
+          if (!this._clientRateLimit()) return;
           cmd.playerIndex = 1; // 强制 owner, 覆盖客户端自填
           cmd.frame = frame;
           this.commandExecutor.execute(cmd);
@@ -1205,10 +1214,24 @@ export class GameScene extends Phaser.Scene {
     const SAFE = new Set([
       'move', 'attack_target', 'gather', 'stop', 'hold_position',
       'attack_move', 'train', 'research', 'cancel_research', 'cancel_train',
-      'build', 'rally_point', 'deploy', 'ability', 'alchemy_potion',
-      'transport_load', 'transport_unload',
+      'build', 'rally_point', 'deploy', 'use_ability',
+      'transport_load', 'transport_unload', 'superweapon',
     ]);
     return SAFE.has(type);
+  }
+
+  /**
+   * NET-8: 主机端令牌桶限速，用于抑制客户端命令洪泛。
+   * @returns false 表示超出速率被丢弃
+   */
+  private _clientRateLimit(): boolean {
+    const now = performance.now();
+    const elapsed = (now - this._cmdRateLast) / 1000;
+    this._cmdRateLast = now;
+    this._cmdRateTokens = Math.min(GameScene.CMD_RATE_CAP, this._cmdRateTokens + elapsed * GameScene.CMD_RATE_MAX);
+    if (this._cmdRateTokens < 1) return false;
+    this._cmdRateTokens -= 1;
+    return true;
   }
 
   /** 修复3: 主机在 gameover 时向客户端广播结果 (仅一次) */
@@ -1638,6 +1661,19 @@ export class GameScene extends Phaser.Scene {
 
   /** 确认放置建筑 */
   confirmBuild(tileX: number, tileY: number): void {
+    // NET-2 修复: 客户端模式下建造走 build 命令发给主机（本地只做预览/选位,
+    // 真正创建建筑/扣费由主机执行), 避免客户端本地 mutation 被快照回滚。
+    if (this._netMode === 'client') {
+      const bldId = this.buildController.buildingDefId;
+      const builderId = this.buildController.builderId;
+      if (!bldId) return;
+      this.execButtonCommand({
+        type: 'build', playerIndex: 1, unitIds: [builderId],
+        buildingDefId: bldId, position: { x: tileX, y: tileY }, frame: 0,
+      } as AnyCommand);
+      this.buildController.cancel();
+      return;
+    }
     this.buildController.confirm(tileX, tileY, this._playerFaction, this.world, this.world.map, this.buildings, (b) => { this.applyTechToBuilding(b); this.addBuilding(b); }, (id) => this.entities.getUnit(id));
   }
 

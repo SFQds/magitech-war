@@ -88,14 +88,14 @@
 
 | # | 发现 | 证据 | 严重度 | 改进建议 |
 |---|------|------|--------|----------|
-| NET-1 | 英雄技能完全绕过网络:HUDScene 直接调 `HeroSystem.activateSkill` 改本地状态 → 主机看不见,下个快照回滚,客户端技能"白按" | `HUDScene.ts:259` | 🔴 高 | 走 `execButtonCommand({type:'use_ability'})` |
-| NET-2 | 建造放置绕过网络:`confirmBuild` 直接 `buildController.confirm` 改本地 world | `GameScene.ts:1620`、`HUDScene.ts:588` | 🔴 高 | 建造改为命令走主机 |
-| NET-3 | 超武白名单缺 `'superweapon'`:客户端发的超武被主机静默丢弃 | `GameScene.ts:1192` vs `:1041` | 🟠 中 | 加入 SAFE 白名单 |
-| NET-4 | 白名单 `'ability'` 与执行器 `'use_ability'` 不一致(永不可执行);`rally_point` 等死条目 | `GameScene.ts:919,1192`、`CommandExecutor.ts:66` | 🟡 低 | 对齐 + 清理 |
+| NET-1 | 英雄技能完全绕过网络:HUDScene 直接调 `HeroSystem.activateSkill` 改本地状态 → 主机看不见,下个快照回滚,客户端技能"白按" | `HUDScene.ts:259` | 🟢 已实施(包2) | 技能按钮改走 `gs.execButtonCommand({type:'use_ability', abilityId:'heroId_slotN'})`,单机走 CommandExecutor/联机转发主机 |
+| NET-2 | 建造放置绕过网络:`confirmBuild` 直接 `buildController.confirm` 改本地 world | `GameScene.ts:1620`、`HUDScene.ts:588` | 🟢 已实施(包2) | 客户端 confirmBuild 改发 `build` 命令给主机;BuildController 加 `buildingDefId`/`builderId` getter |
+| NET-3 | 超武白名单缺 `'superweapon'`:客户端发的超武被主机静默丢弃 | `GameScene.ts:1192` vs `:1041` | 🟢 已实施(包2) | 加入 SAFE 白名单 |
+| NET-4 | 白名单 `'ability'` 与执行器 `'use_ability'` 不一致(永不可执行);`rally_point` 等死条目 | `GameScene.ts:919,1192`、`CommandExecutor.ts:66` | 🟢 已实施(包2) | 白名单对齐 use_ability,移除非生产类型 |
 | NET-5 | 客户端掉线时主机 `onPeerDisconnect` 空操作,游戏静默继续 | `GameScene.ts:1043` | 🟡 低 | 主机暂停/判负 |
 | NET-6 | 中继第二个客户端被拒(旧 close 事件滞后),可撞自动重连竞态;建议镜像主机槽位接管 | `NetClient.ts:61`、vite.config.mts | 🟠 中 | 客户端槽位也接管 |
 | NET-7 | 无 WebSocket maxPayload/消息限速;`hello.role` 自声明可冒充主机抢槽 | vite.config.mts | 🟡 低 | maxPayload + 限速 + 槽位绑定首次来源 |
-| NET-8 | 主机对客户端命令无节流(token bucket) | 主机 execute 每帧可被刷 | 🟡 低 | 每客户端令牌桶 |
+| NET-8 | 主机对客户端命令无节流(token bucket) | 主机 execute 每帧可被刷 | 🟢 已实施(包2) | 主机 onCommand 令牌桶限速(30/s, 突发 60) |
 
 ### G. 测试覆盖
 

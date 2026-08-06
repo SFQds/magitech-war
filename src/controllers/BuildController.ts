@@ -27,6 +27,11 @@ export class BuildController {
 
   get isActive(): boolean { return this.mode !== null; }
 
+  /** NET-2: 当前建造模式目标建筑 ID（联机客户端选位后组装 build 命令用） */
+  get buildingDefId(): string | null { return this.mode?.buildingDefId ?? null; }
+  /** NET-2: 当前建造模式关联的建造工人 ID */
+  get builderId(): string | null { return this.mode?.builderId ?? null; }
+
   tryEnter(bldId: string, builderId: string, faction: string, world: GameWorld, getUnit: (id: string) => Unit | undefined): boolean {
     const cost = getBuildingCost(bldId, faction);
     if (!cost || !world.canAfford(0, { crystal: cost.crystal, industry: cost.industry })) return false;
